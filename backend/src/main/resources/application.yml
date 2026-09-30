@@ -1,0 +1,90 @@
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: ${COOKIE_SECURE:false}
+spring:
+  application:
+    name: fruver-copilot
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:fruver}
+    username: ${DB_USER:fruver}
+    password: ${DB_PASSWORD:change_me}
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+  http:
+    client:
+      connect-timeout: 5s
+      read-timeout: ${HTTP_READ_TIMEOUT:30s}
+  ai:
+    model:
+      chat: openai
+      embedding: none
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
+    openai:
+      api-key: ${OPENAI_API_KEY:sk-not-configured}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      chat:
+        options:
+          model: ${AI_MODEL:gpt-4o-mini}
+          temperature: 0.0
+    retry:
+      max-attempts: 3
+      on-client-errors: false
+      backoff:
+        initial-interval: 1s
+        multiplier: 2
+        max-interval: 8s
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+app:
+  timezone: ${APP_TIMEZONE:America/Bogota}
+  dev-endpoints: ${DEV_ENDPOINTS:false}
+  conversation:
+    ai-auto-reply: ${AI_AUTO_REPLY:false}
+    auto-confirm-clear-orders: ${AUTO_CONFIRM_CLEAR_ORDERS:false}
+  printing:
+    enabled: ${PRINTER_ENABLED:false}
+    type: ${PRINTER_TYPE:ESC_POS}
+    host: ${PRINTER_HOST:127.0.0.1}
+    port: ${PRINTER_PORT:9100}
+    columns: ${PRINTER_COLUMNS:42}
+    max-attempts: ${PRINTER_MAX_ATTEMPTS:3}
+    poll-ms: ${PRINTER_POLL_MS:1000}
+    shop-name: ${SHOP_NAME:FRUVER}
+  audio:
+    storage-type: ${AUDIO_STORAGE_TYPE:local}
+    storage-path: ${AUDIO_STORAGE_PATH:./data/audio}
+  whatsapp:
+    enabled: ${WHATSAPP_ENABLED:false}
+    verify-token: ${WHATSAPP_VERIFY_TOKEN:}
+    app-secret: ${WHATSAPP_APP_SECRET:}
+    access-token: ${WHATSAPP_ACCESS_TOKEN:}
+    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
+    api-version: ${WHATSAPP_API_VERSION:v21.0}
+  stt:
+    model: ${STT_MODEL:whisper-1}
+    api-key: ${OPENAI_API_KEY:sk-not-configured}
+    base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+  security:
+    admin-username: ${ADMIN_USERNAME:admin}
+    admin-password: ${ADMIN_PASSWORD:change_me}
+    operator-username: ${OPERATOR_USERNAME:operador}
+    operator-password: ${OPERATOR_PASSWORD:}

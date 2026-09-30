@@ -1,0 +1,47 @@
+# Servicios: PostgreSQL + app Spring Boot (que ademas sirve la pantalla operativa).
+# No se agregan Redis/RabbitMQ/MinIO: no resuelven ningun problema real de la v1 (ver README).
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-fruver}
+      POSTGRES_USER: ${DB_USER:-fruver}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en .env}
+      TZ: ${APP_TIMEZONE:-America/Bogota}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      SERVER_PORT: ${SERVER_PORT:-8080}
+      DB_HOST: db
+      DB_PORT: 5432          # puerto interno del contenedor de PostgreSQL
+      AUDIO_STORAGE_PATH: /data/audio
+    ports:
+      - "${APP_PORT:-8080}:${SERVER_PORT:-8080}"
+    volumes:
+      - audio_data:/data/audio
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:$${SERVER_PORT:-8080}/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+volumes:
+  pgdata:
+  audio_data:

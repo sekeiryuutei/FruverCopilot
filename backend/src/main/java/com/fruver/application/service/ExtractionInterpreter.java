@@ -1,0 +1,114 @@
+package com.fruver.application.service;
+
+import com.fruver.application.dto.AIOrderResponse;
+import com.fruver.application.dto.InterpretedOrder;
+import com.fruver.application.dto.InterpretedOrder.Item;
+import com.fruver.application.dto.ItemSugeridoDTO;
+import com.fruver.application.port.ProductLookup;
+import com.fruver.domain.enums.ConversationAction;
+import com.fruver.domain.enums.ReviewStatus;
+import com.fruver.domain.enums.UnitOfMeasure;
+import com.fruver.domain.service.ItemAssessment;
+import com.fruver.domain.service.ReviewEvaluator;
+import org.springframework.stereotype.Component;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Trata la respuesta del LLM como UNTRUSTED INPUT: valida estructura, cantidades, unidades y catalogo,
+ * calcula el semaforo con reglas deterministicas y decide la accion conversacional.
+ * JSON valido no es pedido correcto.
+ */
+@Component
+public class ExtractionInterpreter {
+
+    static final int MAX_ITEMS = 50;
+    static final BigDecimal MAX_QTY = new BigDecimal("100000");
+
+    private final ProductLookup lookup;
+    private final ReviewEvaluator evaluator = new ReviewEvaluator();
+
+    public ExtractionInterpreter(ProductLookup lookup) {
+        this.lookup = lookup;
+    }
+
+    public InterpretedOrder interpret(AIOrderResponse ai) {
+        List<Item> items = new ArrayList<>();
+        List<ItemAssessment> assessments = new ArrayList<>();
+        List<ItemSugeridoDTO> raw = ai == null || ai.items() == null ? List.of() : ai.items();
+
+        for (ItemSugeridoDTO d : raw) {
+            if (d == null || items.size() >= MAX_ITEMS) continue;
+            UnitOfMeasure unit = UnitOfMeasure.parse(d.unidadMedida()).orElse(null);
+            BigDecimal qty = sanitizeQuantity(d.cantidad());
+            ProductLookup.Resolution res = lookup.resolve(d);
+            String mentioned = clip(d.productoMencionado(), 200);
+            if (mentioned.isBlank()) mentioned = "(sin texto)";
+
+            items.add(new Item(mentioned, blankToNull(clip(d.productoNormalizado(), 200)), d.cantidad(),
+                    d.unidadMedida() == null ? null : clip(d.unidadMedida(), 20), d.ambiguo(),
+                    blankToNull(clip(d.observacion(), 300)),
+                    res.matches() == 1 ? res.productId() : null, qty, unit));
+            assessments.add(new ItemAssessment(res.matches() == 1 && res.productId() != null,
+                    res.matches(), qty, unit, d.ambiguo()));
+        }
+
+        ReviewStatus review = evaluator.evaluate(assessments, false);
+        String reason = blankToNull(clip(ai == null ? null : ai.clarificationReason(), 500));
+        ConversationAction requested = ai == null || ai.action() == null ? ConversationAction.NONE : ai.action();
+        String aiMessage = sanitizeReply(ai == null ? null : ai.customerMessage());
+
+        ConversationAction action;
+        String message = null;
+        if (review == ReviewStatus.GREEN) {
+            action = ConversationAction.CONFIRM_ORDER; // el texto de confirmacion lo construye el backend
+        } else if (items.isEmpty() || requested == ConversationAction.WAIT_FOR_OPERATOR
+                || requested == ConversationAction.CUSTOMER_REJECTED) {
+            action = ConversationAction.WAIT_FOR_OPERATOR;
+        } else {
+            action = ConversationAction.ASK_CUSTOMER;
+            message = aiMessage != null && requested == ConversationAction.ASK_CUSTOMER ? aiMessage : template(items);
+        }
+        return new InterpretedOrder(items, review, action, message, reason);
+    }
+
+    private static BigDecimal sanitizeQuantity(BigDecimal q) {
+        if (q == null || q.signum() <= 0 || q.compareTo(MAX_QTY) > 0) return null;
+        return q.setScale(3, RoundingMode.HALF_UP);
+    }
+
+    /** Un mensaje al cliente nunca debe traer precios, links ni ser enorme: si los trae, se descarta. */
+    static String sanitizeReply(String msg) {
+        if (msg == null) return null;
+        String m = msg.strip();
+        if (m.isEmpty() || m.length() > 400 || m.contains("$") || m.toLowerCase().contains("http")) return null;
+        return m;
+    }
+
+    private static String template(List<Item> items) {
+        for (Item i : items) {
+            if (i.productId() == null) {
+                return "Claro 😊 ¿Nos confirmas qué producto exacto necesitas en \"" + clip(oneLine(i.mentioned()), 60) + "\"?";
+            }
+        }
+        for (Item i : items) {
+            if (i.quantity() == null || i.unit() == null) {
+                return "Claro 😊 ¿Qué cantidad y unidad (libras, kilos o unidades) necesitas de " + clip(oneLine(i.mentioned()), 60) + "?";
+            }
+        }
+        return "Claro 😊 ¿Nos confirmas los productos y cantidades de tu pedido?";
+    }
+
+    private static String oneLine(String s) { return s.replaceAll("[\\r\\n\"]+", " "); }
+
+    private static String clip(String s, int max) {
+        if (s == null) return "";
+        String t = s.strip();
+        return t.length() <= max ? t : t.substring(0, max);
+    }
+
+    private static String blankToNull(String s) { return s == null || s.isBlank() ? null : s; }
+}
