@@ -16,15 +16,27 @@ cp .env.example .env        # edita DB_PASSWORD, ADMIN_PASSWORD, OPENAI_API_KEY
 docker compose up -d --build
 docker compose ps           # espera a que app y db estén "healthy"
 ```
-Abre **http://localhost:8080** (o tu `APP_PORT`) e ingresa con `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
+Abre **http://localhost:8085** (o tu `APP_PORT`) e ingresa con `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
 
-Probar sin WhatsApp (con `DEV_ENDPOINTS=true`):
-```bash
-# Inicia sesión primero en el navegador; para probar por curl usa el simulador desde la consola del navegador:
-fetch('/api/dev/messages',{method:'POST',headers:{'Content-Type':'application/json','X-XSRF-TOKEN':decodeURIComponent(document.cookie.match(/XSRF-TOKEN=([^;]+)/)[1])},
-  body:JSON.stringify({phone:'573001112233',name:'Juan',text:'vecino me manda 3 libras de papa criolla y 4 aguacates'})})
+Probar sin WhatsApp y sin OpenAI (`DEV_ENDPOINTS=true`, `AI_MODEL=mock`), desde PowerShell:
+```powershell
+$auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("admin:TU_ADMIN_PASSWORD"))
+$body = '{"phone":"573001112233","name":"Juan","text":"3 libras de papa criolla"}'
+Invoke-RestMethod -Method Post -Uri http://localhost:8085/api/dev/whatsapp -Headers @{Authorization="Basic $auth"} -ContentType "application/json" -Body $body
 ```
-El pedido aparece solo en la pantalla (SSE). Con `PRINTER_ENABLED=false` el ticket se imprime en el log: `docker compose logs -f app`.
+(`/api/dev/whatsapp` y `/api/dev/messages` son lo mismo. `/api/dev/**` no usa CSRF pero **exige usuario y clave**.)
+El pedido aparece solo en la pantalla. Con `PRINTER_ENABLED=false` el ticket se imprime en el log: `docker compose logs -f backend`.
+
+**Modo mock de IA (`AI_MODEL=mock`)**: no llama a OpenAI ni a Internet. Respuestas fijas segun el texto:
+| Mensaje contiene | Resultado |
+|---|---|
+| (cualquier cosa) | Papa criolla 2 LB + Tomate chonto 3 LB → 🟢 |
+| `simular ambiguo` | "5 de papa" ambiguo + pregunta al cliente → 🟡 |
+| `simular error` | error técnico → 🔴 "IA NO DISPONIBLE" |
+| respuesta a un pedido en espera | Papa criolla 5 LB → 🟢 |
+Los audios también se "transcriben" offline con una frase fija. **No interpreta el pedido real**; la app se niega a arrancar con mock si `SPRING_PROFILES_ACTIVE=prod`.
+
+Contenedores: `fruvercopilot-postgres` y `fruvercopilot-backend`. Base de datos desde el host: `docker exec -it fruvercopilot-postgres psql -U fruver -d fruver` (o puerto `POSTGRES_PORT`).
 
 **Detener:** `docker compose down` (los datos persisten en volúmenes). Borrar todo: `docker compose down -v`.
 
@@ -38,6 +50,55 @@ Sin Maven local: `docker run --rm -v "$PWD":/app -v /var/run/docker.sock:/var/ru
 
 ## Migraciones
 **Flyway** (SQL plano y versionado; Liquibase no aporta nada aquí). Se ejecutan solas al arrancar la app: `backend/src/main/resources/db/migration/V1..V6`. `ddl-auto` no se usa. V6 carga un catálogo de **ejemplo con precios ficticios**: ajústalos desde la pestaña *Precios*.
+
+## Datos de demostración
+Con `SEED_DEMO_DATA=true` (solo desarrollo) el backend carga al arrancar, una sola vez:
+
+| Producto | Unidad | Minorista | Mayorista |
+|---|---|---|---|
+| Papa criolla | LB | $3.000 | $2.610 |
+| Aguacate Hass | UN | $4.500 | $3.920 |
+| Tomate chonto | LB | $2.500 | $2.180 |
+| Cebolla cabezona | LB | $1.800 | $1.570 |
+| Plátano maduro | UN | $1.500 | $1.310 |
+| Naranja malla | UN (1 = una malla) | $8.000 | $6.960 |
+
+| Pedido | Cliente | Estado | Contenido | Total |
+|---|---|---|---|---|
+| #10003 | Andrés Mendoza | APPROVED, impreso | 3 LB papa criolla + 2 LB tomate chonto | $14.000 |
+| #10004 | Maria Camila Silva | APPROVED, impreso (origen audio) | 1 malla de naranja + 3 LB cebolla cabezona | $13.400 |
+| #10005 | Felipe Restrepo | REVIEW 🟢 | 2 aguacates + 4 LB papa criolla | $21.000 |
+
+- Los precios de esos productos se **sobrescriben** (queda historial). Los clientes usan teléfonos ficticios (`5700000001xx`): no respondas por WhatsApp a estos pedidos.
+- Papa y tomate se venden **por libra** y el sistema bloquea otras unidades (`UNIT_MISMATCH`), por eso "3 unidades de papa" quedó como 3 LB. "Malla" no es una unidad del sistema: se modeló como producto vendido por unidad.
+- Es idempotente: si ya existen no vuelve a cargar. Para **repetir la demo** (por ejemplo después de aprobar el #10005): `POST /api/dev/demo/reset` (con `DEV_ENDPOINTS=true`) o arranca con `SEED_DEMO_RESET=true`. Solo toca los pedidos 10003-10005 de esos clientes ficticios; si esos números pertenecen a otros datos, no toca nada.
+- Se implementó como componente Java (`DemoDataSeeder`) y no como migración de Flyway: una migración correría también en producción y no se puede apagar.
+
+## Nombres de tablas (convención)
+Todo está en **inglés, `snake_case` y singular**, con una excepción: `orders` va en plural porque `order` es palabra reservada de SQL. No hay entidades JPA: el acceso es con `JdbcClient` y SQL plano, así que el esquema real es el de `db/migration/V1..V6`.
+
+| Concepto (español) | Tabla | Notas |
+|---|---|---|
+| clientes | `customer` | `phone` único, `customer_type` = `RETAIL`/`WHOLESALE` |
+| productos | `product` | `unit` = `LB`/`KG`/`UNIDAD`, `active` (no se borran) |
+| precios | `product_price` | una fila por producto + `price_type` |
+| historial de precios | `product_price_history` | |
+| pedidos | `orders` | **plural** |
+| líneas de pedido | `order_item` | guarda lo que propuso la IA (`ai_*`) y lo corregido |
+| mensajes | `conversation_message` | `external_message_id` único (idempotencia) |
+| audios / transcripciones | `audio`, `transcription` | |
+| ventas / líneas de venta | `sale`, `sale_item` | snapshot de precios |
+| cola de impresión | `print_job` | |
+| auditoría / usuarios | `audit_log`, `app_user` | |
+
+Ejemplo (producto con precios; usa `\dt` en `psql` para ver todo):
+```sql
+INSERT INTO product (name, unit) VALUES ('Mango Tommy', 'KG');
+INSERT INTO product_price (product_id, price_type, amount)
+SELECT id, t.pt, t.amount FROM product, (VALUES ('RETAIL', 6000), ('WHOLESALE', 5200)) AS t(pt, amount)
+WHERE name = 'Mango Tommy';
+```
+Evita insertar pedidos o ventas directamente en la base: se saltan las validaciones, la auditoría y el cálculo de precios. Para pruebas usa el simulador.
 
 ## Arquitectura
 ```

@@ -5,6 +5,7 @@ import com.fruver.application.dto.ExtractionRequest;
 import com.fruver.application.port.ExtractionUnavailableException;
 import com.fruver.application.port.OrderExtractor;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -15,6 +16,7 @@ import java.util.List;
  * Su salida es UNTRUSTED: la valida ExtractionInterpreter.
  */
 @Service
+@ConditionalOnExpression("!'${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock')")
 public class SpringAiOrderExtractor implements OrderExtractor {
 
     private final ChatClient chatClient;

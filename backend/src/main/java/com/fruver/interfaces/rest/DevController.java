@@ -1,6 +1,9 @@
 package com.fruver.interfaces.rest;
 
+import com.fruver.application.service.ApiException;
 import com.fruver.application.service.MessageIngestService;
+import com.fruver.config.DemoDataSeeder;
+import org.springframework.beans.factory.ObjectProvider;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -20,12 +23,23 @@ public class DevController {
     public record SimBody(@NotBlank String phone, String name, @NotBlank String text) {}
 
     private final MessageIngestService ingest;
+    private final ObjectProvider<DemoDataSeeder> seeder;
 
-    public DevController(MessageIngestService ingest) {
+    public DevController(MessageIngestService ingest, ObjectProvider<DemoDataSeeder> seeder) {
         this.ingest = ingest;
+        this.seeder = seeder;
     }
 
-    @PostMapping("/messages")
+    /** Restaura los pedidos demo 10003-10005 (p. ej. tras aprobar el 10005 en plena demostracion). */
+    @PostMapping("/demo/reset")
+    public Map<String, String> resetDemo() {
+        DemoDataSeeder s = seeder.getIfAvailable();
+        if (s == null) throw new ApiException(404, "DEMO_DISABLED", "Activa SEED_DEMO_DATA=true y reinicia el backend");
+        s.seed(true);
+        return Map.of("status", "reset");
+    }
+
+    @PostMapping({"/messages", "/whatsapp"})
     public Map<String, String> message(@Valid @RequestBody SimBody b) {
         ingest.ingestText(b.phone(), b.name(), "sim-" + UUID.randomUUID(), b.text());
         return Map.of("status", "accepted");

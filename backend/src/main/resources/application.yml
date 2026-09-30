@@ -57,6 +57,9 @@ management:
 app:
   timezone: ${APP_TIMEZONE:America/Bogota}
   dev-endpoints: ${DEV_ENDPOINTS:false}
+  demo-seed:
+    enabled: ${SEED_DEMO_DATA:false}
+    reset: ${SEED_DEMO_RESET:false}
   conversation:
     ai-auto-reply: ${AI_AUTO_REPLY:false}
     auto-confirm-clear-orders: ${AUTO_CONFIRM_CLEAR_ORDERS:false}

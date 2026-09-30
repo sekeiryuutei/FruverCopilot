@@ -6,6 +6,7 @@ import com.fruver.config.AppProperties;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -13,6 +14,7 @@ import org.springframework.web.client.RestClient;
 
 /** Proveedor de transcripcion intercambiable: el resto del sistema solo conoce SpeechToTextService. */
 @Service
+@ConditionalOnExpression("!'${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock')")
 public class OpenAiSpeechToText implements SpeechToTextService {
 
     private final RestClient http;

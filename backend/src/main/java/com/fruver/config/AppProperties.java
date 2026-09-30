@@ -11,7 +11,8 @@ public record AppProperties(
         Audio audio,
         Whatsapp whatsapp,
         Stt stt,
-        Security security) {
+        Security security,
+        DemoSeed demoSeed) {
 
     public record Conversation(boolean aiAutoReply, boolean autoConfirmClearOrders) {}
 
@@ -24,6 +25,8 @@ public record AppProperties(
                            String phoneNumberId, String apiVersion) {}
 
     public record Stt(String model, String apiKey, String baseUrl) {}
+
+    public record DemoSeed(boolean enabled, boolean reset) {}
 
     public record Security(String adminUsername, String adminPassword,
                            String operatorUsername, String operatorPassword) {}
