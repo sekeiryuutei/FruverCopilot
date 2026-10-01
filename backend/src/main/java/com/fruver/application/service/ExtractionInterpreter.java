@@ -48,7 +48,7 @@ public class ExtractionInterpreter {
             String mentioned = clip(d.productoMencionado(), 200);
             if (mentioned.isBlank()) mentioned = "(sin texto)";
 
-            items.add(new Item(mentioned, blankToNull(clip(d.productoNormalizado(), 200)), d.cantidad(),
+            items.add(new Item(mentioned, blankToNull(clip(d.productoNormalizado(), 200)), storableAiQuantity(d.cantidad()),
                     d.unidadMedida() == null ? null : clip(d.unidadMedida(), 20), d.ambiguo(),
                     blankToNull(clip(d.observacion(), 300)),
                     res.matches() == 1 ? res.productId() : null, qty, unit));
@@ -73,6 +73,12 @@ public class ExtractionInterpreter {
             message = aiMessage != null && requested == ConversationAction.ASK_CUSTOMER ? aiMessage : template(items);
         }
         return new InterpretedOrder(items, review, action, message, reason);
+    }
+
+    /** Valor crudo de la IA solo para auditoria/comparacion: si no cabe en NUMERIC(10,3) se descarta. */
+    static BigDecimal storableAiQuantity(BigDecimal q) {
+        if (q == null || q.abs().compareTo(new BigDecimal("9999999")) > 0) return null;
+        return q.setScale(3, RoundingMode.HALF_UP);
     }
 
     private static BigDecimal sanitizeQuantity(BigDecimal q) {

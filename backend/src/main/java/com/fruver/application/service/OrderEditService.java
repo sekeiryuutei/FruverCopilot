@@ -46,6 +46,13 @@ public class OrderEditService {
         }
         List<ItemEdit> incoming = edit.items() == null ? List.of() : edit.items();
         if (incoming.size() > 60) throw new ApiException(400, "VALIDATION_ERROR", "Demasiadas lineas");
+        Set<String> seenProducts = new HashSet<>();
+        for (ItemEdit e : incoming) {
+            String unit = e.unit() == null ? "" : UnitOfMeasure.parse(e.unit()).map(Enum::name).orElse(e.unit().trim().toUpperCase());
+            if (e.productId() != null && !seenProducts.add(e.productId() + "|" + unit)) {
+                throw new ApiException(422, "ITEM_DUPLICATED", "El mismo producto aparece en varias lineas: unifica las cantidades en una sola");
+            }
+        }
 
         Map<Long, ItemRow> existing = new HashMap<>();
         orders.items(orderId).forEach(i -> existing.put(i.id(), i));

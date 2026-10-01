@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FruverCopilot</title>
+<title>FruverCopilot</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E🥑%3C/text%3E%3C/svg%3E">
 <style>
 :root{--bg:#f4f6f4;--card:#fff;--ink:#14231a;--mut:#607066;--line:#dbe3dd;--g:#1f9d55;--y:#d99a00;--r:#d33;--brand:#14361f}
 @media (prefers-color-scheme:dark){:root{--bg:#0e1712;--card:#16261d;--ink:#e9f2ec;--mut:#93a89b;--line:#274233;--brand:#0a1f12}}
@@ -27,6 +27,8 @@ button.b:disabled{opacity:.5;cursor:wait}.row{display:flex;gap:8px;flex-wrap:wra
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}@media(max-width:640px){.grid2{grid-template-columns:1fr}td input.pn{min-width:110px}}
 .conv{font-size:13px;background:var(--bg);border-radius:8px;padding:8px;margin-top:8px}.conv .out{color:var(--g)}
 #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:9px;display:none;z-index:9;max-width:90vw}
+@keyframes fl{from{background:#2fb76766}to{background:transparent}}tr.flash{animation:fl 1.2s}
+input.bad{border-color:var(--r);box-shadow:0 0 0 2px #d3332255}
 h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto}
 </style></head><body>
 <header><b>🥑 FruverCopilot</b><nav id="nav"></nav><span class="cnt" id="cnt"></span><button class="b" style="padding:5px 10px" id="logout">Salir</button></header>
@@ -35,7 +37,7 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto}
 const $=s=>document.querySelector(s);
 const cop=n=>n==null?'—':'$'+Math.round(n).toLocaleString('es-CO');
 const num=v=>v===''||v==null?null:Number(v);
-function h(tag,attrs={},...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(k==='class')e.className=v;else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);else if(v!==false&&v!=null)e.setAttribute(k,v===true?'':v)}
+function h(tag,attrs={},...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(k==='class')e.className=v;else if(k==='dataset')Object.assign(e.dataset,v);else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);else if(v!==false&&v!=null)e.setAttribute(k,v===true?'':v)}
   for(const c of kids.flat()){if(c==null||c===false)continue;e.append(c.nodeType?c:document.createTextNode(String(c)))}return e}
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',4500)}
 function csrf(){return decodeURIComponent((document.cookie.match(/XSRF-TOKEN=([^;]+)/)||[])[1]||'')}
@@ -48,69 +50,166 @@ const byName=n=>S.products.find(p=>p.name.toLowerCase()===String(n).trim().toLow
 const ago=t=>{const s=Math.max(0,(Date.now()-new Date(t))/1000);return s<60?Math.round(s)+' s':s<3600?Math.round(s/60)+' min':Math.round(s/3600)+' h'};
 
 /* ---------- Operación ---------- */
-async function loadOrders(){S.orders=await api('/api/orders');if(S.tab==='ops')renderOps()}
+/* PURE:START — lógica sin DOM (se prueba aparte con Node) */
+const round3=n=>Math.round(n*1000)/1000;
+/** Firma barata de un pedido: si no cambia, su tarjeta NO se vuelve a dibujar (sin parpadeo). */
+function orderSig(o){return JSON.stringify([o.version,o.status,o.reviewStatus,o.conversationStatus,o.aiStatus,o.printStatus,o.saleId,o.total,
+  o.suggestedReply,o.confirmationDraft,o.messageText,o.customer.type,o.items.map(i=>[i.id,i.productId,i.quantity,i.unit,i.manualPrice,i.problem])])}
+/** Otra línea del pedido con el mismo producto y la misma unidad (el precio es por unidad del producto). */
+function findTwin(items,it){return items.find(x=>x!==it&&x.productId&&x.productId===it.productId&&x.unit===it.unit)}
+/** Suma a `twin` la cantidad de `it` (1 si la dejó vacía). Devuelve la cantidad resultante. */
+function absorb(twin,it){twin.quantity=round3((twin.quantity||0)+(it.quantity>0?it.quantity:1));return twin.quantity}
+/** Líneas para enviar al servidor: une repetidas (mismo producto+unidad). Falla si el precio manual difiere. */
+function payloadItems(items){const out=[];for(const it of items){
+  const t=out.find(x=>x.productId&&x.productId===it.productId&&x.unit===it.unit);
+  if(!t){out.push({...it});continue}
+  if((t.manualPrice??null)!==(it.manualPrice??null))throw Object.assign(new Error(`"${it.name}" está repetido con precios distintos: deja una sola línea`),{code:'LOCAL'});
+  t.quantity=round3((t.quantity||0)+(it.quantity||0))}
+  return out}
+const MAX_QTY=100000,MAX_PRICE=100000000;     // mismos límites que el servidor
+/** Cantidad: vacía = aún sin cantidad (se exige al guardar); >0 y <=100000; admite coma decimal; 3 decimales. */
+function parseQty(raw){const s=String(raw??'').trim().replace(',','.');
+  if(s==='')return{ok:true,value:null};
+  const n=Number(s);
+  if(!Number.isFinite(n))return{ok:false,value:null,error:'La cantidad debe ser un número'};
+  if(n<=0)return{ok:false,value:null,error:'La cantidad debe ser mayor que 0'};
+  if(n>MAX_QTY)return{ok:false,value:null,error:'Cantidad demasiado grande (máx. '+MAX_QTY+')'};
+  return{ok:true,value:round3(n)}}
+/** Precio en pesos: vacío = usar el del catálogo; nunca negativo; sin decimales. */
+function parsePrice(raw){const s=String(raw??'').trim().replace(',','.');
+  if(s==='')return{ok:true,value:null};
+  const n=Number(s);
+  if(!Number.isFinite(n))return{ok:false,value:null,error:'El precio debe ser un número'};
+  if(n<0)return{ok:false,value:null,error:'El precio no puede ser negativo'};
+  if(n>MAX_PRICE)return{ok:false,value:null,error:'Precio demasiado grande'};
+  return{ok:true,value:Math.round(n)}}
+/** Impide teclear signo, exponente o '+' en campos numéricos (el pegado lo valida parseQty/parsePrice). */
+const blockKeys=e=>{if(['-','+','e','E'].includes(e.key))e.preventDefault()};
+const setBad=(el,on)=>{on?el.classList.add('bad'):el.classList.remove('bad')};
+/* PURE:END */
+
+let loading=false,again=false;
+/** Carga el tablero. Si llega otro aviso mientras carga, repite una sola vez (sin peticiones solapadas). */
+async function loadOrders(){if(loading){again=true;return}loading=true;
+  try{S.orders=await api('/api/orders');if(S.tab==='ops')renderOps()}finally{loading=false;if(again){again=false;loadOrders()}}}
 function draftOf(o){return S.draft[o.id]||null}
-function ensureDraft(o){return S.draft[o.id]||{version:o.version,address:o.address||'',notes:o.notes||'',
+function buildDraft(o){return S.draft[o.id]||{version:o.version,address:o.address||'',notes:o.notes||'',
   items:o.items.map(i=>({id:i.id,name:i.productName||i.mentioned||'',productId:i.productId,quantity:i.quantity,unit:i.unit||'LB',manualPrice:i.manualPrice,reason:i.priceChangeReason}))}}
 function priceFor(o,it){const p=S.products.find(x=>x.id===it.productId);if(it.manualPrice!=null)return it.manualPrice;return p?(p.prices[o.customer.type]??null):null}
-function totalOf(o,d){return d.items.reduce((s,it)=>{const p=priceFor(o,it);return s+(p!=null&&it.quantity?Math.round(it.quantity*p):0)},0)}
+function totalOf(o,d){return d.items.reduce((s,it)=>{if(it.qtyError||it.priceError)return s;const p=priceFor(o,it);return s+(p!=null&&it.quantity>0?Math.round(it.quantity*p):0)},0)}
+
+const emptyMsg=h('p',{class:'mut'},'Sin pedidos pendientes. Cuando llegue uno aparece aquí solo.');
+const doneTitle=h('h3',{},'Aprobados hoy');
+/** Reconciliación con llave: solo se crean/reemplazan las tarjetas que cambiaron; las demás no se tocan. */
 function renderOps(){
-  const rank={RED:0,YELLOW:1,GREEN:2};const active=S.orders.filter(o=>o.status!=='APPROVED'),done=S.orders.filter(o=>o.status==='APPROVED');
+  const rank={RED:0,YELLOW:1,GREEN:2};
+  const active=S.orders.filter(o=>o.status!=='APPROVED'),done=S.orders.filter(o=>o.status==='APPROVED');
   active.sort((a,b)=>(rank[a.reviewStatus]??3)-(rank[b.reviewStatus]??3)||a.id-b.id);
   const c={GREEN:0,YELLOW:0,RED:0};active.forEach(o=>c[o.reviewStatus]!==undefined&&c[o.reviewStatus]++);
   $('#cnt').textContent=`Pedidos: ${active.length}  🟢 ${c.GREEN}  🟡 ${c.YELLOW}  🔴 ${c.RED}`;
-  const focus=document.activeElement;const editing=focus&&focus.closest&&focus.closest('.card')?.dataset.id;
-  const m=$('#main');const keep=editing?m.querySelector(`.card[data-id="${editing}"]`):null;const scroll=scrollY;m.replaceChildren();
-  if(!active.length)m.append(h('p',{class:'mut'},'Sin pedidos pendientes. Cuando llegue uno aparece aquí solo.'));
-  active.forEach(o=>m.append(keep&&keep.dataset.id==o.id?keep:card(o)));
-  if(done.length){m.append(h('h3',{},'Aprobados hoy'));done.forEach(o=>m.append(doneCard(o)))}scrollTo(0,scroll)}
+  for(const id of Object.keys(S.draft))if(!S.orders.some(o=>String(o.id)===id))delete S.draft[id]; // borradores de pedidos que ya no existen
+  const m=$('#main');
+  const existing=new Map([...m.children].filter(n=>n.classList.contains('card')).map(n=>[n.dataset.id,n]));
+  const wanted=[...(active.length?[]:[emptyMsg]),...active.map(o=>cardFor(o,existing)),...(done.length?[doneTitle]:[]),...done.map(o=>cardFor(o,existing))];
+  const keep=new Set(wanted);[...m.children].forEach(n=>{if(!keep.has(n))n.remove()});
+  let ref=m.firstElementChild;                       // coloca en orden moviendo solo lo necesario
+  for(const el of wanted){if(el===ref)ref=ref.nextElementSibling;else m.insertBefore(el,ref)}}
+function cardFor(o,existing){
+  if(o.status==='APPROVED')delete S.draft[o.id];
+  const el=existing.get(String(o.id)),sig=orderSig(o);
+  if(el&&S.draft[o.id]){flagStale(el,o);return el}   // hay edición en curso: no se toca
+  if(el&&el.dataset.sig===sig)return el;             // sin cambios: no se redibuja
+  const n=o.status==='APPROVED'?doneCard(o):card(o);n.dataset.sig=sig;
+  if(S.draft[o.id])flagStale(n,o);return n}
+/** Avisa si el pedido cambió en el servidor (otro usuario o la IA) mientras hay cambios sin guardar. */
+function flagStale(el,o){const d=S.draft[o.id];if(!d||d.version===o.version||el.querySelector('.stale'))return;
+  el.prepend(h('div',{class:'banner stale'},'⚠ Este pedido cambió mientras lo editabas (otro usuario o la IA). ',
+    h('button',{class:'b',onclick:()=>{delete S.draft[o.id];loadOrders()}},'Descartar mis cambios y recargar')))}
 function statusPill(o){return o.status==='PROCESSING'||o.status==='RECEIVED'?h('span',{class:'pill gray'},'⏳ PROCESANDO'):h('span',{class:'pill '+(o.reviewStatus||'gray')},{GREEN:'🟢 LISTO',YELLOW:'🟡 REVISAR',RED:'🔴 PROBLEMA'}[o.reviewStatus]||'—')}
 function doneCard(o){const ps=o.printStatus;return h('div',{class:'card GREEN',dataset:{id:o.id}},h('div',{class:'top'},h('b',{},'#'+o.id),h('span',{},o.customer.name||o.customer.phoneMasked),h('span',{class:'sp'}),
   h('b',{},cop(o.total)),h('span',{class:'pill '+(ps==='PRINTED'?'GREEN':ps==='PRINT_FAILED'?'RED':'YELLOW')},ps==='PRINTED'?'🖨 IMPRESO':ps==='PRINT_FAILED'?'🔴 NO SE PUDO IMPRIMIR':'🖨 IMPRIMIENDO…'),
   h('button',{class:'b',onclick:async()=>{try{await api(`/api/sales/${o.saleId}/reprint`,{method:'POST'});toast('Reimpresión encolada')}catch(e){toast(e.message)}}},ps==='PRINT_FAILED'?'REINTENTAR':'REIMPRIMIR')))}
+function flash(tr){tr.classList.remove('flash');void tr.offsetWidth;tr.classList.add('flash')}
+
 function card(o){
-  const d=draftOf(o);const busy=o.status==='PROCESSING'||o.status==='RECEIVED';const view=d||ensureDraft(o);const el=h('div',{class:'card '+(o.reviewStatus||''),dataset:{id:o.id}});
+  const busy=o.status==='PROCESSING'||o.status==='RECEIVED';
+  const view=draftOf(o)||buildDraft(o);
+  const el=h('div',{class:'card '+(o.reviewStatus||''),dataset:{id:o.id}});
   el.append(h('div',{class:'top'},h('span',{class:'pill gray'},o.inputType==='AUDIO'?'🎙️ AUDIO':'📝 TEXTO'),h('b',{},'PEDIDO #'+o.id),statusPill(o),
-    h('span',{class:'sp'}),h('span',{class:'mut'},(o.customer.name||'Cliente')+' · '+o.customer.phoneMasked+(o.customer.type==='WHOLESALE'?' · MAYORISTA':'')+' · hace '+ago(o.receivedAt))));
+    h('span',{class:'sp'}),h('span',{class:'mut'},(o.customer.name||'Cliente')+' · '+o.customer.phoneMasked+(o.customer.type==='WHOLESALE'?' · MAYORISTA':'')+' · hace ',h('span',{class:'ago',dataset:{t:o.receivedAt}},ago(o.receivedAt)))));
   if(o.aiStatus==='FAILED')el.append(h('div',{class:'banner'},'🔴 IA NO DISPONIBLE — digita el pedido manualmente'));
   if(o.aiStatus==='TRANSCRIPTION_FAILED')el.append(h('div',{class:'banner'},'🎙️ 🔴 TRANSCRIPCIÓN FALLIDA — escucha el audio y digita manualmente'));
   if(o.conversationStatus==='WAITING_FOR_CUSTOMER')el.append(h('div',{class:'ai'},'⏳ Esperando respuesta del cliente'));
   if(o.messageText)el.append(h('div',{class:'msg'},'“'+o.messageText+'”'));
   const tools=h('div',{class:'row'});
   if(o.hasAudio){const box=h('div');tools.append(h('button',{class:'b',onclick:()=>{box.replaceChildren(h('audio',{controls:true,autoplay:true,src:`/api/orders/${o.id}/audio`}))}},'▶ ESCUCHAR'),box)}
-  tools.append(h('button',{class:'b',onclick:async e=>{const c=el.querySelector('.conv');if(c){c.remove();return}const ms=await api(`/api/orders/${o.id}/messages`);
+  tools.append(h('button',{class:'b',onclick:async()=>{const c=el.querySelector('.conv');if(c){c.remove();return}const ms=await api(`/api/orders/${o.id}/messages`);
     el.append(h('div',{class:'conv'},ms.map(x=>h('div',{class:x.direction==='OUTBOUND'?'out':''},(x.direction==='INBOUND'?'CLIENTE: ':'TIENDA: ')+(x.content||'(audio)')+(x.delivery==='LOCAL_ONLY'?' [no enviado: WhatsApp deshabilitado]':x.delivery==='FAILED'?' [FALLÓ EL ENVÍO]':'')))))}},'Conversación'));
   el.append(tools);
   if(busy){el.append(h('p',{class:'mut'},'La IA está interpretando el pedido…'));return el}
   if(o.aiNote)el.append(h('div',{class:'ai'},'Nota IA: '+o.aiNote));
-  const tb=h('tbody');const table=h('div',{class:'scroll'},h('table',{},h('thead',{},h('tr',{},['Producto','Cantidad','Unidad','Precio','Subtotal',''].map(t=>h('th',{},t)))),tb));
-  const totalEl=h('span',{class:'total'});const upd=()=>{totalEl.textContent=cop(totalOf(o,view))};
-  const rowFor=(it,idx)=>{const sub=h('td',{class:'sub'});const calc=()=>{const p=priceFor(o,it);sub.textContent=p!=null&&it.quantity?cop(it.quantity*p):'—';upd()};
-    const pn=h('input',{class:'pn',list:'dl',value:it.name,placeholder:'Producto',onchange:e=>{const p=byName(e.target.value);if(p){it.productId=p.id;it.name=p.name;it.unit=p.unit;us.value=p.unit;it.manualPrice=null;pr.value='';pr.placeholder=p.prices[o.customer.type]??''}else{it.productId=null;toast('Producto no está en el catálogo')}calc()}});
-    const q=h('input',{class:'q',type:'number',step:'0.5',min:'0',value:it.quantity??'',oninput:e=>{it.quantity=num(e.target.value);calc()}});
+
+  const rows=new Map();                                   // línea -> {tr, pn, q, calc}: acceso directo, sin buscar en el DOM
+  const tb=h('tbody');
+  const totalEl=h('span',{class:'total'});
+  const upd=()=>{totalEl.textContent=cop(totalOf(o,view))};
+  const mark=()=>{S.draft[o.id]=view};
+  const removeRow=it=>{const i=view.items.indexOf(it);if(i>=0)view.items.splice(i,1);rows.get(it)?.tr.remove();rows.delete(it);upd()};
+
+  const rowFor=it=>{
+    const sub=h('td',{class:'sub'});
+    const errEl=h('div',{class:'prob'});
+    const showErr=()=>{errEl.textContent=[it.qtyError,it.priceError].filter(Boolean).join(' · ');setBad(q,!!it.qtyError);setBad(pr,!!it.priceError)};
+    const calc=()=>{const p=priceFor(o,it);sub.textContent=!it.qtyError&&!it.priceError&&p!=null&&it.quantity>0?cop(it.quantity*p):'—';upd()};
+    const q=h('input',{class:'q',type:'number',step:'0.5',min:'0',max:MAX_QTY,inputmode:'decimal',value:it.quantity??'',onkeydown:blockKeys,
+      oninput:e=>{const r=parseQty(e.target.value);it.quantity=r.value;it.qtyError=r.ok?null:r.error;showErr();calc()}});
     const us=h('select',{onchange:e=>{it.unit=e.target.value;calc()}},['LB','KG','UNIDAD'].map(u=>h('option',{value:u,selected:u===it.unit},u==='UNIDAD'?'UN':u)));
     const p0=S.products.find(x=>x.id===it.productId);
-    const pr=h('input',{class:'pr',type:'number',min:'0',value:it.manualPrice??'',placeholder:p0?(p0.prices[o.customer.type]??''):'',oninput:e=>{it.manualPrice=num(e.target.value);calc()}});
-    const server=o.items.find(x=>x.id===it.id);const flags=[];if(server?.aiSummary)flags.push('IA: '+server.aiSummary);if(server?.observation)flags.push(server.observation);if(server?.problem)flags.push('⚠ '+server.problem);
-    calc();return h('tr',{},h('td',{},pn,flags.length?h('div',{class:server?.problem?'prob':'ai'},flags.join(' · ')):null),h('td',{},q),h('td',{},us),h('td',{},pr),sub,
-      h('td',{},h('button',{class:'b danger',onclick:()=>{view.items.splice(idx,1);S.draft[o.id]=view;refreshCard(o)}},'✕')))};
-  view.items.forEach((it,i)=>tb.append(rowFor(it,i)));el.append(table);
-  const mark=()=>{S.draft[o.id]=view};
+    const pr=h('input',{class:'pr',type:'number',min:'0',max:MAX_PRICE,inputmode:'numeric',value:it.manualPrice??'',placeholder:p0?(p0.prices[o.customer.type]??''):'',onkeydown:blockKeys,
+      oninput:e=>{const r=parsePrice(e.target.value);it.manualPrice=r.value;it.priceError=r.ok?null:r.error;showErr();calc()}});
+    const pn=h('input',{class:'pn',list:'dl',value:it.name,placeholder:'Producto',onchange:e=>{
+      const p=byName(e.target.value);
+      if(!p){it.productId=null;toast('Producto no está en el catálogo');calc();return}
+      it.productId=p.id;it.name=p.name;it.unit=p.unit;us.value=p.unit;it.manualPrice=null;it.priceError=null;pr.value='';pr.placeholder=p.prices[o.customer.type]??'';showErr();
+      const twin=it.qtyError?null:findTwin(view.items,it);   // con cantidad inválida no se fusiona: primero se corrige                  // ¿ya está en el pedido? -> se suma, no se duplica
+      if(twin){absorb(twin,it);const t=rows.get(twin);removeRow(it);t.q.value=twin.quantity;t.calc();flash(t.tr);t.q.focus();t.q.select?.();mark();
+        toast(`${p.name} ya estaba en el pedido: ahora ${twin.quantity} ${twin.unit==='UNIDAD'?'UN':twin.unit}`);return}
+      calc()}});
+    const flags=[];const server=o.items.find(x=>x.id===it.id);
+    if(server?.aiSummary)flags.push('IA: '+server.aiSummary);if(server?.observation)flags.push(server.observation);if(server?.problem)flags.push('⚠ '+server.problem);
+    calc();
+    const tr=h('tr',{},h('td',{},pn,flags.length?h('div',{class:server?.problem?'prob':'ai'},flags.join(' · ')):null,errEl),h('td',{},q),h('td',{},us),h('td',{},pr),sub,
+      h('td',{},h('button',{class:'b danger',onclick:()=>{removeRow(it);mark()}},'✕')));
+    rows.set(it,{tr,pn,q,calc});return tr};
+
+  /** "+ Producto": agrega UNA fila al DOM (sin repintar la tarjeta). Si ya hay una fila vacía, la enfoca en vez de crear otra. */
+  const addRow=()=>{
+    const blank=view.items.find(i=>!i.productId);
+    if(blank){rows.get(blank).pn.focus();return}
+    const it={id:null,name:'',productId:null,quantity:null,unit:'LB',manualPrice:null};
+    view.items.push(it);mark();tb.append(rowFor(it));rows.get(it).pn.focus()};
+
+  view.items.forEach(it=>tb.append(rowFor(it)));
+  el.append(h('div',{class:'scroll'},h('table',{},h('thead',{},h('tr',{},['Producto','Cantidad','Unidad','Precio','Subtotal',''].map(t=>h('th',{},t)))),tb)));
   el.append(h('div',{class:'grid2'},h('input',{value:view.address,placeholder:'Dirección',oninput:e=>{view.address=e.target.value;mark()}}),h('input',{value:view.notes,placeholder:'Observaciones',oninput:e=>{view.notes=e.target.value;mark()}})));
-  const dirtyOnInput=()=>mark();el.addEventListener('input',dirtyOnInput);el.addEventListener('change',dirtyOnInput);
+  el.addEventListener('input',mark);el.addEventListener('change',mark);   // cualquier edición crea el borrador
   const approve=h('button',{class:'b main'},'APROBAR E IMPRIMIR');
   approve.onclick=async()=>{approve.disabled=true;try{const b=await save(o,view);const r=await api(`/api/orders/${o.id}/approve`,{method:'POST',body:{version:b.version}});delete S.draft[o.id];toast('Venta '+cop(r.total)+' guardada · imprimiendo');await loadOrders()}
     catch(e){toast(e.code==='ORDER_REQUIRES_REVIEW'?'Falta revisar: '+(e.details||[]).join('; '):e.message);if(e.code==='ORDER_CONFLICT'){delete S.draft[o.id];loadOrders()}}finally{approve.disabled=false}};
-  el.append(h('div',{class:'row'},h('button',{class:'b',onclick:()=>{view.items.push({id:null,name:'',productId:null,quantity:null,unit:'LB',manualPrice:null});mark();refreshCard(o)}},'+ Producto'),
+  el.append(h('div',{class:'row'},h('button',{class:'b',onclick:addRow},'+ Producto'),
     h('button',{class:'b',onclick:async()=>{try{await save(o,view);delete S.draft[o.id];toast('Guardado');loadOrders()}catch(e){toast(e.message);if(e.code==='ORDER_CONFLICT'){delete S.draft[o.id];loadOrders()}}}},'Guardar'),
     h('button',{class:'b',onclick:()=>replyPanel(el,o,'ASK',o.suggestedReply||'')},'Preguntar al cliente'),
     o.confirmationDraft?h('button',{class:'b',onclick:()=>replyPanel(el,o,'CONFIRM',o.confirmationDraft)},'Enviar confirmación'):null,
     h('button',{class:'b danger',onclick:async()=>{if(confirm('¿Cancelar el pedido #'+o.id+'?')){try{await api(`/api/orders/${o.id}/cancel`,{method:'POST',body:{version:o.version}});delete S.draft[o.id];loadOrders()}catch(e){toast(e.message)}}}},'Cancelar'),
     h('span',{class:'sp',style:'flex:1'}),h('span',{},'Total '),totalEl,approve));
   upd();return el}
-function refreshCard(o){const old=document.querySelector(`.card[data-id="${o.id}"]`);const n=card(S.orders.find(x=>x.id===o.id)||o);old?.replaceWith(n)}
-async function save(o,d){const body={version:d.version,address:d.address,notes:d.notes,items:d.items.map(i=>({id:i.id,productId:i.productId,quantity:i.quantity,unit:i.unit,manualPrice:i.manualPrice,priceChangeReason:i.reason}))};
-  if(body.items.some(i=>!i.productId||!i.quantity))throw Object.assign(new Error('Completa producto y cantidad de todas las líneas (o elimina la línea vacía)'),{code:'LOCAL'});
+
+async function save(o,d){
+  const bad=d.items.find(i=>i.qtyError||i.priceError);
+  if(bad)throw Object.assign(new Error('Corrige '+(bad.name||'la línea')+': '+(bad.qtyError||bad.priceError)),{code:'LOCAL'});
+  if(d.items.some(i=>!i.productId||!(i.quantity>0)))throw Object.assign(new Error('Completa producto y cantidad de todas las líneas (o elimina la línea vacía)'),{code:'LOCAL'});
+  const items=payloadItems(d.items);                      // une repetidas antes de enviar; el servidor también las rechaza
+  const body={version:d.version,address:d.address,notes:d.notes,items:items.map(i=>({id:i.id,productId:i.productId,quantity:i.quantity,unit:i.unit,manualPrice:i.manualPrice,priceChangeReason:i.reason}))};
   const r=await api(`/api/orders/${o.id}`,{method:'PUT',body});d.version=r.version;return r}
 function replyPanel(el,o,kind,text){el.querySelector('.reply')?.remove();const ta=h('textarea',{rows:4,style:'width:100%'});ta.value=text;
   el.append(h('div',{class:'conv reply'},h('div',{class:'mut'},kind==='ASK'?'Mensaje al cliente (edítalo si quieres):':'Confirmación al cliente (el total lo calculó el sistema):'),ta,
@@ -130,11 +229,12 @@ async function renderSales(){const m=$('#main');const today=new Date().toISOStri
 /* ---------- Precios (ADMIN) ---------- */
 async function renderPrices(){const m=$('#main');const q=h('input',{placeholder:'Buscar producto…'});const body=h('tbody');
   const load=async()=>{S.products=await api('/api/products?all=true&q='+encodeURIComponent(q.value));body.replaceChildren(...S.products.map(p=>{
-    const price=t=>h('input',{class:'pr',type:'number',min:'0',value:p.prices[t]??'',onchange:async e=>{try{await api(`/api/products/${p.id}/prices/${t}`,{method:'PUT',body:{amount:Number(e.target.value)}});toast('Precio guardado');e.target.style.outline='2px solid var(--g)'}catch(x){toast(x.message)}}});
+    const price=t=>h('input',{class:'pr',type:'number',min:'0',value:p.prices[t]??'',onkeydown:blockKeys,onchange:async e=>{const r=parsePrice(e.target.value);if(!r.ok||r.value==null){toast(r.error||'El precio es obligatorio');e.target.value=p.prices[t]??'';return}
+      try{await api(`/api/products/${p.id}/prices/${t}`,{method:'PUT',body:{amount:r.value}});p.prices[t]=r.value;toast('Precio guardado');e.target.style.outline='2px solid var(--g)'}catch(x){toast(x.message);e.target.value=p.prices[t]??''}}});
     return h('tr',{},h('td',{},p.name),h('td',{},p.unit==='UNIDAD'?'UN':p.unit),h('td',{},price('RETAIL')),h('td',{},price('WHOLESALE')),h('td',{},h('input',{type:'checkbox',checked:p.active,onchange:async e=>{try{await api('/api/products/'+p.id,{method:'PATCH',body:{active:e.target.checked}})}catch(x){toast(x.message)}}})))}));fillDl()};
   const n=h('input',{placeholder:'Nombre'}),u=h('select',{},['LB','KG','UNIDAD'].map(x=>h('option',{value:x},x))),r=h('input',{type:'number',placeholder:'Minorista',class:'pr'}),w=h('input',{type:'number',placeholder:'Mayorista',class:'pr'});
   m.replaceChildren(h('div',{class:'row'},q,h('button',{class:'b',onclick:load},'Buscar')),h('div',{class:'scroll'},h('table',{},h('thead',{},h('tr',{},['Producto','Unidad','Minorista','Mayorista','Activo'].map(t=>h('th',{},t)))),body)),
-    h('h3',{},'Nuevo producto'),h('div',{class:'row'},n,u,r,w,h('button',{class:'b main',onclick:async()=>{try{await api('/api/products',{method:'POST',body:{name:n.value,unit:u.value,retailPrice:num(r.value),wholesalePrice:num(w.value)}});toast('Creado');n.value='';load()}catch(e){toast(e.message)}}},'Crear')));
+    h('h3',{},'Nuevo producto'),h('div',{class:'row'},n,u,r,w,h('button',{class:'b main',onclick:async()=>{const rp=parsePrice(r.value),wp=parsePrice(w.value);if(!rp.ok||!wp.ok){toast(rp.error||wp.error);return}try{await api('/api/products',{method:'POST',body:{name:n.value,unit:u.value,retailPrice:rp.value,wholesalePrice:wp.value}});toast('Creado');n.value='';load()}catch(e){toast(e.message)}}},'Crear')));
   q.addEventListener('keydown',e=>e.key==='Enter'&&load());load()}
 
 /* ---------- Clientes y reportes (ADMIN) ---------- */
@@ -163,5 +263,5 @@ function show(){({ops:()=>{renderOps()},sales:renderSales,prices:renderPrices,cu
 $('#logout').onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'X-XSRF-TOKEN':csrf()}});location='/login.html'};
 (async()=>{S.me=await api('/api/me');S.products=await api('/api/products');fillDl();nav();await loadOrders();
   let t;const es=new EventSource('/api/stream');es.addEventListener('orders',()=>{clearTimeout(t);t=setTimeout(async()=>{if(S.tab==='ops'){try{await loadOrders()}catch(e){}}},300)});
-  setInterval(()=>{if(S.tab==='ops'&&!document.activeElement?.closest?.('.card'))renderOps()},30000)})();
+  setInterval(()=>document.querySelectorAll('.ago').forEach(x=>{x.textContent=ago(x.dataset.t)}),30000)})();
 </script></body></html>

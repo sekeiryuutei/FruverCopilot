@@ -41,6 +41,11 @@ public class ProductController {
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public Map<String, Object> create(@Valid @RequestBody CreateBody b) {
+        for (BigDecimal price : new BigDecimal[]{b.retailPrice(), b.wholesalePrice()}) {
+            if (price != null && (price.signum() < 0 || price.compareTo(new BigDecimal("100000000")) > 0)) {
+                throw new com.fruver.application.service.ApiException(400, "VALIDATION_ERROR", "Precio invalido");
+            }
+        }
         long id = catalog.create(b.name(), b.unit());
         if (b.retailPrice() != null) prices.setPrice(id, PriceType.RETAIL, b.retailPrice(), Actor.name());
         if (b.wholesalePrice() != null) prices.setPrice(id, PriceType.WHOLESALE, b.wholesalePrice(), Actor.name());

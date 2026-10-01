@@ -48,6 +48,10 @@ OPENAI_API_KEY=sk-... mvn test -Dtest=ExtractionEvalTest   # evaluación con el 
 ```
 Sin Maven local: `docker run --rm -v "$PWD":/app -v /var/run/docker.sock:/var/run/docker.sock -w /app maven:3.9-eclipse-temurin-21 mvn test`
 
+Validaciones de cantidades y precios (en 3 capas): la pantalla rechaza negativos/cero/enormes y bloquea el signo `-`; el servidor responde `ITEM_INVALID` (422); la base los rechaza con `CHECK` (migración V7). Cantidad: 0 < x ≤ 100.000; precio manual: 0 ≤ x ≤ 100.000.000.
+
+Prueba de la pantalla de operación (Node, sin dependencias; ejecuta el `index.html` real contra un DOM falso): `node frontend-tests/operacion.test.js`
+
 ## Migraciones
 **Flyway** (SQL plano y versionado; Liquibase no aporta nada aquí). Se ejecutan solas al arrancar la app: `backend/src/main/resources/db/migration/V1..V6`. `ddl-auto` no se usa. V6 carga un catálogo de **ejemplo con precios ficticios**: ajústalos desde la pestaña *Precios*.
 

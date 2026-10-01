@@ -197,4 +197,37 @@ class SaleFlowIntegrationTest {
         assertEquals(3, conversation.messages(order).size());
         assertNull(views.get(order).saleId(), "una confirmacion o respuesta NO es una venta");
     }
+
+    @Test void sameProductOnTwoLinesIsRejectedByTheServer() {
+        long order = newOrder("570000000010", papaCriolla("2", "LB"));
+        var row = orders.find(order).orElseThrow();
+        ItemRow item = orders.items(order).get(0);
+        ApiException e = assertThrows(ApiException.class, () -> edits.update(order, new OrderEditService.OrderEdit(row.version(), null, null, null,
+                List.of(new OrderEditService.ItemEdit(item.id(), papaId(), new BigDecimal("2"), "LB", null, null),
+                        new OrderEditService.ItemEdit(null, papaId(), new BigDecimal("3"), "LB", null, null))), "empleado1"));
+        assertEquals("ITEM_DUPLICATED", e.code());
+        assertEquals(row.version(), orders.find(order).orElseThrow().version(), "no debe guardar nada");
+    }
+
+    @Test void negativeZeroOrAbsurdValuesAreRejectedByServerAndDatabase() {
+        long order = newOrder("570000000011", papaCriolla("2", "LB"));
+        var row = orders.find(order).orElseThrow();
+        ItemRow item = orders.items(order).get(0);
+        for (String bad : new String[]{"-9", "0", "-0.001", "100001"}) {
+            ApiException e = assertThrows(ApiException.class, () -> edits.update(order, new OrderEditService.OrderEdit(row.version(), null, null, null,
+                    List.of(new OrderEditService.ItemEdit(item.id(), papaId(), new BigDecimal(bad), "LB", null, null))), "empleado1"), "cantidad " + bad);
+            assertEquals("ITEM_INVALID", e.code());
+        }
+        ApiException price = assertThrows(ApiException.class, () -> edits.update(order, new OrderEditService.OrderEdit(row.version(), null, null, null,
+                List.of(new OrderEditService.ItemEdit(item.id(), papaId(), new BigDecimal("2"), "LB", new BigDecimal("-500"), null))), "empleado1"));
+        assertEquals("ITEM_INVALID", price.code());
+        assertEquals(row.version(), orders.find(order).orElseThrow().version(), "no debe guardar nada");
+        assertEquals(0, new BigDecimal("2").compareTo(orders.items(order).get(0).quantity()));
+
+        // Aunque alguien se salte la capa de aplicacion, la base lo rechaza (V7).
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                () -> jdbc.sql("UPDATE order_item SET quantity = -9 WHERE id = :id").param("id", item.id()).update());
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                () -> jdbc.sql("UPDATE order_item SET manual_price = -1 WHERE id = :id").param("id", item.id()).update());
+    }
 }

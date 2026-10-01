@@ -85,6 +85,15 @@ class ExtractionInterpreterTest {
     @Test void aiCannotDowngradeAmbiguity() {
         assertEquals(ReviewStatus.YELLOW, run(ConversationAction.CONFIRM_ORDER, null, item("papa criolla", "Papa criolla", "3", "LB", true)).review());
     }
+    @Test void rawAiQuantityThatDoesNotFitTheColumnIsDropped() {
+        InterpretedOrder r = run(null, null, item("papa criolla", "Papa criolla", "99999999999", "LB", false));
+        assertNull(r.items().get(0).aiQuantity());
+        assertEquals(ReviewStatus.RED, r.review());
+    }
+    @Test void zeroAndNegativeQuantitiesNeverReachTheOrder() {
+        assertNull(run(null, null, item("papa criolla", "Papa criolla", "0", "LB", false)).items().get(0).quantity());
+        assertNull(run(null, null, item("papa criolla", "Papa criolla", "-9", "LB", false)).items().get(0).quantity());
+    }
     @Test void nullItemsInsideListAreIgnored() {
         InterpretedOrder r = interpreter.interpret(new AIOrderResponse(java.util.Arrays.asList(null, item("papa criolla", "Papa criolla", "1", "LB", false)), null, null, null));
         assertEquals(1, r.items().size());
