@@ -98,4 +98,28 @@ class ExtractionInterpreterTest {
         InterpretedOrder r = interpreter.interpret(new AIOrderResponse(java.util.Arrays.asList(null, item("papa criolla", "Papa criolla", "1", "LB", false)), null, null, null));
         assertEquals(1, r.items().size());
     }
+    @Test void contradictionInReasonOrObservationTriggersRed() {
+        InterpretedOrder r = interpreter.interpret(new AIOrderResponse(
+                List.of(item("cebolla", "Cebolla cabezona", "5", "LB", false)),
+                ConversationAction.ASK_CUSTOMER, "¿Te enviamos cabezona?", "Contradicción entre cebolla gruesa y cabezona"));
+        assertEquals(ReviewStatus.RED, r.review());
+        assertEquals(ConversationAction.ASK_CUSTOMER, r.action());
+        assertEquals("¿Te enviamos cabezona?", r.customerMessage());
+    }
+    @Test void askCustomerDowngradesOtherwiseGreenOrderToYellow() {
+        InterpretedOrder r = interpreter.interpret(new AIOrderResponse(
+                List.of(item("papa criolla", "Papa criolla", "2", "LB", false)),
+                ConversationAction.ASK_CUSTOMER, "¿Confirmas 2 libras?", "Confirmar intención"));
+        assertEquals(ReviewStatus.YELLOW, r.review());
+        assertEquals(ConversationAction.ASK_CUSTOMER, r.action());
+        assertEquals("¿Confirmas 2 libras?", r.customerMessage());
+    }
+    @Test void missingUnitWithQuantityGeneratesKilosOrLibrasQuestion() {
+        InterpretedOrder r = interpreter.interpret(new AIOrderResponse(
+                List.of(new ItemSugeridoDTO("papa", "Papa criolla", new BigDecimal("5"), null, true, "Sin unidad")),
+                ConversationAction.ASK_CUSTOMER, null, null));
+        assertEquals(ReviewStatus.RED, r.review());
+        assertEquals(ConversationAction.ASK_CUSTOMER, r.action());
+        assertEquals("Claro 😊 ¿Te refieres a 5 kilos o 5 libras de Papa criolla?", r.customerMessage());
+    }
 }

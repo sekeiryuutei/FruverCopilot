@@ -42,16 +42,41 @@ public class MockOrderExtractor implements OrderExtractor {
         if (msg.contains("simular error")) {
             throw new ExtractionUnavailableException("Error simulado por el modo mock", null);
         }
-        if (msg.contains("simular ambiguo")) {
+        if (msg.contains("dragon fruit") || msg.contains("inexistente")) {
             return new AIOrderResponse(
-                    List.of(new ItemSugeridoDTO("papa", null, new BigDecimal("5"), "LB", true, "No se especificó el tipo de papa.")),
+                    List.of(new ItemSugeridoDTO("dragon fruit", null, new BigDecimal("10"), "KG", false, "Producto no existe en catálogo")),
+                    ConversationAction.WAIT_FOR_OPERATOR,
+                    null,
+                    "Producto no encontrado en el catalogo.");
+        }
+        if (msg.contains("cebolla gruesa") || msg.contains("contradic")) {
+            return new AIOrderResponse(
+                    List.of(new ItemSugeridoDTO("cebolla", null, new BigDecimal("5"), "LB", true, "Contradiccion entre cebolla gruesa y cabezona")),
                     ConversationAction.ASK_CUSTOMER,
-                    "¿Qué tipo de papa necesitas: criolla, pastusa o sabanera?",
-                    "Existen múltiples productos compatibles.");
+                    "En este momento no tenemos cebolla gruesa. Tenemos cebolla cabezona. ¿Te enviamos las 5 cabezonas?",
+                    "Contradiccion en el pedido.");
+        }
+        if (msg.contains("5 de papa") || msg.contains("simular ambiguo")) {
+            return new AIOrderResponse(
+                    List.of(new ItemSugeridoDTO("papa", null, new BigDecimal("5"), null, true, "No se especificó la unidad de medida (kilos o libras).")),
+                    ConversationAction.ASK_CUSTOMER,
+                    "Claro 😊 ¿Te refieres a 5 kilos o 5 libras de papa?",
+                    "Falta unidad de medida.");
         }
         if (request.currentItems() != null && !request.currentItems().isEmpty()) {
+            if (msg.contains("cabezona")) {
+                return new AIOrderResponse(
+                        List.of(new ItemSugeridoDTO("cebolla cabezona", "Cebolla cabezona", new BigDecimal("5"), "LB", false, null)),
+                        ConversationAction.CONFIRM_ORDER, null, null);
+            }
             return new AIOrderResponse(
                     List.of(new ItemSugeridoDTO("papa criolla", "Papa criolla", new BigDecimal("5"), "LB", false, null)),
+                    ConversationAction.CONFIRM_ORDER, null, null);
+        }
+        if (msg.contains("pina") || msg.contains("piña")) {
+            return new AIOrderResponse(
+                    List.of(new ItemSugeridoDTO("piñas", "Pina", new BigDecimal("2"), "UNIDAD", false, null),
+                            new ItemSugeridoDTO("papa criolla", "Papa criolla", new BigDecimal("3"), "LB", false, null)),
                     ConversationAction.CONFIRM_ORDER, null, null);
         }
         return new AIOrderResponse(

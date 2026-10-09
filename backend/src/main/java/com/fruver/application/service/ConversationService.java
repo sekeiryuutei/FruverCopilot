@@ -31,6 +31,8 @@ public class ConversationService {
         this.hub = hub;
     }
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ConversationService.class);
+
     /** La llamada al proveedor ocurre SIN transaccion; despues se registra el resultado. */
     public void send(long orderId, String text, Kind kind, String actor) {
         if (text == null || text.isBlank() || text.length() > 1000) {
@@ -43,8 +45,8 @@ public class ConversationService {
         try {
             delivery = gateway.sendText(phone, text.strip()).name();
         } catch (MessagingUnavailableException e) {
-            record(orderId, text, "FAILED");
-            throw new ApiException(502, "MESSAGING_UNAVAILABLE", "No se pudo enviar el mensaje al cliente");
+            log.warn("Fallo envio por WhatsApp para pedido {}: {}", orderId, e.getMessage());
+            delivery = "FAILED";
         }
         record(orderId, text, delivery);
         jdbc.sql("UPDATE orders SET conversation_status = :cs, suggested_reply = NULL WHERE id = :id")

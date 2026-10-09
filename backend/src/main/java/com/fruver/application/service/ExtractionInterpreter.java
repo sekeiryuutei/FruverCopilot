@@ -56,21 +56,29 @@ public class ExtractionInterpreter {
                     res.matches(), qty, unit, d.ambiguo()));
         }
 
-        ReviewStatus review = evaluator.evaluate(assessments, false);
+        boolean contradiction = ai != null && ((ai.clarificationReason() != null && ai.clarificationReason().toLowerCase().contains("contradic"))
+                || (raw != null && raw.stream().anyMatch(d -> d != null && d.observacion() != null && d.observacion().toLowerCase().contains("contradic"))));
+        ReviewStatus review = evaluator.evaluate(assessments, contradiction);
         String reason = blankToNull(clip(ai == null ? null : ai.clarificationReason(), 500));
         ConversationAction requested = ai == null || ai.action() == null ? ConversationAction.NONE : ai.action();
         String aiMessage = sanitizeReply(ai == null ? null : ai.customerMessage());
 
         ConversationAction action;
         String message = null;
-        if (review == ReviewStatus.GREEN) {
+        if (requested == ConversationAction.ASK_CUSTOMER) {
+            if (review == ReviewStatus.GREEN) review = ReviewStatus.YELLOW;
+            action = ConversationAction.ASK_CUSTOMER;
+            message = aiMessage != null ? aiMessage : template(items);
+        } else if (requested == ConversationAction.WAIT_FOR_OPERATOR || requested == ConversationAction.CUSTOMER_REJECTED) {
+            if (review == ReviewStatus.GREEN) review = ReviewStatus.YELLOW;
+            action = ConversationAction.WAIT_FOR_OPERATOR;
+        } else if (review == ReviewStatus.GREEN) {
             action = ConversationAction.CONFIRM_ORDER; // el texto de confirmacion lo construye el backend
-        } else if (items.isEmpty() || requested == ConversationAction.WAIT_FOR_OPERATOR
-                || requested == ConversationAction.CUSTOMER_REJECTED) {
+        } else if (items.isEmpty()) {
             action = ConversationAction.WAIT_FOR_OPERATOR;
         } else {
             action = ConversationAction.ASK_CUSTOMER;
-            message = aiMessage != null && requested == ConversationAction.ASK_CUSTOMER ? aiMessage : template(items);
+            message = aiMessage != null ? aiMessage : template(items);
         }
         return new InterpretedOrder(items, review, action, message, reason);
     }
@@ -101,6 +109,11 @@ public class ExtractionInterpreter {
             }
         }
         for (Item i : items) {
+            if (i.quantity() != null && i.unit() == null) {
+                String cant = i.quantity().stripTrailingZeros().toPlainString();
+                String prod = i.aiProductName() != null ? i.aiProductName() : clip(oneLine(i.mentioned()), 60);
+                return "Claro 😊 ¿Te refieres a " + cant + " kilos o " + cant + " libras de " + prod + "?";
+            }
             if (i.quantity() == null || i.unit() == null) {
                 return "Claro 😊 ¿Qué cantidad y unidad (libras, kilos o unidades) necesitas de " + clip(oneLine(i.mentioned()), 60) + "?";
             }

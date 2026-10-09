@@ -14,7 +14,7 @@ public final class TextTokens {
             "mande", "mandeme", "deme", "dame", "favor", "buenas", "buenos", "dias", "tardes", "noches", "hola",
             "libra", "libras", "kilo", "kilos", "unidad", "unidades", "grande", "grandes", "mediana", "medianas",
             "pequena", "pequenas", "bien", "tiene", "sino", "dos", "tres", "cuatro", "cinco", "seis", "siete",
-            "ocho", "nueve", "diez", "media", "medio", "poquito", "esas", "esos", "ese", "esa", "ayer", "mismo",
+            "ocho", "nueve", "diez", "media", "medio", "poquito", "esas", "esos", "ese", "esa", "eso", "esto", "ayer", "mismo",
             "gracias", "vecino", "vecina", "quiero", "necesito", "pedido", "otro", "otra");
 
     private TextTokens() {}

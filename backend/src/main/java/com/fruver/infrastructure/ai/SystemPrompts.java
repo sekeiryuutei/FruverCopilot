@@ -35,7 +35,8 @@ final class SystemPrompts {
         - unidadMedida solo puede ser LB, KG o UNIDAD.
         - libra, libras, lb = LB. kilo, kilos, kg = KG. unidad, unidades o conteo simple = UNIDAD.
         - medio kilo = 0.5 KG. media libra = 0.5 LB. libra y media = 1.5 LB. kilo y medio = 1.5 KG.
-        - No conviertas entre KG y LB.
+        - En Colombia, 1 kilo equivale a 2 libras (1 KG = 2 LB, medio kilo = 1 LB). Si en catalogo_candidato el producto se vende por LB y el cliente pide en kilos, convierte la cantidad a LB (ej: 1 kilo -> cantidad=2, unidadMedida=LB; medio kilo -> cantidad=1, unidadMedida=LB).
+        - Si el cliente pide un numero sin unidad ("deme 5 de papa", "5 de tomate") y no es claro si son kilos o libras: marca ambiguo=true, unidadMedida=null, action=ASK_CUSTOMER, y en customerMessage pregunta amablemente si se refiere a kilos o libras (ej: "¿Te refieres a 5 kilos o 5 libras de papa?").
         - Valores en dinero ("5 mil de tomate", "una papaya de 5 mil") NO son cantidades: ambiguo=true,
           cantidad=null y observacion "El cliente indico un valor monetario en lugar de una cantidad fisica."
         - Tamanos (grande, mediana, pequena) van en observacion; no se pierden.

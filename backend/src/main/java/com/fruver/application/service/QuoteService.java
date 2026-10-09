@@ -62,13 +62,27 @@ public class QuoteService {
             BigDecimal catalog = p == null ? null : book.prices().get(type).get(p.id());
             BigDecimal applied = it.manualPrice() != null ? it.manualPrice() : catalog;
             String problem = problemOf(it, p, applied);
-            BigDecimal subtotal = problem == null ? Money.line(it.quantity(), applied) : null;
+            BigDecimal effectiveQty = (p != null && it.quantity() != null && it.unit() != null)
+                    ? it.quantity().multiply(weightFactor(it.unit(), p.unit())).stripTrailingZeros()
+                    : it.quantity();
+            String displayUnit = (p != null && isConvertibleWeight(it.unit(), p.unit())) ? p.unit() : it.unit();
+            BigDecimal subtotal = problem == null ? Money.line(effectiveQty, applied) : null;
             boolean manual = it.manualPrice() != null && (catalog == null || it.manualPrice().compareTo(catalog) != 0);
             if (problem != null) complete = false; else total = total.add(subtotal);
-            lines.add(new QuoteLine(it.id(), p == null ? null : p.id(), p == null ? null : p.name(), it.quantity(),
-                    it.unit(), catalog, applied, manual, subtotal, problem));
+            lines.add(new QuoteLine(it.id(), p == null ? null : p.id(), p == null ? null : p.name(), effectiveQty,
+                    displayUnit, catalog, applied, manual, subtotal, problem));
         }
         return new Quote(lines, total, complete, type.name());
+    }
+
+    private static boolean isConvertibleWeight(String u1, String u2) {
+        return ("KG".equals(u1) && "LB".equals(u2)) || ("LB".equals(u1) && "KG".equals(u2));
+    }
+
+    private static BigDecimal weightFactor(String itemUnit, String productUnit) {
+        if ("KG".equals(itemUnit) && "LB".equals(productUnit)) return new BigDecimal("2");
+        if ("LB".equals(itemUnit) && "KG".equals(productUnit)) return new BigDecimal("0.5");
+        return BigDecimal.ONE;
     }
 
     private static String problemOf(ItemRow it, ProductRow p, BigDecimal applied) {
@@ -76,8 +90,8 @@ public class QuoteService {
         if (!p.active()) return "INACTIVE_PRODUCT";
         if (it.quantity() == null || it.quantity().signum() <= 0) return "NO_QUANTITY";
         if (it.unit() == null) return "NO_UNIT";
-        // El precio esta expresado en la unidad del producto. Sin conversion automatica KG<->LB (regla de negocio pendiente).
-        if (!it.unit().equals(p.unit())) return "UNIT_MISMATCH";
+        // Conversion automatica entre KG y LB (1 KG = 2 LB en fruver colombiano). Otras discrepancias requieren revision.
+        if (!it.unit().equals(p.unit()) && !isConvertibleWeight(it.unit(), p.unit())) return "UNIT_MISMATCH";
         if (applied == null) return "NO_PRICE";
         return null;
     }
