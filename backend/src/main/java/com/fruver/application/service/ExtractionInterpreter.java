@@ -39,6 +39,7 @@ public class ExtractionInterpreter {
         List<Item> items = new ArrayList<>();
         List<ItemAssessment> assessments = new ArrayList<>();
         List<ItemSugeridoDTO> raw = ai == null || ai.items() == null ? List.of() : ai.items();
+        boolean truncated = raw.size() > MAX_ITEMS;
 
         for (ItemSugeridoDTO d : raw) {
             if (d == null || items.size() >= MAX_ITEMS) continue;
@@ -59,6 +60,8 @@ public class ExtractionInterpreter {
         boolean contradiction = ai != null && ((ai.clarificationReason() != null && ai.clarificationReason().toLowerCase().contains("contradic"))
                 || (raw != null && raw.stream().anyMatch(d -> d != null && d.observacion() != null && d.observacion().toLowerCase().contains("contradic"))));
         ReviewStatus review = evaluator.evaluate(assessments, contradiction);
+        // Pedido grande truncado a MAX_ITEMS: nunca GREEN silencioso, siempre a revision.
+        if (truncated && review == ReviewStatus.GREEN) review = ReviewStatus.YELLOW;
         String reason = blankToNull(clip(ai == null ? null : ai.clarificationReason(), 500));
         ConversationAction requested = ai == null || ai.action() == null ? ConversationAction.NONE : ai.action();
         String aiMessage = sanitizeReply(ai == null ? null : ai.customerMessage());

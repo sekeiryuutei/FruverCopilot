@@ -40,11 +40,25 @@ public class SalesQueryService {
         Map<String, Object> p = new HashMap<>();
         p.put("from", f.atStartOfDay(zone).toOffsetDateTime());
         p.put("to", t.plusDays(1).atStartOfDay(zone).toOffsetDateTime());
-        if (customerType != null && !customerType.isBlank()) { sql.append(" AND s.customer_type = :ct"); p.put("ct", customerType); }
+        if (customerType != null && !customerType.isBlank()) {
+            if (!customerType.equals("RETAIL") && !customerType.equals("WHOLESALE")) {
+                throw new com.fruver.application.service.ApiException(400, "VALIDATION_ERROR", "Tipo de cliente invalido");
+            }
+            sql.append(" AND s.customer_type = :ct"); p.put("ct", customerType);
+        }
         if (productId != null) { sql.append(" AND EXISTS (SELECT 1 FROM sale_item i WHERE i.sale_id = s.id AND i.product_id = :pid)"); p.put("pid", productId); }
         if (q != null && !q.isBlank()) {
-            sql.append(" AND (s.customer_name ILIKE :q OR s.customer_phone ILIKE :q OR s.address ILIKE :q)");
-            p.put("q", "%" + q.strip() + "%");
+            String term = q.strip();
+            if (term.length() > 100) term = term.substring(0, 100);
+            // Escapa comodines LIKE para que "%%%" no liste todo ni ralentice la consulta.
+            String esc = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+            // Si parece busqueda por telefono (solo digitos/+), exige minimo 4 digitos para no oracular numeros.
+            String digits = term.replaceAll("\\D", "");
+            if (!digits.isEmpty() && digits.length() < 4 && term.matches("[+\\d\\s\\-()]+")) {
+                throw new com.fruver.application.service.ApiException(400, "VALIDATION_ERROR", "Para buscar por telefono escribe al menos 4 digitos");
+            }
+            sql.append(" AND (s.customer_name ILIKE :q ESCAPE '\\' OR s.customer_phone ILIKE :q ESCAPE '\\' OR s.address ILIKE :q ESCAPE '\\')");
+            p.put("q", "%" + esc + "%");
         }
         sql.append(" ORDER BY s.id DESC LIMIT 500");
         return jdbc.sql(sql.toString()).params(p).query((rs, n) -> new SaleSummary(rs.getLong(1), rs.getLong(2), rs.getString(3),

@@ -6,6 +6,8 @@ import com.fruver.config.DemoDataSeeder;
 import org.springframework.beans.factory.ObjectProvider;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -20,7 +22,10 @@ import java.util.UUID;
 @ConditionalOnProperty(name = "app.dev-endpoints", havingValue = "true")
 public class DevController {
 
-    public record SimBody(@NotBlank String phone, String name, @NotBlank String text) {}
+    public record SimBody(
+            @NotBlank @Size(max = 20) @Pattern(regexp = "^[+]?[0-9\\s\\-()]{5,20}$", message = "Telefono invalido") String phone,
+            @Size(max = 120) String name,
+            @NotBlank @Size(max = 1000) String text) {}
 
     private final MessageIngestService ingest;
     private final ObjectProvider<DemoDataSeeder> seeder;
@@ -46,8 +51,10 @@ public class DevController {
     }
 
     @PostMapping("/audio")
-    public Map<String, String> audio(@RequestParam String phone, @RequestParam(required = false) String name,
+    public Map<String, String> audio(@RequestParam @Size(max = 20) @Pattern(regexp = "^[+]?[0-9\\s\\-()]{5,20}$") String phone,
+                                     @RequestParam(required = false) @Size(max = 120) String name,
                                      @RequestParam("file") MultipartFile file) throws IOException {
+        if (file.getSize() > 20 * 1024 * 1024) throw new ApiException(413, "FILE_TOO_LARGE", "Audio demasiado grande (max 20MB)");
         ingest.ingestAudioBytes(phone, name, "sim-" + UUID.randomUUID(), file.getBytes(),
                 file.getContentType() == null ? "audio/ogg" : file.getContentType());
         return Map.of("status", "accepted");

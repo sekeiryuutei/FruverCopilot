@@ -28,6 +28,7 @@ public class PriceService {
     /** Cambia el precio vigente y deja historial. Las ventas ya creadas NO cambian (tienen snapshot). */
     @Transactional
     public void setPrice(long productId, PriceType type, BigDecimal amount, String user) {
+        if (amount == null) throw new ApiException(400, "VALIDATION_ERROR", "Precio requerido");
         BigDecimal scaled = amount.setScale(0, Money.ROUNDING);
         if (scaled.signum() < 0 || scaled.compareTo(new BigDecimal("100000000")) > 0) {
             throw new ApiException(400, "VALIDATION_ERROR", "Precio invalido");

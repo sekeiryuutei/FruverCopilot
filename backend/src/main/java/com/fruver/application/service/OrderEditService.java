@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /** Correccion humana de la propuesta de la IA, con bloqueo optimista y auditoria del antes/despues. */
 @Service
@@ -56,12 +57,21 @@ public class OrderEditService {
 
         Map<Long, ItemRow> existing = new HashMap<>();
         orders.items(orderId).forEach(i -> existing.put(i.id(), i));
-        Set<Long> keep = new HashSet<>();
         List<String> changes = new ArrayList<>();
         boolean corrected = order.corrected();
-        boolean allResolved = !incoming.isEmpty();
         int line = 0;
 
+        // 1) Eliminar primero las filas que se quitaron para liberar la restriccion UNIQUE (order_id, product_id, unit)
+        Set<Long> incomingIds = incoming.stream().map(ItemEdit::id).filter(Objects::nonNull).collect(Collectors.toSet());
+        for (ItemRow prev : existing.values()) {
+            if (!incomingIds.contains(prev.id())) {
+                jdbc.sql("DELETE FROM order_item WHERE id = :id").param("id", prev.id()).update();
+                changes.add("- item " + prev.id() + " " + prev.productId() + " " + prev.quantity() + " " + prev.unit());
+                corrected = true;
+            }
+        }
+
+        // 2) Actualizar existentes o insertar nuevos
         for (ItemEdit e : incoming) {
             validate(e);
             String unit = UnitOfMeasure.parse(e.unit()).orElseThrow().name();
@@ -79,7 +89,6 @@ public class OrderEditService {
                 changes.add("+ producto " + e.productId() + " " + Money.qty(qty) + " " + unit);
                 corrected = true;
             } else {
-                keep.add(prev.id());
                 boolean productChanged = !Objects.equals(prev.productId(), e.productId());
                 boolean qtyChanged = prev.quantity() == null || prev.quantity().compareTo(qty) != 0;
                 boolean unitChanged = !unit.equals(prev.unit());
@@ -100,16 +109,25 @@ public class OrderEditService {
             }
             line++;
         }
-        for (ItemRow prev : existing.values()) {
-            if (!keep.contains(prev.id())) {
-                jdbc.sql("DELETE FROM order_item WHERE id = :id").param("id", prev.id()).update();
-                changes.add("- item " + prev.id() + " " + prev.productId() + " " + prev.quantity() + " " + prev.unit());
-                corrected = true;
+
+        // Tras la correccion humana: GREEN solo si todo tiene producto activo, cantidad>0 y unidad
+        // igual a la del producto. La completitud final (precio, etc.) la decide SaleService.approve -> 422.
+        ReviewStatus review = ReviewStatus.GREEN;
+        if (incoming.isEmpty()) {
+            review = ReviewStatus.RED;
+        } else {
+            for (ItemEdit e : incoming) {
+                String unit = UnitOfMeasure.parse(e.unit()).orElseThrow().name();
+                String productUnit = jdbc.sql("SELECT unit FROM product WHERE id = :p").param("p", e.productId())
+                        .query(String.class).optional().orElse(null);
+                Boolean active = jdbc.sql("SELECT active FROM product WHERE id = :p").param("p", e.productId())
+                        .query(Boolean.class).optional().orElse(null);
+                if (active == null || !active || productUnit == null || !unit.equals(productUnit)) {
+                    review = ReviewStatus.YELLOW;
+                    break;
+                }
             }
         }
-
-        // Tras la correccion humana, el semaforo se recalcula solo con reglas: todos los productos existen y son activos.
-        ReviewStatus review = allResolved ? ReviewStatus.GREEN : ReviewStatus.RED;
         jdbc.sql("""
                 UPDATE orders SET customer_name = COALESCE(:n, customer_name), address = :a, notes = :no, status = 'REVIEW',
                        review_status = :r, corrected = :c, version = version + 1,
@@ -139,9 +157,13 @@ public class OrderEditService {
     }
 
     private void validate(ItemEdit e) {
-        if (e.productId() == null) throw new ApiException(422, "ITEM_INVALID", "Cada linea necesita un producto del catalogo");
+        if (e.productId() == null) throw new ApiException(422, "ITEM_INVALID", "Cada linea necesita un producto del catálogo");
         if (e.quantity() == null || e.quantity().signum() <= 0 || e.quantity().compareTo(new BigDecimal("100000")) > 0) {
-            throw new ApiException(422, "ITEM_INVALID", "Cantidad invalida");
+            throw new ApiException(422, "ITEM_INVALID", "Cantidad inválida");
+        }
+        // Rechaza cantidades que al redondear a 3 decimales quedan en 0 (ej. 0.0004): el frontend no debe aceptarlas.
+        if (e.quantity().setScale(3, RoundingMode.HALF_UP).signum() <= 0) {
+            throw new ApiException(422, "ITEM_INVALID", "Cantidad demasiado pequeña");
         }
         if (UnitOfMeasure.parse(e.unit()).isEmpty()) throw new ApiException(422, "ITEM_INVALID", "Unidad invalida");
         if (e.manualPrice() != null && (e.manualPrice().signum() < 0 || e.manualPrice().compareTo(new BigDecimal("100000000")) > 0)) {

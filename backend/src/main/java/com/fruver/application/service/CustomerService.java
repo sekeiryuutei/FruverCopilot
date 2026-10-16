@@ -23,8 +23,14 @@ public class CustomerService {
 
     public List<CustomerView> search(String q) {
         String term = q == null ? "" : q.strip();
-        return jdbc.sql("SELECT id, name, phone, customer_type, address FROM customer WHERE :q = '' OR name ILIKE :like OR phone LIKE :like ORDER BY id DESC LIMIT 100")
-                .param("q", term).param("like", "%" + term + "%")
+        if (term.length() > 100) term = term.substring(0, 100);
+        String esc = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+        String digits = term.replaceAll("\\D", "");
+        if (!digits.isEmpty() && digits.length() < 4 && term.matches("[+\\d\\s\\-()]+")) {
+            throw new ApiException(400, "VALIDATION_ERROR", "Para buscar por telefono escribe al menos 4 digitos");
+        }
+        return jdbc.sql("SELECT id, name, phone, customer_type, address FROM customer WHERE :q = '' OR name ILIKE :like ESCAPE '\\' OR phone LIKE :like ESCAPE '\\' ORDER BY id DESC LIMIT 100")
+                .param("q", term).param("like", "%" + esc + "%")
                 .query((rs, n) -> new CustomerView(rs.getLong(1), rs.getString(2), Phones.mask(rs.getString(3)), rs.getString(4), rs.getString(5))).list();
     }
 

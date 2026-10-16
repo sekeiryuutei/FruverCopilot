@@ -8,7 +8,7 @@ import com.fruver.application.port.OrderExtractor;
 import com.fruver.domain.enums.ConversationAction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -26,7 +26,7 @@ import java.util.List;
  * NO es un modelo: no lee el pedido real. El sistema se niega a arrancar con mock en produccion.
  */
 @Service
-@ConditionalOnProperty(name = "spring.ai.openai.chat.options.model", havingValue = "mock")
+@ConditionalOnExpression("'${app.ai.provider:gemini}'.equalsIgnoreCase('mock') || '${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock') || ('${app.ai.provider:gemini}'.equalsIgnoreCase('gemini') && ('${app.ai.gemini.api-key:}'.trim().isEmpty() || '${app.ai.gemini.api-key:}'.trim().startsWith('#') || '${app.ai.gemini.api-key:}'.trim().length() <= 10))")
 public class MockOrderExtractor implements OrderExtractor {
 
     private static final Logger log = LoggerFactory.getLogger(MockOrderExtractor.class);

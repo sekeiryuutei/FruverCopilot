@@ -70,11 +70,13 @@ public class ProductCatalogService implements ProductLookup {
 
     public List<ProductView> list(String q, boolean includeInactive) {
         String term = q == null ? "" : q.strip();
+        if (term.length() > 100) term = term.substring(0, 100);
+        String esc = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
         List<ProductRow> rows = jdbc.sql("""
                 SELECT id, name, unit, active FROM product
                 WHERE (:inactive OR active) AND (:q = '' OR unaccent(lower(name)) LIKE unaccent(lower(:like)))
                 ORDER BY name LIMIT 500
-                """).param("inactive", includeInactive).param("q", term).param("like", "%" + term + "%")
+                """).param("inactive", includeInactive).param("q", term).param("like", "%" + esc + "%")
                 .query(ProductRow.class).list();
         Map<Long, Map<String, BigDecimal>> prices = new HashMap<>();
         if (!rows.isEmpty()) {

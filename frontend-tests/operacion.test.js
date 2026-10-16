@@ -144,7 +144,7 @@ const rows=c=>c.querySelector('tbody').kids;const btn=(c,t)=>c.querySelectorAll(
   btn(c,'Guardar').dispatch('click');await tick();await tick();
   ok('con valores válidos SÍ se envía, con 1.5',puts.length===putsBefore+1&&puts[puts.length-1].items[0].quantity===1.5,JSON.stringify(puts[puts.length-1]));
   const pq=ev('parseQty'),pp=ev('parsePrice');
-  ok('parseQty: casos límite',[['5',true,5],[' 2,25 ',true,2.25],['1e3',true,1000],['abc',false,null],['Infinity',false,null],['NaN',false,null],['0.0004',true,0]].every(([i,k,v])=>pq(i).ok===k&&(k?(i==='0.0004'?true:pq(i).value===v):true)),JSON.stringify(['abc','Infinity'].map(pq)));
+  ok('parseQty: casos límite',[['5',true,5],[' 2,25 ',true,2.25],['1e3',true,1000],['abc',false,null],['Infinity',false,null],['NaN',false,null],['0.0004',false,null],['0.001',true,0.001]].every(([i,k,v])=>pq(i).ok===k&&(k?pq(i).value===v:true)),JSON.stringify(['abc','Infinity'].map(pq)));
   ok('parsePrice: -1 y Infinity inválidos, 1500.4 -> 1500',!pp('-1').ok&&!pp('Infinity').ok&&pp('1500.4').value===1500);
 
   // ---- pestaña Precios

@@ -30,11 +30,20 @@ public class BootstrapUsers implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         AppProperties.Security s = props.security();
-        if ("change_me".equals(s.adminPassword())) {
-            if (env.acceptsProfiles(Profiles.of("prod"))) {
-                throw new IllegalStateException("ADMIN_PASSWORD no puede ser 'change_me' en produccion");
+        boolean prod = env.acceptsProfiles(Profiles.of("prod"));
+        if ("change_me".equals(s.adminPassword()) || "MasterKey..".equals(s.adminPassword())) {
+            if (prod) {
+                throw new IllegalStateException("ADMIN_PASSWORD no puede ser valor por defecto en produccion");
             }
-            log.warn("ADMIN_PASSWORD usa el valor por defecto: cambialo antes de produccion");
+            log.warn("ADMIN_PASSWORD usa valor por defecto/debil: cambialo antes de produccion");
+        } else if (s.adminPassword() == null || s.adminPassword().length() < 12) {
+            if (prod) throw new IllegalStateException("ADMIN_PASSWORD debe tener >=12 caracteres en produccion");
+            log.warn("ADMIN_PASSWORD debil (<12 caracteres): usalo solo en desarrollo");
+        }
+        if (s.operatorPassword() != null && !s.operatorPassword().isBlank()
+                && s.operatorPassword().equals(s.adminPassword())) {
+            if (prod) throw new IllegalStateException("OPERATOR_PASSWORD no puede igualar ADMIN_PASSWORD en prod");
+            log.warn("OPERATOR_PASSWORD igual a ADMIN_PASSWORD: usa claves distintas");
         }
         ensure(s.adminUsername(), s.adminPassword(), "ADMIN");
         if (s.operatorPassword() != null && !s.operatorPassword().isBlank()) {
@@ -43,8 +52,10 @@ public class BootstrapUsers implements ApplicationRunner {
     }
 
     private void ensure(String username, String password, String role) {
-        int created = jdbc.sql("INSERT INTO app_user(username, password_hash, role) VALUES (:u, :p, :r) ON CONFLICT DO NOTHING")
-                .param("u", username).param("p", encoder.encode(password)).param("r", role).update();
-        if (created > 0) log.info("Usuario {} ({}) creado", username, role);
+        int created = jdbc.sql("""
+                INSERT INTO app_user(username, password_hash, role) VALUES (:u, :p, :r)
+                ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash
+                """).param("u", username).param("p", encoder.encode(password)).param("r", role).update();
+        if (created > 0) log.info("Usuario {} ({}) sincronizado", username, role);
     }
 }

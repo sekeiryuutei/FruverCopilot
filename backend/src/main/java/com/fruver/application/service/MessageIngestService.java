@@ -50,13 +50,20 @@ public class MessageIngestService {
     private void ingest(String phone, String name, String externalId, OrderInputType type, String text,
                         String mediaId, String storageKey, String mime) {
         if (phone == null || phone.isBlank()) throw new ApiException(400, "VALIDATION_ERROR", "Telefono requerido");
+        String p = phone.strip();
+        if (p.length() > 20 || !p.matches("^[+0-9\\s\\-()]{5,20}$")) throw new ApiException(400, "VALIDATION_ERROR", "Telefono invalido");
+        if (type == OrderInputType.TEXT && (text == null || text.isBlank())) return; // ignora vacios, no crea basura
+        if (text != null && text.length() > 2000) text = text.substring(0, 2000);
+        if (name != null && name.length() > 120) name = name.substring(0, 120);
         if (externalId != null && intake.isDuplicate(externalId)) {
             log.debug("Mensaje duplicado ignorado");
             return;
         }
         IntakeResult result;
         try {
-            result = intake.record(phone.strip(), name, externalId, type, text, mediaId, storageKey, mime);
+            String cleanName = name == null ? null : name.strip();
+            if (cleanName != null && cleanName.length() > 120) cleanName = cleanName.substring(0, 120);
+            result = intake.record(p, cleanName, externalId, type, text, mediaId, storageKey, mime);
         } catch (DuplicateKeyException e) {
             log.debug("Mensaje duplicado (carrera) ignorado");
             return;

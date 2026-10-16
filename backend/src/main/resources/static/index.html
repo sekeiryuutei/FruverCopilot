@@ -74,7 +74,9 @@ function parseQty(raw){const s=String(raw??'').trim().replace(',','.');
   if(!Number.isFinite(n))return{ok:false,value:null,error:'La cantidad debe ser un número'};
   if(n<=0)return{ok:false,value:null,error:'La cantidad debe ser mayor que 0'};
   if(n>MAX_QTY)return{ok:false,value:null,error:'Cantidad demasiado grande (máx. '+MAX_QTY+')'};
-  return{ok:true,value:round3(n)}}
+  const r=round3(n);
+  if(!(r>0))return{ok:false,value:null,error:'Cantidad demasiado pequeña (mín. 0.001)'};
+  return{ok:true,value:r}}
 /** Precio en pesos: vacío = usar el del catálogo; nunca negativo; sin decimales. */
 function parsePrice(raw){const s=String(raw??'').trim().replace(',','.');
   if(s==='')return{ok:true,value:null};
@@ -126,8 +128,16 @@ function flagStale(el,o){const d=S.draft[o.id];if(!d||d.version===o.version||el.
   el.prepend(h('div',{class:'banner stale'},'⚠ Este pedido cambió mientras lo editabas (otro usuario o la IA). ',
     h('button',{class:'b',onclick:()=>{delete S.draft[o.id];loadOrders()}},'Descartar mis cambios y recargar')))}
 function statusPill(o){return o.status==='PROCESSING'||o.status==='RECEIVED'?h('span',{class:'pill gray'},'⏳ PROCESANDO'):h('span',{class:'pill '+(o.reviewStatus||'gray')},{GREEN:'🟢 LISTO',YELLOW:'🟡 REVISAR',RED:'🔴 PROBLEMA'}[o.reviewStatus]||'—')}
+/** Vista previa de factura (demo sin impresora): mismo texto del papel en un modal. */
+async function showTicket(saleId){try{const t=await api(`/api/sales/${saleId}/ticket`);
+  const pre=h('pre',{style:'background:var(--bg);padding:12px;border-radius:8px;white-space:pre-wrap;font-family:monospace'},t.text);
+  const m=h('div',{class:'card GREEN',style:'position:fixed;inset:10% 8%;z-index:20;overflow:auto;box-shadow:0 10px 40px #0008'},
+    h('div',{class:'top'},h('b',{},'Factura pedido #'+t.orderId),h('span',{class:'sp'}),h('button',{class:'b',onclick:()=>m.remove()},'Cerrar')),
+    pre,h('div',{class:'row'},h('button',{class:'b main',onclick:()=>window.print()},'Imprimir')));
+  document.body.append(m)}catch(e){toast(e.message)}}
 function doneCard(o){const ps=o.printStatus;return h('div',{class:'card GREEN',dataset:{id:o.id}},h('div',{class:'top'},h('b',{},'#'+o.id),h('span',{},o.customer.name||o.customer.phoneMasked),h('span',{class:'sp'}),
   h('b',{},cop(o.total)),h('span',{class:'pill '+(ps==='PRINTED'?'GREEN':ps==='PRINT_FAILED'?'RED':'YELLOW')},ps==='PRINTED'?'🖨 IMPRESO':ps==='PRINT_FAILED'?'🔴 NO SE PUDO IMPRIMIR':'🖨 IMPRIMIENDO…'),
+  o.saleId?h('button',{class:'b main',onclick:()=>showTicket(o.saleId)},'🧾 Ver factura'):null,
   h('button',{class:'b',onclick:async()=>{try{await api(`/api/sales/${o.saleId}/reprint`,{method:'POST'});toast('Reimpresión encolada')}catch(e){toast(e.message)}}},ps==='PRINT_FAILED'?'REINTENTAR':'REIMPRIMIR')))}
 function flash(tr){tr.classList.remove('flash');void tr.offsetWidth;tr.classList.add('flash')}
 
@@ -194,13 +204,13 @@ function card(o){
   el.append(h('div',{class:'grid2'},h('input',{value:view.address,placeholder:'Dirección',oninput:e=>{view.address=e.target.value;mark()}}),h('input',{value:view.notes,placeholder:'Observaciones',oninput:e=>{view.notes=e.target.value;mark()}})));
   el.addEventListener('input',mark);el.addEventListener('change',mark);   // cualquier edición crea el borrador
   const approve=h('button',{class:'b main'},'APROBAR E IMPRIMIR');
-  approve.onclick=async()=>{approve.disabled=true;try{const b=await save(o,view);const r=await api(`/api/orders/${o.id}/approve`,{method:'POST',body:{version:b.version}});delete S.draft[o.id];toast('Venta '+cop(r.total)+' guardada · imprimiendo');await loadOrders()}
-    catch(e){toast(e.code==='ORDER_REQUIRES_REVIEW'?'Falta revisar: '+(e.details||[]).join('; '):e.message);if(e.code==='ORDER_CONFLICT'){delete S.draft[o.id];loadOrders()}}finally{approve.disabled=false}};
+  approve.onclick=async()=>{approve.disabled=true;try{const b=await save(o,view);const r=await api(`/api/orders/${o.id}/approve`,{method:'POST',body:{version:b.version}});delete S.draft[o.id];toast('Venta '+cop(r.total)+' guardada · mostrando factura');await loadOrders();showTicket(r.saleId)}
+    catch(e){toast(e.code==='ORDER_REQUIRES_REVIEW'?'Falta revisar: '+(e.details||[]).join('; '):(e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message));if(e.code==='ORDER_CONFLICT'){delete S.draft[o.id];loadOrders()}}finally{approve.disabled=false}};
   el.append(h('div',{class:'row'},h('button',{class:'b',onclick:addRow},'+ Producto'),
-    h('button',{class:'b',onclick:async()=>{try{await save(o,view);delete S.draft[o.id];toast('Guardado');loadOrders()}catch(e){toast(e.message);if(e.code==='ORDER_CONFLICT'){delete S.draft[o.id];loadOrders()}}}},'Guardar'),
+    h('button',{class:'b',onclick:async()=>{try{await save(o,view);delete S.draft[o.id];toast('Guardado');loadOrders()}catch(e){toast((e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message));if(e.code==='ORDER_CONFLICT'){delete S.draft[o.id];loadOrders()}}}},'Guardar'),
     h('button',{class:'b',onclick:()=>replyPanel(el,o,'ASK',o.suggestedReply||'')},'Preguntar al cliente'),
     o.confirmationDraft?h('button',{class:'b',onclick:()=>replyPanel(el,o,'CONFIRM',o.confirmationDraft)},'Enviar confirmación'):null,
-    h('button',{class:'b danger',onclick:async()=>{if(confirm('¿Cancelar el pedido #'+o.id+'?')){try{await api(`/api/orders/${o.id}/cancel`,{method:'POST',body:{version:o.version}});delete S.draft[o.id];loadOrders()}catch(e){toast(e.message)}}}},'Cancelar'),
+    h('button',{class:'b danger',onclick:async()=>{if(confirm('¿Cancelar el pedido #'+o.id+'?')){try{await api(`/api/orders/${o.id}/cancel`,{method:'POST',body:{version:o.version}});delete S.draft[o.id];loadOrders()}catch(e){toast((e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message))}}}},'Cancelar'),
     h('span',{class:'sp',style:'flex:1'}),h('span',{},'Total '),totalEl,approve));
   upd();return el}
 
@@ -213,7 +223,7 @@ async function save(o,d){
   const r=await api(`/api/orders/${o.id}`,{method:'PUT',body});d.version=r.version;return r}
 function replyPanel(el,o,kind,text){el.querySelector('.reply')?.remove();const ta=h('textarea',{rows:4,style:'width:100%'});ta.value=text;
   el.append(h('div',{class:'conv reply'},h('div',{class:'mut'},kind==='ASK'?'Mensaje al cliente (edítalo si quieres):':'Confirmación al cliente (el total lo calculó el sistema):'),ta,
-    h('div',{class:'row'},h('button',{class:'b main',onclick:async()=>{try{await api(`/api/orders/${o.id}/reply`,{method:'POST',body:{message:ta.value,kind}});toast('Mensaje registrado/enviado');loadOrders()}catch(e){toast(e.message)}}},'ENVIAR'),
+    h('div',{class:'row'},h('button',{class:'b main',onclick:async()=>{try{await api(`/api/orders/${o.id}/reply`,{method:'POST',body:{message:ta.value,kind}});toast('Mensaje registrado/enviado');loadOrders()}catch(e){toast((e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message))}}},'ENVIAR'),
       h('button',{class:'b',onclick:()=>el.querySelector('.reply').remove()},'Cancelar'))))}
 
 /* ---------- Ventas ---------- */

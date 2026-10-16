@@ -37,17 +37,51 @@ import java.io.IOException;
 public class SecurityConfig {
 
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain filterChain(HttpSecurity http, LoginAttemptService attempts,
+                                    org.springframework.jdbc.core.simple.JdbcClient jdbcAudit) throws Exception {
         http
             .csrf(c -> c.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                     .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                     .ignoringRequestMatchers("/webhook/**", "/login"))
             .addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
+            .addFilterBefore(new LoginBlockFilter(attempts), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
+            .headers(h -> h
+                    .frameOptions(f -> f.deny())
+                    .contentTypeOptions(c -> {})
+                    .referrerPolicy(r -> r.policy(org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.SAME_ORIGIN))
+                    .contentSecurityPolicy(csp -> csp.policyDirectives(
+                            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                            + "img-src 'self' data:; media-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")))
+            .sessionManagement(s -> s
+                    .sessionFixation(f -> f.migrateSession())
+                    .maximumSessions(2)
+                    .maxSessionsPreventsLogin(false))
             .authorizeHttpRequests(a -> a
                     .requestMatchers("/login.html", "/favicon.ico", "/actuator/health/**", "/webhook/**").permitAll()
+                    .requestMatchers("/actuator/info", "/actuator/metrics").hasRole("ADMIN")
                     .anyRequest().authenticated())
             .formLogin(f -> f.loginPage("/login.html").loginProcessingUrl("/login")
-                    .defaultSuccessUrl("/", true).failureUrl("/login.html?error").permitAll())
+                    .defaultSuccessUrl("/", true)
+                    .failureHandler((req, res, ex) -> {
+                        String user = req.getParameter("username");
+                        String ip = req.getRemoteAddr();
+                        attempts.loginFailed(user, ip);
+                        try {
+                            jdbcAudit.sql("INSERT INTO audit_log(username, action, detail) VALUES (:u, 'LOGIN_FAILED', :d::jsonb)")
+                                    .param("u", user == null ? "?" : user.substring(0, Math.min(user.length(), 60)))
+                                    .param("d", "{\"ip\":\"" + ip + "\"}").update();
+                        } catch (Exception ignored) {}
+                        res.sendRedirect("/login.html?error");
+                    })
+                    .successHandler((req, res, auth) -> {
+                        attempts.loginSucceeded(auth.getName(), req.getRemoteAddr());
+                        try {
+                            jdbcAudit.sql("INSERT INTO audit_log(username, action, detail) VALUES (:u, 'LOGIN_OK', '{}'::jsonb)")
+                                    .param("u", auth.getName()).update();
+                        } catch (Exception ignored) {}
+                        res.sendRedirect("/");
+                    })
+                    .permitAll())
             .logout(l -> l.logoutUrl("/logout").logoutSuccessUrl("/login.html"))
             .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
                     new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED), r -> r.getRequestURI().startsWith("/api/")));
@@ -80,6 +114,24 @@ public class SecurityConfig {
             CsrfToken token = (CsrfToken) request.getAttribute("_csrf");
             if (token != null) token.getToken();
             chain.doFilter(request, response);
+        }
+    }
+
+    /** Bloquea POST /login si el usuario+IP supero 5 fallos en 10 min. Mensaje generico (no enumera). */
+    static final class LoginBlockFilter extends OncePerRequestFilter {
+        private final LoginAttemptService attempts;
+        LoginBlockFilter(LoginAttemptService attempts) { this.attempts = attempts; }
+        @Override
+        protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+                throws ServletException, IOException {
+            if ("POST".equalsIgnoreCase(req.getMethod()) && "/login".equals(req.getRequestURI())) {
+                String user = req.getParameter("username");
+                if (user != null && attempts.isBlocked(user, req.getRemoteAddr())) {
+                    res.sendRedirect("/login.html?error");
+                    return;
+                }
+            }
+            chain.doFilter(req, res);
         }
     }
 }

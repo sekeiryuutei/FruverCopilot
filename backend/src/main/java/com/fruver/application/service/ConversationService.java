@@ -4,6 +4,7 @@ import com.fruver.application.port.MessagingGateway;
 import com.fruver.application.port.MessagingUnavailableException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
@@ -33,7 +34,7 @@ public class ConversationService {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ConversationService.class);
 
-    /** La llamada al proveedor ocurre SIN transaccion; despues se registra el resultado. */
+    /** La llamada al proveedor ocurre SIN transaccion; el registro posterior es atomico. */
     public void send(long orderId, String text, Kind kind, String actor) {
         if (text == null || text.isBlank() || text.length() > 1000) {
             throw new ApiException(400, "VALIDATION_ERROR", "Mensaje invalido");
@@ -48,11 +49,21 @@ public class ConversationService {
             log.warn("Fallo envio por WhatsApp para pedido {}: {}", orderId, e.getMessage());
             delivery = "FAILED";
         }
+        persistSend(orderId, text.strip(), delivery, kind, actor);
+        hub.orderChanged(orderId);
+    }
+
+    /** Registro atomico: mensaje + estado conversacional en una sola transaccion. */
+    @Transactional
+    void persistSend(long orderId, String text, String delivery, Kind kind, String actor) {
+        // Re-verifica bajo bloqueo que el pedido siga activo.
+        Integer locked = jdbc.sql("SELECT 1 FROM orders WHERE id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW') FOR UPDATE")
+                .param("id", orderId).query(Integer.class).optional().orElse(null);
+        if (locked == null) throw new ApiException(409, "ORDER_NOT_ACTIVE", "El pedido no admite mensajes");
         record(orderId, text, delivery);
         jdbc.sql("UPDATE orders SET conversation_status = :cs, suggested_reply = NULL WHERE id = :id")
                 .param("cs", kind == Kind.ASK ? "WAITING_FOR_CUSTOMER" : "CONFIRMED").param("id", orderId).update();
         audit.log(actor, kind == Kind.ASK ? "CUSTOMER_ASKED" : "CUSTOMER_CONFIRMATION_SENT", orderId, null, Map.of("delivery", delivery));
-        hub.orderChanged(orderId);
     }
 
     public List<MessageView> messages(long orderId) {

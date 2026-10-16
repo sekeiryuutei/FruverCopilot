@@ -16,7 +16,7 @@ import java.util.List;
  * Su salida es UNTRUSTED: la valida ExtractionInterpreter.
  */
 @Service
-@ConditionalOnExpression("!'${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock')")
+@ConditionalOnExpression("'${app.ai.provider:gemini}'.equalsIgnoreCase('openai') && !'${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock')")
 public class SpringAiOrderExtractor implements OrderExtractor {
 
     private final ChatClient chatClient;

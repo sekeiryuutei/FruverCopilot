@@ -10,9 +10,29 @@ public record AppProperties(
         Printing printing,
         Audio audio,
         Whatsapp whatsapp,
+        Ai ai,
         Stt stt,
         Security security,
         DemoSeed demoSeed) {
+
+    public AppProperties {
+        if (ai == null) ai = new Ai("gemini", new Gemini("", "gemini-2.5-flash", "https://generativelanguage.googleapis.com"));
+    }
+
+    public record Ai(String provider, Gemini gemini) {
+        public Ai {
+            if (provider == null || provider.isBlank()) provider = "gemini";
+            if (gemini == null) gemini = new Gemini("", "gemini-2.5-flash", "https://generativelanguage.googleapis.com");
+        }
+    }
+
+    public record Gemini(String apiKey, String model, String baseUrl) {
+        public Gemini {
+            if (model == null || model.isBlank()) model = "gemini-2.5-flash";
+            if (baseUrl == null || baseUrl.isBlank()) baseUrl = "https://generativelanguage.googleapis.com";
+            if (apiKey == null) apiKey = "";
+        }
+    }
 
     public record Conversation(boolean aiAutoReply, boolean autoConfirmClearOrders) {}
 

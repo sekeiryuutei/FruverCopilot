@@ -14,7 +14,7 @@ import org.springframework.web.client.RestClient;
 
 /** Proveedor de transcripcion intercambiable: el resto del sistema solo conoce SpeechToTextService. */
 @Service
-@ConditionalOnExpression("!'${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock')")
+@ConditionalOnExpression("'${app.ai.provider:gemini}'.equalsIgnoreCase('openai') && !'${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock')")
 public class OpenAiSpeechToText implements SpeechToTextService {
 
     private final RestClient http;

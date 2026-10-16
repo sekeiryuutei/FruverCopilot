@@ -2,6 +2,13 @@ server:
   error:
     include-stacktrace: never
     include-message: never
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: true
+      timeout: 30m
 logging:
   structured:
     format:

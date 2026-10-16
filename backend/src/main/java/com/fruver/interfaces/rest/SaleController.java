@@ -23,19 +23,25 @@ public class SaleController {
     private final ReportService reports;
     private final CustomerService customers;
     private final SseHub hub;
+    private final TicketService tickets;
+    private final com.fruver.config.AppProperties props;
     private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
     public SaleController(SalesQueryService salesQuery, SaleService sales, ReportService reports, CustomerService customers,
-                          SseHub hub, org.springframework.jdbc.core.simple.JdbcClient jdbc) {
+                          SseHub hub, TicketService tickets, com.fruver.config.AppProperties props,
+                          org.springframework.jdbc.core.simple.JdbcClient jdbc) {
         this.salesQuery = salesQuery;
         this.sales = sales;
         this.reports = reports;
         this.customers = customers;
         this.hub = hub;
+        this.tickets = tickets;
+        this.props = props;
         this.jdbc = jdbc;
     }
 
     @GetMapping("/sales")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public List<SalesQueryService.SaleSummary> sales(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
@@ -46,16 +52,31 @@ public class SaleController {
     }
 
     @GetMapping("/sales/{id}/items")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public List<SalesQueryService.SaleItemView> items(@PathVariable long id) {
         return salesQuery.items(id);
     }
 
     /** Reimprimir / reintentar: registra auditoria y NO crea otra venta. */
     @PostMapping("/sales/{id}/reprint")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public Map<String, Object> reprint(@PathVariable long id) {
         sales.reprint(id, Actor.name());
         jdbc.sql("SELECT order_id FROM sale WHERE id = :id").param("id", id).query(Long.class).optional().ifPresent(hub::orderChanged);
         return Map.of("status", "PRINT_PENDING");
+    }
+
+    /** Vista previa de factura (para demo sin impresora): mismo texto que iria al papel. */
+    @GetMapping("/sales/{id}/ticket")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public Map<String, Object> ticket(@PathVariable long id) {
+        Integer exists = jdbc.sql("SELECT 1 FROM sale WHERE id = :id").param("id", id).query(Integer.class).optional().orElse(null);
+        if (exists == null) throw new ApiException(404, "SALE_NOT_FOUND", "Venta no encontrada");
+        TicketData t = tickets.build(id, false);
+        var lines = TicketFormatter.format(t, props.printing().columns());
+        StringBuilder sb = new StringBuilder();
+        for (var l : lines) sb.append(l.text()).append("\n");
+        return Map.of("saleId", id, "orderId", t.orderNumber(), "total", t.total(), "text", sb.toString().stripTrailing());
     }
 
     @GetMapping("/reports/sales")

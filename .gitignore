@@ -4,3 +4,5 @@ data/
 *.iml
 .idea/
 .vscode/
+backups/
+*.log

@@ -44,16 +44,27 @@ public class WhatsAppWebhookController {
                                          @RequestParam(name = "hub.verify_token", required = false) String token,
                                          @RequestParam(name = "hub.challenge", required = false) String challenge) {
         String expected = props.whatsapp().verifyToken();
-        if ("subscribe".equals(mode) && expected != null && !expected.isBlank() && expected.equals(token)) {
-            return ResponseEntity.ok(challenge);
+        boolean ok = "subscribe".equals(mode) && expected != null && !expected.isBlank() && token != null
+                && MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8), token.getBytes(StandardCharsets.UTF_8));
+        if (ok) {
+            return ResponseEntity.ok(challenge == null ? "" : challenge);
         }
         return ResponseEntity.status(403).build();
     }
 
     @PostMapping
-    public ResponseEntity<Void> receive(@RequestBody String body,
-                                        @RequestHeader(name = "X-Hub-Signature-256", required = false) String signature) {
-        if (!validSignature(body, signature)) return ResponseEntity.status(403).build();
+    public ResponseEntity<Void> receive(@RequestBody(required = false) String body,
+                                        @RequestHeader(name = "X-Hub-Signature-256", required = false) String signature,
+                                        jakarta.servlet.http.HttpServletRequest req) {
+        if (body != null && body.length() > 512_000) {
+            log.warn("Webhook WhatsApp rechazado: body de {} bytes desde {}", body.length(), req.getRemoteAddr());
+            return ResponseEntity.status(413).build();
+        }
+        if (body == null) body = "";
+        if (!validSignature(body, signature)) {
+            log.warn("Firma WhatsApp invalida desde {}", req.getRemoteAddr());
+            return ResponseEntity.status(403).build();
+        }
         try {
             JsonNode root = mapper.readTree(body);
             for (JsonNode entry : root.path("entry")) {
@@ -76,8 +87,14 @@ public class WhatsAppWebhookController {
         String from = m.path("from").asText(null);
         String type = m.path("type").asText("");
         String name = names.get(from);
+        if (id == null || from == null || from.isBlank()) return;
         switch (type) {
-            case "text" -> ingest.ingestText(from, name, id, m.path("text").path("body").asText(""));
+            case "text" -> {
+                String t = m.path("text").path("body").asText("");
+                if (t.isBlank()) return; // no crear pedidos vacios/basura
+                if (t.length() > 2000) t = t.substring(0, 2000);
+                ingest.ingestText(from, name, id, t);
+            }
             case "audio" -> ingest.ingestAudioRef(from, name, id, m.path("audio").path("id").asText(),
                     m.path("audio").path("mime_type").asText("audio/ogg"));
             default -> ingest.ingestText(from, name, id, "[Mensaje de tipo " + type + " no soportado]"); // visible para el empleado

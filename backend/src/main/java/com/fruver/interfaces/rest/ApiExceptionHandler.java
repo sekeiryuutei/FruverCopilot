@@ -61,7 +61,13 @@ public class ApiExceptionHandler {
     /** Red de seguridad: un CHECK/FK de la base (p. ej. cantidad negativa) llega como 422, no como 500. */
     @ExceptionHandler(DataIntegrityViolationException.class)
     ResponseEntity<Map<String, Object>> integrity(DataIntegrityViolationException e) {
-        log.warn("Violacion de integridad en base de datos: {}", e.getMostSpecificCause().getMessage());
+        // No viertas SQL/valores al log: solo clase + mensaje saneado y corto.
+        String cause = "integrity-violation";
+        try {
+            String m = String.valueOf(e.getMostSpecificCause());
+            if (m != null) cause = m.length() <= 120 ? m.replaceAll("[\\r\\n]+", " ") : m.substring(0, 120);
+        } catch (Exception ignored) {}
+        log.warn("Violacion de integridad en base de datos: {}", cause);
         return body(422, "VALUE_OUT_OF_RANGE", "Un valor esta fuera del rango permitido", List.of());
     }
 

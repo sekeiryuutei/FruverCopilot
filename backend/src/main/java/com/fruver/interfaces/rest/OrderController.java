@@ -16,8 +16,11 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.util.List;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 @RestController
 @RequestMapping("/api/orders")
+@PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
 public class OrderController {
 
     public record ItemBody(Long id, Long productId, BigDecimal quantity, String unit, BigDecimal manualPrice, String priceChangeReason) {}
@@ -103,8 +106,19 @@ public class OrderController {
                 .param("o", id).query((rs, n) -> new String[]{rs.getString(1), rs.getString(2)}).optional()
                 .orElseThrow(() -> new ApiException(404, "AUDIO_NOT_FOUND", "El pedido no tiene audio"));
         if (row[0] == null) throw new ApiException(404, "AUDIO_NOT_FOUND", "El audio aun no esta disponible");
-        String mime = row[1] == null ? "audio/ogg" : row[1].split(";")[0].trim();
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).contentType(MediaType.parseMediaType(mime))
+        // Whitelist: el mime lo controla quien sube el audio (simulador/Meta). Sin esto, un text/html
+        // servido en el origen de la app = XSS almacenado con acceso a sesion + XSRF-TOKEN.
+        String raw = row[1] == null ? "audio/ogg" : row[1].split(";")[0].trim().toLowerCase();
+        String mime = switch (raw) {
+            case "audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a", "audio/m4a",
+                 "audio/wav", "audio/x-wav", "audio/webm", "audio/ogg", "audio/amr", "audio/3gpp" -> raw;
+            default -> "audio/ogg";
+        };
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Security-Policy", "default-src 'none'")
+                .header("Content-Disposition", "inline; filename=\"pedido-" + id + ".ogg\"")
+                .contentType(MediaType.parseMediaType(mime))
                 .body(new ByteArrayResource(storage.load(row[0])));
     }
 }

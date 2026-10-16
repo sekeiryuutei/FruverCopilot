@@ -13,9 +13,11 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en .env}
       TZ: ${APP_TIMEZONE:-America/Bogota}
     ports:
-      - "${POSTGRES_PORT:-5439}:5432"
+      # Solo localhost en desarrollo. En prod con proxy/Internet: quita este mapeo o usa firewall.
+      - "127.0.0.1:${POSTGRES_PORT:-5439}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s

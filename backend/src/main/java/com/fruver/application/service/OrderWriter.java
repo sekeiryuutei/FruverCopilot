@@ -25,6 +25,21 @@ public class OrderWriter {
     /** @return false si el pedido ya no esta activo (p. ej. cancelado mientras la IA pensaba). */
     @Transactional
     public boolean applyExtraction(long orderId, InterpretedOrder io) {
+        // Bloqueo pesimista para serializar con la edicion humana (OrderEditService usa FOR UPDATE + version).
+        // Si el empleado ya corrigio (corrected=TRUE), la IA NO pisa sus lineas: solo deja nota de IA.
+        var state = jdbc.sql("SELECT version, corrected, status FROM orders WHERE id = :id FOR UPDATE")
+                .param("id", orderId).query((rs, n) -> new long[]{rs.getLong(1), rs.getBoolean(2) ? 1 : 0})
+                .optional();
+        if (state.isEmpty()) return false;
+        boolean humanCorrected = state.get()[1] == 1;
+        if (humanCorrected) {
+            jdbc.sql("""
+                    UPDATE orders SET ai_status = 'OK', ai_note = :note, extracted_at = now(), version = version + 1
+                    WHERE id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW')
+                    """).param("note", io.note()).param("id", orderId).update();
+            audit.log("ia", "AI_EXTRACTED_SKIPPED_HUMAN_EDIT", orderId, null, Map.of("review", io.review().name()));
+            return true;
+        }
         String conversation = io.review() == ReviewStatus.GREEN ? "READY_FOR_APPROVAL" : "READY_FOR_REVIEW";
         String reply = io.action() == ConversationAction.ASK_CUSTOMER ? io.customerMessage() : null;
         int updated = jdbc.sql("""

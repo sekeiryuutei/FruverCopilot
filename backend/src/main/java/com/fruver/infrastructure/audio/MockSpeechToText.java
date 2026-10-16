@@ -1,12 +1,12 @@
 package com.fruver.infrastructure.audio;
 
 import com.fruver.application.port.SpeechToTextService;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Service;
 
-/** Con AI_MODEL=mock tampoco se llama a OpenAI para transcribir: devuelve una frase fija (offline). */
+/** Con AI_MODEL=mock o sin clave API tampoco se llama a proveedores externos para transcribir (offline). */
 @Service
-@ConditionalOnProperty(name = "spring.ai.openai.chat.options.model", havingValue = "mock")
+@ConditionalOnExpression("'${app.ai.provider:gemini}'.equalsIgnoreCase('mock') || '${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock') || ('${app.ai.provider:gemini}'.equalsIgnoreCase('gemini') && ('${app.ai.gemini.api-key:}'.trim().isEmpty() || '${app.ai.gemini.api-key:}'.trim().startsWith('#') || '${app.ai.gemini.api-key:}'.trim().length() <= 10))")
 public class MockSpeechToText implements SpeechToTextService {
 
     @Override
