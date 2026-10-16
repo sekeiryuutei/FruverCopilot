@@ -59,23 +59,41 @@ public class GeminiSpeechToText implements SpeechToTextService {
                 "generationConfig", Map.of("temperature", 0.0)
         );
 
-        try {
-            JsonNode root = http.post()
-                    .uri("/v1beta/models/" + model + ":generateContent")
-                    .header("x-goog-api-key", apiKey)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(payload)
-                    .retrieve()
-                    .body(JsonNode.class);
-
-            if (root == null || !root.has("candidates") || root.path("candidates").isEmpty()) {
-                return "";
+        JsonNode root = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                root = http.post()
+                        .uri("/v1beta/models/" + model + ":generateContent")
+                        .header("x-goog-api-key", apiKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(payload)
+                        .retrieve()
+                        .body(JsonNode.class);
+                break;
+            } catch (org.springframework.web.client.RestClientResponseException e) {
+                int status = e.getStatusCode().value();
+                if ((status == 503 || status == 429) && attempt < 3) {
+                    log.warn("Gemini STT ocupado (HTTP {}), reintentando ({}/3)...", status, attempt);
+                    try {
+                        Thread.sleep(attempt * 1200L);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Interrumpido durante reintento de transcripción Gemini", ie);
+                    }
+                    continue;
+                }
+                log.warn("Fallo transcripción de audio con Gemini (HTTP {}): {}", status, e.getMessage());
+                throw new RuntimeException("Fallo transcripción con Gemini: " + e.getMessage(), e);
+            } catch (Exception e) {
+                log.warn("Fallo transcripción de audio con Gemini: {}", e.getMessage());
+                throw new RuntimeException("Fallo transcripción con Gemini: " + e.getMessage(), e);
             }
-            return root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText("").strip();
-        } catch (Exception e) {
-            log.warn("Fallo transcripción de audio con Gemini: {}", e.getMessage());
-            throw new RuntimeException("Fallo transcripción con Gemini: " + e.getMessage(), e);
         }
+
+        if (root == null || !root.has("candidates") || root.path("candidates").isEmpty()) {
+            return "";
+        }
+        return root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText("").strip();
     }
 
     public static String sanitizeMime(String mime) {

@@ -69,15 +69,38 @@ public class GeminiOrderExtractor implements OrderExtractor {
                 )
         );
 
-        try {
-            JsonNode root = http.post()
-                    .uri("/v1beta/models/" + model + ":generateContent")
-                    .header("x-goog-api-key", apiKey)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(payload)
-                    .retrieve()
-                    .body(JsonNode.class);
+        JsonNode root = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                root = http.post()
+                        .uri("/v1beta/models/" + model + ":generateContent")
+                        .header("x-goog-api-key", apiKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(payload)
+                        .retrieve()
+                        .body(JsonNode.class);
+                break;
+            } catch (org.springframework.web.client.RestClientResponseException e) {
+                int status = e.getStatusCode().value();
+                if ((status == 503 || status == 429) && attempt < 3) {
+                    log.warn("Gemini ocupado (HTTP {}), reintentando ({}/3)...", status, attempt);
+                    try {
+                        Thread.sleep(attempt * 1200L);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new ExtractionUnavailableException("Interrumpido durante reintento de Gemini", ie);
+                    }
+                    continue;
+                }
+                log.warn("Fallo en extracción con Gemini (HTTP {}): {}", status, e.getMessage());
+                throw new ExtractionUnavailableException("Fallo la extracción con Gemini: " + e.getClass().getSimpleName(), e);
+            } catch (Exception e) {
+                log.warn("Fallo en extracción con Gemini: {}", e.getMessage());
+                throw new ExtractionUnavailableException("Fallo la extracción con Gemini: " + e.getClass().getSimpleName(), e);
+            }
+        }
 
+        try {
             if (root == null || !root.has("candidates") || root.path("candidates").isEmpty()) {
                 throw new ExtractionUnavailableException("Respuesta vacía o sin candidatos de Gemini", null);
             }
@@ -97,8 +120,8 @@ public class GeminiOrderExtractor implements OrderExtractor {
         } catch (ExtractionUnavailableException e) {
             throw e;
         } catch (Exception e) {
-            log.warn("Fallo en extracción con Gemini: {}", e.getMessage());
-            throw new ExtractionUnavailableException("Fallo la extracción con Gemini: " + e.getClass().getSimpleName(), e);
+            log.warn("Fallo deserializando respuesta de Gemini: {}", e.getMessage());
+            throw new ExtractionUnavailableException("Fallo al procesar JSON de Gemini: " + e.getClass().getSimpleName(), e);
         }
     }
 
