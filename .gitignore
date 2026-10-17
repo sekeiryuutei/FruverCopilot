@@ -6,3 +6,4 @@ data/
 .vscode/
 backups/
 *.log
+scratch/
