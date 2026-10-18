@@ -22,8 +22,41 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @SpringBootTest(properties = "app.security.admin-password=test-only-password")
 @Testcontainers(disabledWithoutDocker = true)
-@EnabledIfEnvironmentVariable(named = "OPENAI_API_KEY", matches = ".+")
+@org.junit.jupiter.api.condition.EnabledIf("hasRealAiKey")
 class ExtractionEvalTest {
+
+    static {
+        loadEnvIfPresent();
+    }
+
+    static boolean hasRealAiKey() {
+        String gemini = System.getProperty("GEMINI_API_KEY", System.getenv("GEMINI_API_KEY"));
+        if (gemini != null && !gemini.isBlank() && !gemini.startsWith("your_") && gemini.length() > 10) return true;
+        String openai = System.getProperty("OPENAI_API_KEY", System.getenv("OPENAI_API_KEY"));
+        return openai != null && !openai.isBlank() && !openai.startsWith("sk-not") && openai.length() > 10;
+    }
+
+    private static void loadEnvIfPresent() {
+        try {
+            java.nio.file.Path envPath = java.nio.file.Path.of("../.env");
+            if (!java.nio.file.Files.exists(envPath)) {
+                envPath = java.nio.file.Path.of(".env");
+            }
+            if (java.nio.file.Files.exists(envPath)) {
+                for (String line : java.nio.file.Files.readAllLines(envPath)) {
+                    line = line.trim();
+                    if (line.startsWith("#") || !line.contains("=")) continue;
+                    int eq = line.indexOf('=');
+                    String k = line.substring(0, eq).trim();
+                    String v = line.substring(eq + 1).trim();
+                    if (v.contains("#")) v = v.substring(0, v.indexOf('#')).trim();
+                    if (System.getProperty(k) == null && System.getenv(k) == null) {
+                        System.setProperty(k, v);
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+    }
 
     @Container @ServiceConnection
     static PostgreSQLContainer<?> pg = new PostgreSQLContainer<>("postgres:16-alpine");
