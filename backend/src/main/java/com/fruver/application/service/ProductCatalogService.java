@@ -54,7 +54,9 @@ public class ProductCatalogService implements ProductLookup {
     /** Nombres reales del catalogo relacionados con el mensaje: contexto de solo lectura para el LLM. */
     public List<String> candidates(String text) {
         List<String> tokens = TextTokens.significant(text);
-        if (tokens.isEmpty()) return List.of();
+        if (tokens.isEmpty()) {
+            return jdbc.sql("SELECT name FROM product WHERE active ORDER BY name LIMIT 30").query(String.class).list();
+        }
         StringBuilder sql = new StringBuilder("SELECT name FROM product WHERE active AND (");
         Map<String, Object> params = new HashMap<>();
         for (int i = 0; i < tokens.size(); i++) {
@@ -65,7 +67,10 @@ public class ProductCatalogService implements ProductLookup {
             params.put("s" + i, tokens.get(i));
         }
         sql.append(") ORDER BY name LIMIT 30");
-        return jdbc.sql(sql.toString()).params(params).query(String.class).list();
+        List<String> matches = jdbc.sql(sql.toString()).params(params).query(String.class).list();
+        return matches.isEmpty()
+                ? jdbc.sql("SELECT name FROM product WHERE active ORDER BY name LIMIT 30").query(String.class).list()
+                : matches;
     }
 
     // ------------------------------------------------------------------ administracion

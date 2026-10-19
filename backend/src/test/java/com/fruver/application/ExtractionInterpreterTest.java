@@ -122,4 +122,21 @@ class ExtractionInterpreterTest {
         assertEquals(ConversationAction.ASK_CUSTOMER, r.action());
         assertEquals("Claro 😊 ¿Te refieres a 5 kilos o 5 libras de Papa criolla?", r.customerMessage());
     }
+    @Test void inquiryWithNoItemsPreservesAiMessageAndSetsYellow() {
+        InterpretedOrder r = interpreter.interpret(new AIOrderResponse(
+                List.of(), ConversationAction.ASK_CUSTOMER, "No tenemos arvejas hoy, pero sí tomate y papa", "Consulta de producto"));
+        assertEquals(ReviewStatus.YELLOW, r.review());
+        assertEquals(ConversationAction.ASK_CUSTOMER, r.action());
+        assertEquals("No tenemos arvejas hoy, pero sí tomate y papa", r.customerMessage());
+        assertTrue(r.items().isEmpty());
+    }
+    @Test void phantomEmptyItemsAreDiscarded() {
+        InterpretedOrder r = interpreter.interpret(new AIOrderResponse(
+                List.of(new ItemSugeridoDTO(null, null, null, null, true, "Consulta sobre disponibilidad")),
+                ConversationAction.ASK_CUSTOMER, "No tenemos arverjas hoy", "Consulta"));
+        assertEquals(0, r.items().size());
+        assertEquals(ConversationAction.ASK_CUSTOMER, r.action());
+        assertEquals("No tenemos arverjas hoy", r.customerMessage());
+    }
 }
+

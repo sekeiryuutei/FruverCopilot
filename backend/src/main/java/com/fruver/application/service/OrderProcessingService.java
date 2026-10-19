@@ -83,6 +83,24 @@ public class OrderProcessingService {
             if (text == null) return;
         }
 
+        // 1. Si es solo un saludo sin productos previos en el pedido:
+        if (!r.reply() && isGreetingOnly(text)) {
+            String greeting = "¡Hola! \uD83D\uDC4B Bienvenido a FruverCopilot \uD83E\uDD51\uD83C\uDF45 "
+                    + "¿En qué te podemos colaborar hoy? Puedes enviarnos tu lista de mercado (por texto o nota de voz) "
+                    + "o consultarnos precios y disponibilidad de productos.";
+            conversation.send(r.orderId(), greeting, ConversationService.Kind.INFO, "ia");
+            writer.markInquiryHandled(r.orderId(), "Saludo inicial recibido y respondido.");
+            return;
+        }
+
+        // 2. Si es una consulta directa de disponibilidad o precios de catálogo:
+        if (isPriceOrInventoryInquiry(text)) {
+            String reply = buildCatalogOrPriceReply(text);
+            conversation.send(r.orderId(), reply, ConversationService.Kind.INFO, "ia");
+            writer.markInquiryHandled(r.orderId(), "Consulta sobre disponibilidad/precios respondida automáticamente.");
+            return;
+        }
+
         ExtractionRequest req = new ExtractionRequest(text,
                 writer.recentTurns(r.orderId(), r.messageId()),
                 r.reply() ? writer.currentItems(r.orderId()) : java.util.List.of(),
@@ -104,7 +122,7 @@ public class OrderProcessingService {
         InterpretedOrder io = interpreter.interpret(ai);
         if (!writer.applyExtraction(r.orderId(), io)) return;
         metrics.review(io.review().name());
-        autoActions(r.orderId(), io, text);
+        autoActions(r.orderId(), io, text, r.audio());
     }
 
     /** @return texto transcrito, o null si fallo (el pedido queda en rojo con el audio disponible). */
@@ -138,30 +156,21 @@ public class OrderProcessingService {
         }
     }
 
-    /** Politica configurable: auto-respuestas para saludos, consultas de catalogo/precios y pedidos. */
-    private void autoActions(long orderId, InterpretedOrder io, String text) {
+    /** Politica configurable: auto-respuestas para pedidos y conversacion. */
+    private void autoActions(long orderId, InterpretedOrder io, String text, boolean isAudio) {
         if (!props.conversation().aiAutoReply() && !props.conversation().autoConfirmClearOrders()) {
             return;
         }
         try {
-            // 1. ¿Es consulta de precios o inventario?
-            if (isPriceOrInventoryInquiry(text)) {
-                String reply = buildCatalogOrPriceReply(text);
-                conversation.send(orderId, reply, ConversationService.Kind.INFO, "ia");
+            // 1. Si la IA genero una respuesta o pregunta para el cliente (customerMessage), enviala de inmediato
+            if (io.customerMessage() != null && !io.customerMessage().isBlank() && io.action() == ConversationAction.ASK_CUSTOMER) {
+                conversation.send(orderId, io.customerMessage(), ConversationService.Kind.ASK, "ia");
                 return;
             }
 
-            // 2. ¿Es solo un saludo sin productos?
-            if (isGreetingOnly(text, io)) {
-                String greeting = "¡Hola! \uD83D\uDC4B Bienvenido a FruverCopilot \uD83E\uDD51\uD83C\uDF45 "
-                        + "¿En qué te podemos colaborar hoy? Puedes enviarnos tu lista de mercado (por texto o nota de voz) "
-                        + "o consultarnos precios y disponibilidad de productos.";
-                conversation.send(orderId, greeting, ConversationService.Kind.INFO, "ia");
-                return;
-            }
-
-            // 3. Es un pedido con productos
-            if (io.review() == ReviewStatus.GREEN && props.conversation().autoConfirmClearOrders()) {
+            // 2. Es un pedido con productos claros (GREEN)
+            // IMPORTANTE: si es AUDIO, NO auto-confirmar sin revision humana del operario
+            if (io.review() == ReviewStatus.GREEN && props.conversation().autoConfirmClearOrders() && !isAudio) {
                 var row = orders.find(orderId).orElse(null);
                 if (row != null) {
                     if (row.address() == null || row.address().isBlank()) {
@@ -178,19 +187,14 @@ public class OrderProcessingService {
                 }
             }
 
-            // Si no está confirmado en GREEN o requiere revisión:
-            // Responde avisando que estamos revisando su pedido (solo si es el primer contacto del pedido)
+            // 3. Si no esta confirmado en GREEN o requiere revision: aviso si es el primer contacto del pedido
             boolean hasPriorOutbound = conversation.messages(orderId).stream()
                     .anyMatch(m -> "OUTBOUND".equals(m.direction()));
             if (!hasPriorOutbound) {
-                String ack = "¡Hola! \uD83D\uDC4B Gracias por comunicarte con FruverCopilot. "
-                        + "Hemos recibido tu pedido y lo estamos revisando. En un momento te confirmamos.";
+                String ack = isAudio
+                        ? "¡Hola! \uD83D\uDC4B Hemos recibido tu nota de voz y la estamos revisando. En un momento te confirmamos."
+                        : "¡Hola! \uD83D\uDC4B Gracias por comunicarte con FruverCopilot. Hemos recibido tu pedido y lo estamos revisando. En un momento te confirmamos.";
                 conversation.send(orderId, ack, ConversationService.Kind.INFO, "ia");
-            }
-
-            // Si hay una pregunta de aclaración específica (ASK_CUSTOMER), envíala
-            if (io.action() == ConversationAction.ASK_CUSTOMER && io.customerMessage() != null) {
-                conversation.send(orderId, io.customerMessage(), ConversationService.Kind.ASK, "ia");
             }
         } catch (RuntimeException e) {
             log.warn("No se pudo ejecutar la respuesta automatica del pedido {}: {}", orderId, e.getMessage());
@@ -214,25 +218,37 @@ public class OrderProcessingService {
         return sb.toString();
     }
 
-    boolean isPriceOrInventoryInquiry(String text) {
+    public boolean isPriceOrInventoryInquiry(String text) {
         if (text == null || text.isBlank()) return false;
         String t = text.toLowerCase(Locale.ROOT);
-        if (t.contains("me vende") || t.contains("me manda") || t.contains("enviar") || t.contains("mandeme") || t.contains("mándeme")) {
+        if (t.contains("me vende") || t.contains("me manda") || t.contains("enviar") || t.contains("mandeme")
+                || t.contains("mándeme") || t.contains("deme") || t.contains("dame") || t.contains("quiero")
+                || t.contains("llevar") || t.contains("mande") || t.contains("traigame") || t.contains("tráigame")) {
             return false;
         }
         return t.contains("precio") || t.contains("precios") || t.contains("cuanto vale") || t.contains("cuánto vale")
                 || t.contains("cuanto cuesta") || t.contains("cuánto cuesta") || t.contains("a como") || t.contains("a cómo")
                 || t.contains("costo") || t.contains("valor") || t.contains("catalogo") || t.contains("catálogo")
                 || t.contains("inventario") || t.contains("que tienen") || t.contains("qué tienen")
-                || t.contains("tienen") || t.contains("disponible") || t.contains("disponibles") || t.contains("lista");
+                || t.contains("tienen") || t.contains("tiene") || t.contains("tienes")
+                || t.contains("hay") || t.contains("vende") || t.contains("venden")
+                || t.contains("maneja") || t.contains("manejan")
+                || t.contains("consigue") || t.contains("consiguen")
+                || t.contains("queda") || t.contains("quedan")
+                || t.contains("disponible") || t.contains("disponibles") || t.contains("lista");
     }
 
-    boolean isGreetingOnly(String text, InterpretedOrder io) {
+    public boolean isGreetingOnly(String text) {
+        return isGreetingOnly(text, null);
+    }
+
+    public boolean isGreetingOnly(String text, InterpretedOrder io) {
         if (io != null && io.items() != null && !io.items().isEmpty()) return false;
         if (text == null) return false;
-        String t = text.trim().toLowerCase(Locale.ROOT).replaceAll("[^a-záéíóúñ\\s]", "");
+        String t = TextTokens.fold(text).trim().replaceAll("[^a-z\\s]", "");
         return t.matches("^(hola|buenas|buenos dias|buenas tardes|buenas noches|buen dia|que tal|hola buenas|hola buenos dias|hola buenas tardes|hola buenas noches)$");
     }
+
 
     String buildCatalogOrPriceReply(String text) {
         var all = catalog.list("", false);
@@ -255,11 +271,11 @@ public class OrderProcessingService {
                 String fPr = pr != null ? Money.format(pr) : "precio a consultar";
                 sb.append("• ").append(p.name()).append(": ").append(fPr).append(" / ").append(p.unit()).append("\n");
             }
-            sb.append("\n¿Deseas que te preparemos alguna cantidad? Puedes enviarnos un texto o audio \uD83D\uDE0A");
+            sb.append("\n¿Deseas que te preparemos alguna cantidad? Puedes decirnos cuántos kilos o libras necesitas 😊");
         } else {
-            boolean askedSpecific = tokens.stream().anyMatch(t -> !List.of("precio","precios","cuanto","cuánto","vale","cuesta","como","cómo","catalogo","catálogo","inventario","lista","tienen","hay","que","qué").contains(t.toLowerCase(Locale.ROOT)));
-            if (askedSpecific && tokens.size() > 2) {
-                sb.append("¡Hola! \uD83D\uDC4B En este momento no tenemos ese producto específico en inventario.\n\nNuestros productos disponibles hoy son:\n");
+            boolean askedSpecific = tokens.stream().anyMatch(t -> !List.of("precio","precios","cuanto","cuánto","vale","cuesta","como","cómo","catalogo","catálogo","inventario","lista","tienen","tiene","tienes","hay","vende","venden","maneja","manejan","consigue","consiguen","queda","quedan","disponible","disponibles","que","qué").contains(t.toLowerCase(Locale.ROOT)));
+            if (askedSpecific) {
+                sb.append("¡Hola! \uD83D\uDC4B En este momento no tenemos ese producto en inventario.\n\nNuestros productos disponibles hoy son:\n\n");
             } else {
                 sb.append("¡Hola! \uD83D\uDC4B En FruverCopilot tenemos disponible hoy:\n\n");
             }
@@ -268,7 +284,7 @@ public class OrderProcessingService {
                 String fPr = pr != null ? Money.format(pr) : "precio a consultar";
                 sb.append("• ").append(p.name()).append(": ").append(fPr).append(" / ").append(p.unit()).append("\n");
             }
-            sb.append("\n¡Puedes enviarnos tu pedido por aquí en texto o nota de voz cuando desees! \uD83E\uDD51\uD83C\uDF45");
+            sb.append("\n¿Te gustaría pedir alguno de estos productos o necesitas algo más? \uD83E\uDD51\uD83C\uDF45");
         }
         return sb.toString();
     }

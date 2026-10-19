@@ -61,21 +61,33 @@ public class OrderWriter {
                     """).param("addr", io.address()).param("id", orderId).update();
         }
 
-        jdbc.sql("DELETE FROM order_item WHERE order_id = :o").param("o", orderId).update();
-        int line = 0;
-        for (InterpretedOrder.Item i : io.items()) {
-            jdbc.sql("""
-                    INSERT INTO order_item(order_id, line_no, mentioned, ai_product_name, ai_quantity, ai_unit, ai_ambiguous,
-                                           observation, product_id, quantity, unit)
-                    VALUES (:o, :ln, :m, :apn, :aq, :au, :aa, :obs, :pid, :q, :u)
-                    """).param("o", orderId).param("ln", line++).param("m", i.mentioned()).param("apn", i.aiProductName())
-                    .param("aq", i.aiQuantity()).param("au", i.aiUnit()).param("aa", i.aiAmbiguous())
-                    .param("obs", i.observation()).param("pid", i.productId()).param("q", i.quantity())
-                    .param("u", i.unit() == null ? null : i.unit().name()).update();
+        if (!io.items().isEmpty()) {
+            jdbc.sql("DELETE FROM order_item WHERE order_id = :o").param("o", orderId).update();
+            int line = 0;
+            for (InterpretedOrder.Item i : io.items()) {
+                jdbc.sql("""
+                        INSERT INTO order_item(order_id, line_no, mentioned, ai_product_name, ai_quantity, ai_unit, ai_ambiguous,
+                                               observation, product_id, quantity, unit)
+                        VALUES (:o, :ln, :m, :apn, :aq, :au, :aa, :obs, :pid, :q, :u)
+                        """).param("o", orderId).param("ln", line++).param("m", i.mentioned()).param("apn", i.aiProductName())
+                        .param("aq", i.aiQuantity()).param("au", i.aiUnit()).param("aa", i.aiAmbiguous())
+                        .param("obs", i.observation()).param("pid", i.productId()).param("q", i.quantity())
+                        .param("u", i.unit() == null ? null : i.unit().name()).update();
+            }
         }
         audit.log("ia", "AI_EXTRACTED", orderId, null, Map.of("review", io.review().name(),
                 "action", io.action().name(), "items", io.items().size()));
         return true;
+    }
+
+    @Transactional
+    public void markInquiryHandled(long orderId, String note) {
+        jdbc.sql("""
+                UPDATE orders SET status = 'REVIEW', review_status = 'YELLOW', ai_status = 'OK', ai_note = :note,
+                       conversation_status = 'WAITING_FOR_CUSTOMER', extracted_at = now(), version = version + 1
+                WHERE id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW')
+                """).param("note", note).param("id", orderId).update();
+        audit.log("ia", "AI_INQUIRY_ANSWERED", orderId, null, Map.of("note", note));
     }
 
     @Transactional

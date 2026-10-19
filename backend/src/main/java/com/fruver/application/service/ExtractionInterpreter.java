@@ -43,10 +43,16 @@ public class ExtractionInterpreter {
 
         for (ItemSugeridoDTO d : raw) {
             if (d == null || items.size() >= MAX_ITEMS) continue;
+            // Si el item viene vacío (sin producto mencionado ni normalizado), no crearlo como item de pedido
+            if ((d.productoMencionado() == null || d.productoMencionado().isBlank())
+                    && (d.productoNormalizado() == null || d.productoNormalizado().isBlank())) {
+                continue;
+            }
             UnitOfMeasure unit = UnitOfMeasure.parse(d.unidadMedida()).orElse(null);
             BigDecimal qty = sanitizeQuantity(d.cantidad());
             ProductLookup.Resolution res = lookup.resolve(d);
             String mentioned = clip(d.productoMencionado(), 200);
+            if (mentioned.isBlank()) mentioned = clip(d.productoNormalizado(), 200);
             if (mentioned.isBlank()) mentioned = "(sin texto)";
 
             items.add(new Item(mentioned, blankToNull(clip(d.productoNormalizado(), 200)), storableAiQuantity(d.cantidad()),
@@ -70,16 +76,22 @@ public class ExtractionInterpreter {
         ConversationAction action;
         String message = null;
         if (requested == ConversationAction.ASK_CUSTOMER) {
-            if (review == ReviewStatus.GREEN) review = ReviewStatus.YELLOW;
             action = ConversationAction.ASK_CUSTOMER;
-            message = aiMessage != null ? aiMessage : template(items);
+            message = aiMessage != null ? aiMessage : (items.isEmpty() ? null : template(items));
+            if (review == ReviewStatus.GREEN || items.isEmpty()) review = ReviewStatus.YELLOW;
         } else if (requested == ConversationAction.WAIT_FOR_OPERATOR || requested == ConversationAction.CUSTOMER_REJECTED) {
             if (review == ReviewStatus.GREEN) review = ReviewStatus.YELLOW;
             action = ConversationAction.WAIT_FOR_OPERATOR;
         } else if (review == ReviewStatus.GREEN) {
             action = ConversationAction.CONFIRM_ORDER; // el texto de confirmacion lo construye el backend
         } else if (items.isEmpty()) {
-            action = ConversationAction.WAIT_FOR_OPERATOR;
+            if (aiMessage != null && !aiMessage.isBlank()) {
+                action = ConversationAction.ASK_CUSTOMER;
+                message = aiMessage;
+                review = ReviewStatus.YELLOW;
+            } else {
+                action = ConversationAction.WAIT_FOR_OPERATOR;
+            }
         } else {
             action = ConversationAction.ASK_CUSTOMER;
             message = aiMessage != null ? aiMessage : template(items);
