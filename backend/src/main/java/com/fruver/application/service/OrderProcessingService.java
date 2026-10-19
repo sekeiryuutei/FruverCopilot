@@ -44,11 +44,13 @@ public class OrderProcessingService {
     private final SseHub hub;
     private final AppMetrics metrics;
     private final AppProperties props;
+    private final DeliveryZoneService zones;
 
     public OrderProcessingService(OrderExtractor extractor, SpeechToTextService stt, AudioStorageService storage,
                                   MediaDownloader media, ProductCatalogService catalog, ExtractionInterpreter interpreter,
                                   OrderWriter writer, OrderRepository orders, QuoteService quotes,
-                                  ConversationService conversation, SseHub hub, AppMetrics metrics, AppProperties props) {
+                                  ConversationService conversation, SseHub hub, AppMetrics metrics, AppProperties props,
+                                  DeliveryZoneService zones) {
         this.extractor = extractor;
         this.stt = stt;
         this.storage = storage;
@@ -62,6 +64,7 @@ public class OrderProcessingService {
         this.hub = hub;
         this.metrics = metrics;
         this.props = props;
+        this.zones = zones;
     }
 
     @Async("aiExecutor")
@@ -104,7 +107,8 @@ public class OrderProcessingService {
         ExtractionRequest req = new ExtractionRequest(text,
                 writer.recentTurns(r.orderId(), r.messageId()),
                 r.reply() ? writer.currentItems(r.orderId()) : java.util.List.of(),
-                catalog.candidates(text));
+                catalog.candidates(text),
+                zones.formatForPrompt());
 
         long t0 = System.nanoTime();
         AIOrderResponse ai;

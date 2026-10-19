@@ -45,7 +45,7 @@ async function api(path,opt={}){const o={method:'GET',headers:{},...opt};if(o.bo
   if(o.method!=='GET')o.headers['X-XSRF-TOKEN']=csrf();
   const r=await fetch(path,o);if(r.status===401){location='/login.html';throw new Error('401')}
   const j=r.status===204?null:await r.json().catch(()=>null);if(!r.ok){const e=new Error(j?.message||'Error '+r.status);e.code=j?.code;e.details=j?.details;throw e}return j}
-const S={me:null,products:[],orders:[],draft:{},open:{},tab:'ops'};
+const S={me:null,products:[],orders:[],draft:{},open:{},openConvs:new Set(),tab:'ops'};
 const byName=n=>S.products.find(p=>p.name.toLowerCase()===String(n).trim().toLowerCase());
 const ago=t=>{const s=Math.max(0,(Date.now()-new Date(t))/1000);return s<60?Math.round(s)+' s':s<3600?Math.round(s/60)+' min':Math.round(s/3600)+' h'};
 
@@ -54,7 +54,8 @@ const ago=t=>{const s=Math.max(0,(Date.now()-new Date(t))/1000);return s<60?Math
 const round3=n=>Math.round(n*1000)/1000;
 /** Firma barata de un pedido: si no cambia, su tarjeta NO se vuelve a dibujar (sin parpadeo). */
 function orderSig(o){return JSON.stringify([o.version,o.status,o.reviewStatus,o.conversationStatus,o.aiStatus,o.printStatus,o.saleId,o.total,
-  o.suggestedReply,o.confirmationDraft,o.messageText,o.customer.name,o.customer.type,o.address,o.notes,o.items.map(i=>[i.id,i.productId,i.quantity,i.unit,i.manualPrice,i.problem])])}
+  o.suggestedReply,o.confirmationDraft,o.messageText,o.customer?.name,o.customer?.type,o.address,o.notes,o.dispatchedAt||null,o.messageCount||0,o.pendingDispatchOrderId||null,
+  (o.items||[]).map(i=>[i.id,i.productId,i.quantity,i.unit,i.manualPrice,i.problem])])}
 /** Otra línea del pedido con el mismo producto y la misma unidad (el precio es por unidad del producto). */
 function findTwin(items,it){return items.find(x=>x!==it&&x.productId&&x.productId===it.productId&&x.unit===it.unit)}
 /** Suma a `twin` la cantidad de `it` (1 si la dejó vacía). Devuelve la cantidad resultante. */
@@ -143,49 +144,124 @@ async function showTicket(saleId){try{const t=await api(`/api/sales/${saleId}/ti
     h('div',{class:'top'},h('b',{},'Factura pedido #'+t.orderId),h('span',{class:'sp'}),h('button',{class:'b',onclick:()=>m.remove()},'Cerrar')),
     pre,h('div',{class:'row'},h('button',{class:'b main',onclick:()=>window.print()},'Imprimir')));
   document.body.append(m)}catch(e){toast(e.message)}}
-function doneCard(o){const ps=o.printStatus;return h('div',{class:'card GREEN',dataset:{id:o.id}},h('div',{class:'top'},h('b',{},'#'+o.id),h('span',{},o.customer.name||o.customer.phoneMasked),h('span',{class:'sp'}),
-  h('b',{},cop(o.total)),h('span',{class:'pill '+(ps==='PRINTED'?'GREEN':ps==='PRINT_FAILED'?'RED':'YELLOW')},ps==='PRINTED'?'🖨 IMPRESO':ps==='PRINT_FAILED'?'🔴 NO SE PUDO IMPRIMIR':'🖨 IMPRIMIENDO…'),
-  o.saleId?h('button',{class:'b main',onclick:()=>showTicket(o.saleId)},'🧾 Ver factura'):null,
-  h('button',{class:'b',onclick:async()=>{try{await api(`/api/sales/${o.saleId}/reprint`,{method:'POST'});toast('Reimpresión encolada')}catch(e){toast(e.message)}}},ps==='PRINT_FAILED'?'REINTENTAR':'REIMPRIMIR')))}
+function doneCard(o){
+  const ps=o.printStatus;
+  const cardEl=h('div',{class:'card GREEN',dataset:{id:o.id}});
+  const convBox=h('div',{class:'conv',dataset:{convFor:o.id},style:S.openConvs.has(o.id)?'margin-top:8px':'display:none'});
+  const convBtn=h('button',{class:'b'+(S.openConvs.has(o.id)?' active':''),onclick:()=>{
+    if(S.openConvs.has(o.id)){S.openConvs.delete(o.id);convBox.style.display='none';convBtn.classList.remove('active')}
+    else{S.openConvs.add(o.id);convBox.style.display='block';convBtn.classList.add('active');refreshConv(o.id,convBox)}
+  }},`💬 Chat (${o.messageCount||0})`);
+  if(S.openConvs.has(o.id)) refreshConv(o.id, convBox);
+
+  cardEl.append(
+    h('div',{class:'top'},
+      h('b',{},'#'+o.id),
+      h('span',{},o.customer?.name||o.customer?.phoneMasked),
+      h('span',{class:'sp'}),
+      h('b',{},cop(o.total)),
+      h('span',{class:'pill '+(ps==='PRINTED'?'GREEN':ps==='PRINT_FAILED'?'RED':'YELLOW')},ps==='PRINTED'?'🖨 IMPRESO':ps==='PRINT_FAILED'?'🔴 NO SE PUDO IMPRIMIR':'🖨 IMPRIMIENDO…'),
+      o.dispatchedAt ? h('span',{class:'pill GREEN'},'🚚 DESPACHADO '+ago(o.dispatchedAt)) : h('span',{class:'pill YELLOW'},'📦 PENDIENTE DESPACHO'),
+      o.saleId?h('button',{class:'b main',onclick:()=>showTicket(o.saleId)},'🧾 Ver factura'):null,
+      !o.dispatchedAt&&o.saleId?h('button',{class:'b',style:'background:#1e40af;color:#fff',onclick:async()=>{
+        if(!confirm(`¿Marcar Pedido #${o.id} como despachado y avisar al cliente por WhatsApp?`))return;
+        try{await api(`/api/sales/${o.saleId}/dispatch`,{method:'POST'});toast('✓ Pedido marcado como despachado');await loadOrders()}catch(e){toast(e.message)}
+      }},'🚚 Despachar'):null,
+      o.saleId?h('button',{class:'b',onclick:async()=>{
+        try{await api(`/api/sales/${o.saleId}/send-whatsapp`,{method:'POST'});toast('✓ Factura enviada al cliente por WhatsApp');await loadOrders()}catch(e){toast(e.message)}
+      }},'📱 Factura WhatsApp'):null,
+      h('button',{class:'b',onclick:async()=>{try{await api(`/api/sales/${o.saleId}/reprint`,{method:'POST'});toast('Reimpresión encolada')}catch(e){toast(e.message)}}},ps==='PRINT_FAILED'?'REINTENTAR':'REIMPRIMIR'),
+      convBtn
+    ),
+    convBox
+  );
+  return cardEl;
+}
 function flash(tr){tr.classList.remove('flash');void tr.offsetWidth;tr.classList.add('flash')}
+
+async function refreshConv(orderId, container){
+  try{
+    const ms=await api(`/api/orders/${orderId}/messages`);
+    const header=h('div',{style:'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px'},
+      h('b',{style:'font-size:12px;color:var(--mut)'},'Historial de Mensajes ('+ms.length+')'),
+      h('button',{class:'b',style:'padding:2px 8px;font-size:11px',onclick:()=>refreshConv(orderId,container)},'🔄 Actualizar chat')
+    );
+    const list=ms.length?ms.map(x=>h('div',{class:x.direction==='OUTBOUND'?'out':'',style:'margin-bottom:4px;padding:5px 8px;border-radius:4px;background:'+(x.direction==='OUTBOUND'?'rgba(34,197,94,0.08)':'rgba(255,255,255,0.04)')},
+      h('span',{style:'font-size:11px;opacity:0.75;margin-right:6px'},ago(x.createdAt)),
+      h('b',{},(x.direction==='INBOUND'?'👤 CLIENTE: ':'🏪 TIENDA: ')),
+      (x.type==='INVOICE'?'🧾 ':'')+(x.content||'(audio)'),
+      x.delivery==='LOCAL_ONLY'?h('span',{class:'mut'},' [modo local]'):x.delivery==='FAILED'?h('span',{style:'color:var(--r)'},' [FALLÓ ENVÍO]'):null
+    )):[h('div',{class:'mut',style:'font-size:12px;padding:4px'},'Sin mensajes previos registrados')];
+    container.replaceChildren(header,...list);
+  }catch(e){container.textContent='Error cargando conversación: '+e.message}
+}
+
+function refreshOpenConvs(){
+  for(const id of S.openConvs){
+    const box=document.querySelector(`.conv[data-conv-for="${id}"]`);
+    if(box) refreshConv(id, box);
+  }
+}
 
 function card(o){
   const busy=o.status==='PROCESSING'||o.status==='RECEIVED';
   const view=draftOf(o)||buildDraft(o);
   const el=h('div',{class:'card '+(o.reviewStatus||''),dataset:{id:o.id}});
   const custNameEl = h('b',{style:'color:var(--ink);cursor:pointer;border-bottom:1px dashed var(--mut)',title:'Clic para modificar nombre del cliente',onclick:async()=>{
-    const current = view.customerName || o.customer.name || '';
+    const current = view.customerName || o.customer?.name || '';
     const n = prompt('Modificar nombre del cliente (WhatsApp / Real):', current);
     if(n !== null && n.trim() && n.trim() !== current){
       const clean = n.trim();
       view.customerName = clean;
       mark();
       try{
-        if(o.customer.id){
+        if(o.customer?.id){
           await api(`/api/customers/${o.customer.id}`,{method:'PUT',body:{name:clean,phone:o.customer.phoneMasked}});
           toast(`✓ Nombre actualizado: "${clean}"`);
           await loadOrders();
         }
       }catch(e){toast(e.message)}
     }
-  }}, (view.customerName || o.customer.name || 'Cliente') + ' ✏️');
+  }}, (view.customerName || o.customer?.name || 'Cliente') + ' ✏️');
 
   el.append(h('div',{class:'top'},
     h('span',{class:'pill gray'},o.inputType==='AUDIO'?'🎙️ AUDIO':o.inputType==='MANUAL'?'🏪 MANUAL / LLAMADA':'📝 TEXTO'),
     h('b',{},'PEDIDO #'+o.id),
     statusPill(o),
     h('span',{class:'sp'}),
-    h('span',{class:'mut'}, custNameEl, ' · ' + (o.customer.phoneMasked || '') + (o.customer.type==='WHOLESALE'?' · MAYORISTA':'') + ' · hace ', h('span',{class:'ago',dataset:{t:o.receivedAt}},ago(o.receivedAt)))
+    h('span',{class:'mut'}, custNameEl, ' · ' + (o.customer?.phoneMasked || '') + (o.customer?.type==='WHOLESALE'?' · MAYORISTA':'') + ' · hace ', h('span',{class:'ago',dataset:{t:o.receivedAt}},ago(o.receivedAt)))
   ));
+
+  if(o.pendingDispatchOrderId){
+    el.append(h('div',{class:'banner',style:'background:#1e3a5f;border-left:4px solid #3b82f6;margin-bottom:10px'},
+      `ℹ️ Este cliente tiene el Pedido #${o.pendingDispatchOrderId} aprobado pendiente de despacho. `,
+      h('div',{style:'margin-top:6px;display:flex;gap:8px;align-items:center'},
+        h('button',{class:'b main',style:'background:#2563eb',onclick:async()=>{
+          if(!confirm(`¿Anexar estos productos al Pedido #${o.pendingDispatchOrderId}? El pedido consolidado quedará en revisión.`))return;
+          try{await api(`/api/orders/${o.id}/merge-into/${o.pendingDispatchOrderId}`,{method:'POST'});toast(`✓ Productos anexados al Pedido #${o.pendingDispatchOrderId}`);await loadOrders()}catch(e){toast(e.message)}
+        }},`➕ Anexar a Pedido #${o.pendingDispatchOrderId}`),
+        h('span',{class:'mut'},'o puedes aprobarlo como factura independiente')
+      )
+    ));
+  }
+
   if(o.aiStatus==='FAILED')el.append(h('div',{class:'banner'},'🔴 IA NO DISPONIBLE — digita el pedido manualmente'));
   if(o.aiStatus==='TRANSCRIPTION_FAILED')el.append(h('div',{class:'banner'},'🎙️ 🔴 TRANSCRIPCIÓN FALLIDA — escucha el audio y digita manualmente'));
   if(o.conversationStatus==='WAITING_FOR_CUSTOMER')el.append(h('div',{class:'ai'},'⏳ Esperando respuesta del cliente'));
   if(o.messageText)el.append(h('div',{class:'msg'},'“'+o.messageText+'”'));
   const tools=h('div',{class:'row'});
   if(o.hasAudio){const box=h('div');tools.append(h('button',{class:'b',onclick:()=>{box.replaceChildren(h('audio',{controls:true,autoplay:true,src:`/api/orders/${o.id}/audio`}))}},'▶ ESCUCHAR'),box)}
-  tools.append(h('button',{class:'b',onclick:async()=>{const c=el.querySelector('.conv');if(c){c.remove();return}const ms=await api(`/api/orders/${o.id}/messages`);
-    el.append(h('div',{class:'conv'},ms.map(x=>h('div',{class:x.direction==='OUTBOUND'?'out':''},(x.direction==='INBOUND'?'CLIENTE: ':'TIENDA: ')+(x.content||'(audio)')+(x.delivery==='LOCAL_ONLY'?' [no enviado: WhatsApp deshabilitado]':x.delivery==='FAILED'?' [FALLÓ EL ENVÍO]':'')))))}},'Conversación'));
+  
+  const convBox=h('div',{class:'conv',dataset:{convFor:o.id},style:S.openConvs.has(o.id)?'margin-top:8px':'display:none'});
+  const convBtn=h('button',{class:'b'+(S.openConvs.has(o.id)?' active':''),onclick:()=>{
+    if(S.openConvs.has(o.id)){S.openConvs.delete(o.id);convBox.style.display='none';convBtn.classList.remove('active')}
+    else{S.openConvs.add(o.id);convBox.style.display='block';convBtn.classList.add('active');refreshConv(o.id,convBox)}
+  }},`💬 Chat (${o.messageCount||0})`);
+  tools.append(convBtn);
+  if(S.openConvs.has(o.id)) refreshConv(o.id, convBox);
+
   el.append(tools);
+  el.append(convBox);
   if(busy){el.append(h('p',{class:'mut'},'La IA está interpretando el pedido…'));return el}
   if(o.aiNote)el.append(h('div',{class:'ai'},'Nota IA: '+o.aiNote));
 
@@ -774,25 +850,137 @@ async function renderReports(){const m=$('#main');const today=new Date().toISOSt
       kv('Más vendidos',r.topProducts.map(x=>[x.product,x.quantity+' '+x.unit,cop(x.revenue)])))}catch(e){toast(e.message)}};
   m.replaceChildren(h('div',{class:'row'},h('label',{},'Desde ',from),h('label',{},'Hasta ',to),h('button',{class:'b',onclick:go},'Ver')),out);go()}
 
+/* ---------- Zonas de Domicilio y Cobertura (ADMIN) ---------- */
+async function renderDeliveryZones(){
+  const m=$('#main');
+  const tbody=h('tbody');
+
+  const load=async()=>{
+    try{
+      const list=await api('/api/delivery-zones');
+      tbody.replaceChildren(...list.map(z=>{
+        const nameInput=h('input',{value:z.name,style:'width:220px'});
+        const coveredCheck=h('input',{type:'checkbox',checked:z.covered});
+        const feeInput=h('input',{type:'number',value:z.fee!=null?z.fee:'',step:'500',min:'0',style:'width:110px'});
+        const minFreeInput=h('input',{type:'number',value:z.minFree!=null?z.minFree:'',step:'1000',min:'0',style:'width:120px',placeholder:'(Opcional)'});
+        const timeInput=h('input',{value:z.estimatedTime||'',style:'width:130px',placeholder:'ej. 30-45 min'});
+
+        const saveBtn=h('button',{class:'b',onclick:async()=>{
+          try{
+            await api(`/api/delivery-zones/${z.id}`,{
+              method:'PUT',
+              body:{
+                name:nameInput.value.trim(),
+                covered:coveredCheck.checked,
+                fee:feeInput.value?Number(feeInput.value):0,
+                minFree:minFreeInput.value?Number(minFreeInput.value):null,
+                estimatedTime:timeInput.value.trim()||null
+              }
+            });
+            toast('✓ Zona actualizada exitosamente');
+            await load();
+          }catch(e){toast(e.message)}
+        }},'Guardar');
+
+        const delBtn=h('button',{class:'b',style:'color:var(--r)',onclick:async()=>{
+          if(!confirm(`¿Eliminar la zona "${z.name}"?`))return;
+          try{
+            await api(`/api/delivery-zones/${z.id}`,{method:'DELETE'});
+            toast('✓ Zona eliminada');
+            await load();
+          }catch(e){toast(e.message)}
+        }},'✕');
+
+        return h('tr',{},
+          h('td',{},nameInput),
+          h('td',{style:'text-align:center'},coveredCheck),
+          h('td',{},feeInput),
+          h('td',{},minFreeInput),
+          h('td',{},timeInput),
+          h('td',{class:'row',style:'gap:6px'},saveBtn,delBtn)
+        );
+      }));
+    }catch(e){toast(e.message)}
+  };
+
+  const newBtn=h('button',{class:'b main',onclick:()=>{
+    const nameInput=h('input',{placeholder:'Nombre del barrio o sector',style:'width:220px'});
+    const coveredCheck=h('input',{type:'checkbox',checked:true});
+    const feeInput=h('input',{type:'number',value:'0',step:'500',min:'0',style:'width:110px'});
+    const minFreeInput=h('input',{type:'number',placeholder:'Mínimo gratis',step:'1000',min:'0',style:'width:120px'});
+    const timeInput=h('input',{placeholder:'30-40 min',style:'width:130px'});
+
+    const saveNewBtn=h('button',{class:'b main',onclick:async()=>{
+      const nm=nameInput.value.trim();
+      if(!nm){toast('Ingresa un nombre de zona');return}
+      try{
+        await api('/api/delivery-zones',{
+          method:'POST',
+          body:{
+            name:nm,
+            covered:coveredCheck.checked,
+            fee:feeInput.value?Number(feeInput.value):0,
+            minFree:minFreeInput.value?Number(minFreeInput.value):null,
+            estimatedTime:timeInput.value.trim()||null
+          }
+        });
+        toast('✓ Nueva zona agregada');
+        await load();
+      }catch(e){toast(e.message)}
+    }},'Crear');
+
+    tbody.prepend(h('tr',{style:'background:rgba(34,197,94,0.1)'},
+      h('td',{},nameInput),
+      h('td',{style:'text-align:center'},coveredCheck),
+      h('td',{},feeInput),
+      h('td',{},minFreeInput),
+      h('td',{},timeInput),
+      h('td',{},saveNewBtn)
+    ));
+  }},'➕ Nueva Zona de Cobertura');
+
+  m.replaceChildren(
+    h('div',{class:'row',style:'justify-content:space-between;margin-bottom:12px;align-items:center'},
+      h('div',{},
+        h('h3',{style:'margin:0'},'Zonas y Tarifas de Domicilio'),
+        h('span',{class:'mut'},'La IA consulta estas zonas para responderle a los clientes si hay cobertura y tarifas.')
+      ),
+      newBtn
+    ),
+    h('div',{class:'scroll'},
+      h('table',{},
+        h('thead',{},h('tr',{},['Zona / Barrio(s)','¿Tiene Cobertura?','Tarifa Domicilio ($ COP)','Gratis a partir de ($ COP)','Tiempo Estimado','Acciones'].map(t=>h('th',{},t)))),
+        tbody
+      )
+    )
+  );
+  load();
+}
+
 /* ---------- Arranque ---------- */
 function fillDl(){$('#dl').replaceChildren(...S.products.filter(p=>p.active).map(p=>h('option',{value:p.name})))}
-function nav(){const tabs=[['ops','Operación'],['sales','Ventas'],['customers','Clientes']];if(S.me.role==='ADMIN')tabs.push(['prices','Precios'],['reports','Reportes']);
+function nav(){const tabs=[['ops','Operación'],['sales','Ventas'],['customers','Clientes']];if(S.me.role==='ADMIN')tabs.push(['prices','Precios'],['zones','Zonas Domicilio'],['reports','Reportes']);
   $('#nav').replaceChildren(...tabs.map(([k,l])=>h('button',{class:S.tab===k?'on':'',onclick:()=>{S.tab=k;nav();show()}},l)))}
-function show(){({ops:()=>{renderOps()},sales:renderSales,prices:renderPrices,customers:renderCustomers,reports:renderReports})[S.tab]()}
+function show(){({ops:()=>{renderOps()},sales:renderSales,prices:renderPrices,customers:renderCustomers,zones:renderDeliveryZones,reports:renderReports})[S.tab]()}
 $('#logout').onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'X-XSRF-TOKEN':csrf()}});location='/login.html'};
 (async()=>{S.me=await api('/api/me');S.products=await api('/api/products');fillDl();nav();await loadOrders();
   let t;
   const connectSse=()=>{
     try{
       const es=new EventSource('/api/stream');
-      es.addEventListener('orders',()=>{clearTimeout(t);t=setTimeout(async()=>{if(S.tab==='ops'){try{await loadOrders()}catch(e){}}},300)});
+      es.addEventListener('orders',()=>{
+        clearTimeout(t);
+        t=setTimeout(async()=>{
+          if(S.tab==='ops'){try{await loadOrders();refreshOpenConvs()}catch(e){}}
+        },300);
+      });
       es.onerror=()=>{try{es.close()}catch(x){}setTimeout(connectSse,5000)};
     }catch(e){}
   };
   connectSse();
   // Auto-actualización periódica de respaldo (cada 3.5 segundos en operaciones):
   setInterval(async()=>{
-    if(S.tab==='ops'&&!loading){try{await loadOrders()}catch(e){}}
+    if(S.tab==='ops'&&!loading){try{await loadOrders();refreshOpenConvs()}catch(e){}}
   },3500);
   setInterval(()=>document.querySelectorAll('.ago').forEach(x=>{x.textContent=ago(x.dataset.t)}),15000)})();
 </script></body></html>

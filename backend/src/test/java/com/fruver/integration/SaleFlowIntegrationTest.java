@@ -60,6 +60,7 @@ class SaleFlowIntegrationTest {
     @Autowired JdbcClient jdbc;
     @Autowired CustomerService customerService;
     @Autowired TicketService tickets;
+    @Autowired DeliveryZoneService deliveryZoneService;
 
     private static AIOrderResponse papaCriolla(String qty, String unit) {
         return new AIOrderResponse(List.of(new ItemSugeridoDTO("papa criolla", "Papa criolla", new BigDecimal(qty), unit, false, null)),
@@ -304,5 +305,100 @@ class SaleFlowIntegrationTest {
         var lines = TicketFormatter.format(ticketData, 32);
         boolean foundAddr = lines.stream().anyMatch(l -> l.text().contains("Cra 15 # 4-20"));
         assertTrue(foundAddr, "El ticket impreso debe contener la dirección seleccionada");
+    }
+
+    @Test
+    void deliveryZonesConfigurationAndPromptFormat() {
+        var created = deliveryZoneService.create("Barrio Granada", true, new BigDecimal("3500"), new BigDecimal("35000"), "25-35 min", "admin");
+        assertNotNull(created.id());
+        assertEquals("Barrio Granada", created.name());
+        assertTrue(created.covered());
+
+        var list = deliveryZoneService.list();
+        assertTrue(list.stream().anyMatch(z -> "Barrio Granada".equals(z.name())));
+
+        var promptStr = deliveryZoneService.formatForPrompt();
+        assertTrue(promptStr.contains("Barrio Granada"));
+        assertTrue(promptStr.contains("3500"));
+
+        deliveryZoneService.update(created.id(), "Barrio Granada", true, new BigDecimal("4000"), new BigDecimal("45000"), "30-40 min", "admin");
+        var updated = deliveryZoneService.list().stream().filter(z -> z.id() == created.id()).findFirst().orElseThrow();
+        assertEquals(new BigDecimal("4000"), updated.fee());
+
+        deliveryZoneService.delete(created.id(), "admin");
+        assertFalse(deliveryZoneService.list().stream().anyMatch(z -> z.id() == created.id()));
+    }
+
+    @Test
+    void orderDispatchAndWhatsAppInvoiceFlow() {
+        String phone = "570000000008";
+        long orderId = newOrder(phone, papaCriolla("4", "LB"));
+        int version = orders.find(orderId).orElseThrow().version();
+
+        // 1. Approve: auto-sends invoice via WhatsApp
+        var result = sales.approve(orderId, version, "cajero1");
+        assertNotNull(result.saleId());
+
+        // Verify invoice was recorded in conversation messages
+        var messages = conversation.messages(orderId);
+        boolean hasInvoice = messages.stream().anyMatch(m -> "OUTBOUND".equals(m.direction()) && m.content().contains("Factura de Venta"));
+        assertTrue(hasInvoice, "Debe registrarse el mensaje de factura saliente para el cliente");
+
+        // Verify initial state: not dispatched
+        var orderBefore = orders.find(orderId).orElseThrow();
+        assertNull(orderBefore.dispatchedAt());
+
+        // 2. Dispatch
+        sales.dispatch(result.saleId(), "domiciliario1");
+
+        var orderAfter = orders.find(orderId).orElseThrow();
+        assertNotNull(orderAfter.dispatchedAt());
+        assertEquals("domiciliario1", orderAfter.dispatchedBy());
+
+        var saleDispatchedAt = jdbc.sql("SELECT dispatched_at FROM sale WHERE id = :s").param("s", result.saleId()).query(java.time.OffsetDateTime.class).single();
+        assertNotNull(saleDispatchedAt);
+
+        // Verify dispatch WhatsApp notification message was sent
+        var messagesAfter = conversation.messages(orderId);
+        boolean hasDispatchMsg = messagesAfter.stream().anyMatch(m -> "OUTBOUND".equals(m.direction()) && m.content().contains("va en camino"));
+        assertTrue(hasDispatchMsg, "Debe registrarse la notificación de despacho al cliente");
+    }
+
+    @Test
+    void mergeOrderIntoPendingDispatchOrder() {
+        String phone = "570000000009";
+
+        // Order 1: Approved, but pending dispatch
+        long order1 = newOrder(phone, papaCriolla("2", "LB"));
+        int v1 = orders.find(order1).orElseThrow().version();
+        var sale1 = sales.approve(order1, v1, "cajero1");
+        assertNotNull(sale1.saleId());
+
+        // Order 2: Customer writes again asking for 3 more pounds of papa criolla
+        long order2 = newOrder(phone, papaCriolla("3", "LB"));
+        var view2 = views.get(order2);
+        assertEquals(order1, view2.pendingDispatchOrderId(), "Debe detectar que el cliente tiene el Pedido 1 pendiente de despacho");
+
+        // Operator merges Order 2 into Order 1
+        edits.mergeIntoOrder(order2, order1, "operador1");
+
+        // Order 2 is cancelled
+        var o2After = orders.find(order2).orElseThrow();
+        assertEquals("CANCELLED", o2After.status());
+        assertTrue(o2After.notes().contains("Anexado al Pedido #" + order1));
+
+        // Order 1 is reset to REVIEW with 2 + 3 = 5 LB
+        var o1After = orders.find(order1).orElseThrow();
+        assertEquals("REVIEW", o1After.status());
+        assertNull(o1After.saleId(), "La venta previa se cancela para re-aprobar el consolidado");
+
+        var items = orders.items(order1);
+        assertEquals(1, items.size());
+        assertEquals(0, new BigDecimal("5.000").compareTo(items.get(0).quantity()), "Las cantidades de papa criolla deben sumarse (2 + 3 = 5)");
+
+        // Operator re-approves consolidated Order 1
+        var finalSale = sales.approve(order1, o1After.version(), "cajero1");
+        assertNotNull(finalSale.saleId());
+        assertEquals("APPROVED", orders.find(order1).orElseThrow().status());
     }
 }

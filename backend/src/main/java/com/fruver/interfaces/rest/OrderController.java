@@ -95,6 +95,14 @@ public class OrderController {
         return views.get(id);
     }
 
+    @PostMapping("/{id}/merge-into/{targetId}")
+    public java.util.Map<String, Object> mergeInto(@PathVariable long id, @PathVariable long targetId) {
+        edits.mergeIntoOrder(id, targetId, Actor.name());
+        hub.orderChanged(id);
+        hub.orderChanged(targetId);
+        return java.util.Map.of("status", "MERGED", "sourceOrderId", id, "targetOrderId", targetId);
+    }
+
     /** [PREGUNTAR AL CLIENTE] / [ENVIAR CONFIRMACION]: el empleado revisa y edita el texto antes de enviarlo. */
     @PostMapping("/{id}/reply")
     public OrderView reply(@PathVariable long id, @Valid @RequestBody ReplyBody b) {

@@ -71,6 +71,17 @@ public class OrderWriter {
                     """).param("addr", io.address()).param("id", orderId).update();
         }
 
+        if (io.deliveryTime() != null && !io.deliveryTime().isBlank()) {
+            String note = "Horario: " + io.deliveryTime().strip();
+            jdbc.sql("""
+                    UPDATE orders SET notes = CASE
+                        WHEN notes IS NULL OR notes = '' THEN :n
+                        WHEN notes NOT ILIKE '%' || :n || '%' THEN notes || ' | ' || :n
+                        ELSE notes END
+                    WHERE id = :id
+                    """).param("n", note).param("id", orderId).update();
+        }
+
         if (!io.items().isEmpty()) {
             jdbc.sql("DELETE FROM order_item WHERE order_id = :o").param("o", orderId).update();
             int line = 0;

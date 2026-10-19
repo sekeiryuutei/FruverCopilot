@@ -19,5 +19,5 @@ public final class Rows {
                            String reviewStatus, String aiStatus, String aiNote, String suggestedReply,
                            boolean corrected, int version, OffsetDateTime receivedAt, OffsetDateTime extractedAt,
                            OffsetDateTime approvedAt, String customerType, boolean hasAudio,
-                           Long saleId, String printStatus) {}
+                           Long saleId, String printStatus, OffsetDateTime dispatchedAt, String dispatchedBy) {}
 }

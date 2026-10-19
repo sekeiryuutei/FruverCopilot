@@ -53,11 +53,13 @@ public class GeminiOrderExtractor implements OrderExtractor {
                 <turnos_previos>%s</turnos_previos>
                 <pedido_actual>%s</pedido_actual>
                 <catalogo_candidato>%s</catalogo_candidato>
+                <zonas_domicilio>%s</zonas_domicilio>
                 <mensaje_cliente>%s</mensaje_cliente>
                 """.formatted(
                 join(request.recentTurns()),
                 join(request.currentItems()),
                 join(request.catalogCandidates()),
+                request.deliveryZones() == null ? "(No especificado)" : request.deliveryZones(),
                 request.message() == null ? "" : request.message());
 
         Map<String, Object> payload = Map.of(

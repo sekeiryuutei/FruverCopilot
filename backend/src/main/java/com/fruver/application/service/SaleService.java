@@ -2,6 +2,7 @@ package com.fruver.application.service;
 
 import com.fruver.application.dto.Quote;
 import com.fruver.application.dto.QuoteLine;
+import com.fruver.application.port.MessagingGateway;
 import com.fruver.domain.enums.CustomerType;
 import com.fruver.domain.enums.PriceType;
 import com.fruver.infrastructure.persistence.OrderRepository;
@@ -30,12 +31,17 @@ public class SaleService {
     private final OrderRepository orders;
     private final QuoteService quotes;
     private final AuditService audit;
+    private final MessagingGateway gateway;
+    private final SseHub hub;
 
-    public SaleService(JdbcClient jdbc, OrderRepository orders, QuoteService quotes, AuditService audit) {
+    public SaleService(JdbcClient jdbc, OrderRepository orders, QuoteService quotes, AuditService audit,
+                       MessagingGateway gateway, SseHub hub) {
         this.jdbc = jdbc;
         this.orders = orders;
         this.quotes = quotes;
         this.audit = audit;
+        this.gateway = gateway;
+        this.hub = hub;
     }
 
     @Transactional
@@ -105,7 +111,102 @@ public class SaleService {
         jdbc.sql("INSERT INTO print_job(sale_id, reprint) VALUES (:s, FALSE)").param("s", saleId).update();
         audit.log(user, "ORDER_APPROVED", orderId, saleId, Map.of("total", quote.total().toPlainString(),
                 "priceType", priceType.name(), "lines", items.size()));
+
+        // Envío automático de factura al cliente por WhatsApp (fallos no revierten la venta)
+        try {
+            sendInvoiceWhatsApp(saleId, user);
+        } catch (Exception ignored) {}
+
         return new SaleResult(saleId, orderId, "PRINT_PENDING", quote.total());
+    }
+
+    public String buildInvoiceWhatsAppText(long saleId) {
+        var sale = jdbc.sql("SELECT id, order_id, customer_name, address, notes, total FROM sale WHERE id = :id")
+                .param("id", saleId)
+                .query((rs, n) -> new Object[] {
+                        rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getString(4), rs.getString(5), rs.getBigDecimal(6)
+                }).optional().orElseThrow(() -> new ApiException(404, "SALE_NOT_FOUND", "Venta no encontrada"));
+
+        long oId = (Long) sale[1];
+        String name = (String) sale[2];
+        String address = (String) sale[3];
+        String notes = (String) sale[4];
+        BigDecimal total = (BigDecimal) sale[5];
+
+        var items = jdbc.sql("SELECT product_name, unit, quantity, applied_price, subtotal FROM sale_item WHERE sale_id = :id ORDER BY id")
+                .param("id", saleId)
+                .query((rs, n) -> new Object[] {
+                        rs.getString(1), rs.getString(2), rs.getBigDecimal(3), rs.getBigDecimal(4), rs.getBigDecimal(5)
+                }).list();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("🧾 *FruverCopilot - Factura de Venta*\n");
+        sb.append("Pedido #").append(oId).append("\n");
+        if (name != null && !name.isBlank()) sb.append("👤 Cliente: ").append(name).append("\n");
+        if (address != null && !address.isBlank()) sb.append("📍 Dirección: ").append(address).append("\n");
+        if (notes != null && !notes.isBlank()) sb.append("📝 Horario/Notas: ").append(notes).append("\n");
+        sb.append("\n*Detalle de productos:*\n");
+        for (var it : items) {
+            String pName = (String) it[0];
+            String unit = (String) it[1];
+            BigDecimal qty = (BigDecimal) it[2];
+            BigDecimal price = (BigDecimal) it[3];
+            BigDecimal subtotal = (BigDecimal) it[4];
+            sb.append("• ").append(com.fruver.domain.service.Money.qty(qty)).append(" ").append(unit)
+                    .append(" ").append(pName)
+                    .append(" — ").append(com.fruver.domain.service.Money.format(subtotal))
+                    .append(" (").append(com.fruver.domain.service.Money.format(price)).append("/").append(unit).append(")\n");
+        }
+        sb.append("\n*TOTAL: ").append(com.fruver.domain.service.Money.format(total)).append(" COP*\n\n");
+        sb.append("¡Muchas gracias por su compra! Su pedido está preparado y pronto saldrá a despacho 🛵💨");
+        return sb.toString();
+    }
+
+    public void sendInvoiceWhatsApp(long saleId, String user) {
+        var row = jdbc.sql("SELECT customer_phone, order_id FROM sale WHERE id = :id")
+                .param("id", saleId)
+                .query((rs, n) -> new String[]{ rs.getString(1), String.valueOf(rs.getLong(2)) })
+                .optional().orElseThrow(() -> new ApiException(404, "SALE_NOT_FOUND", "Venta no encontrada"));
+        String phone = row[0];
+        long orderId = Long.parseLong(row[1]);
+        if (phone == null || phone.isBlank()) {
+            throw new ApiException(400, "NO_PHONE", "El pedido no tiene teléfono registrado");
+        }
+        String invoiceText = buildInvoiceWhatsAppText(saleId);
+        String delivery;
+        try {
+            delivery = gateway.sendText(phone, invoiceText).name();
+        } catch (Exception e) {
+            delivery = "FAILED";
+        }
+        jdbc.sql("INSERT INTO conversation_message(order_id, direction, message_type, content, delivery_status) VALUES (:o, 'OUTBOUND', 'TEXT', :c, :d)")
+                .param("o", orderId).param("c", invoiceText).param("d", delivery).update();
+        audit.log(user, "INVOICE_WHATSAPP_SENT", orderId, saleId, Map.of("delivery", delivery));
+    }
+
+    @Transactional
+    public void dispatch(long saleId, String user) {
+        var sale = jdbc.sql("SELECT order_id, customer_phone, address FROM sale WHERE id = :id FOR UPDATE")
+                .param("id", saleId)
+                .query((rs, n) -> new Object[]{ rs.getLong(1), rs.getString(2), rs.getString(3) })
+                .optional().orElseThrow(() -> new ApiException(404, "SALE_NOT_FOUND", "Venta no encontrada"));
+        long orderId = (Long) sale[0];
+        String phone = (String) sale[1];
+        String address = (String) sale[2];
+
+        jdbc.sql("UPDATE sale SET dispatched_at = now(), dispatched_by = :u WHERE id = :id").param("u", user).param("id", saleId).update();
+        jdbc.sql("UPDATE orders SET dispatched_at = now(), dispatched_by = :u, version = version + 1 WHERE id = :id").param("u", user).param("id", orderId).update();
+        audit.log(user, "ORDER_DISPATCHED", orderId, saleId, Map.of());
+
+        if (phone != null && !phone.isBlank()) {
+            String msg = "🛵💨 *¡Tu pedido va en camino!*\nEl domiciliario ha salido hacia tu dirección"
+                    + (address != null && !address.isBlank() ? ": " + address : "") + ".\n¡Pronto llegará! Gracias por tu confianza.";
+            try {
+                var del = gateway.sendText(phone, msg).name();
+                jdbc.sql("INSERT INTO conversation_message(order_id, direction, message_type, content, delivery_status) VALUES (:o, 'OUTBOUND', 'TEXT', :c, :d)")
+                        .param("o", orderId).param("c", msg).param("d", del).update();
+            } catch (Exception ignored) {}
+        }
     }
 
     /** Reimprimir/reintentar NO crea otra venta: solo encola otro trabajo de impresion. */

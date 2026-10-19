@@ -53,10 +53,34 @@ public class OrderViewService {
         QuoteService.PriceBook book = quotes.priceBook(itemsByOrder.values().stream()
                 .flatMap(List::stream).map(ItemRow::productId).toList());
         Map<Long, String> texts = new HashMap<>();
+        Map<Long, Integer> msgCounts = new HashMap<>();
         jdbc.sql("""
-                SELECT DISTINCT ON (order_id) order_id, content FROM conversation_message
-                WHERE order_id IN (:ids) AND direction = 'INBOUND' ORDER BY order_id, id DESC
-                """).param("ids", ids).query((rs, n) -> { texts.put(rs.getLong(1), rs.getString(2)); return 0; }).list();
+                SELECT order_id, count(*),
+                       (SELECT content FROM conversation_message cm2
+                        WHERE cm2.order_id = cm.order_id AND cm2.direction = 'INBOUND'
+                        ORDER BY id DESC LIMIT 1) AS last_inbound
+                FROM conversation_message cm
+                WHERE order_id IN (:ids)
+                GROUP BY order_id
+                """).param("ids", ids).query((rs, n) -> {
+                    long oid = rs.getLong(1);
+                    msgCounts.put(oid, rs.getInt(2));
+                    texts.put(oid, rs.getString(3));
+                    return 0;
+                }).list();
+
+        Map<Long, Long> pendingDispatchMap = new HashMap<>();
+        List<Long> custIds = rows.stream().map(OrderRow::customerId).filter(Objects::nonNull).distinct().toList();
+        if (!custIds.isEmpty()) {
+            jdbc.sql("""
+                    SELECT customer_id, id FROM orders
+                    WHERE customer_id IN (:cids) AND status = 'APPROVED' AND dispatched_at IS NULL
+                    ORDER BY id DESC
+                    """).param("cids", custIds).query((rs, n) -> {
+                        pendingDispatchMap.putIfAbsent(rs.getLong(1), rs.getLong(2));
+                        return 0;
+                    }).list();
+        }
 
         List<OrderView> out = new ArrayList<>();
         for (OrderRow r : rows) {
@@ -66,12 +90,15 @@ public class OrderViewService {
             Map<Long, QuoteLine> byItem = quote.lines().stream().collect(Collectors.toMap(QuoteLine::itemId, l -> l));
             List<ItemView> itemViews = items.stream().map(i -> toView(i, byItem.get(i.id()))).toList();
             boolean active = "REVIEW".equals(r.status());
+            Long pendingDispatchOrderId = (!"APPROVED".equals(r.status()) && r.customerId() != null)
+                    ? pendingDispatchMap.get(r.customerId()) : null;
             out.add(new OrderView(r.id(), r.version(), r.status(), r.conversationStatus(), r.reviewStatus(),
                     r.inputType(), r.aiStatus(), r.aiNote(), r.suggestedReply(),
                     active ? ConfirmationMessageBuilder.build(quote) : null,
                     new OrderView.CustomerInfo(r.customerId(), r.customerName(), Phones.mask(r.customerPhone()), r.customerType()),
                     r.address(), r.notes(), r.receivedAt(), texts.get(r.id()), r.hasAudio(), r.corrected(),
-                    itemViews, quote.total(), quote.complete(), r.saleId(), r.printStatus()));
+                    itemViews, quote.total(), quote.complete(), r.saleId(), r.printStatus(),
+                    r.dispatchedAt(), r.dispatchedBy(), msgCounts.getOrDefault(r.id(), 0), pendingDispatchOrderId));
         }
         return out;
     }

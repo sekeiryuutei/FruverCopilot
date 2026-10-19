@@ -13,10 +13,15 @@ public record InterpretedOrder(
         ConversationAction action,
         String customerMessage,
         String note,
-        String address) {
+        String address,
+        String deliveryTime) {
+
+    public InterpretedOrder(List<Item> items, ReviewStatus review, ConversationAction action, String customerMessage, String note, String address) {
+        this(items, review, action, customerMessage, note, address, null);
+    }
 
     public InterpretedOrder(List<Item> items, ReviewStatus review, ConversationAction action, String customerMessage, String note) {
-        this(items, review, action, customerMessage, note, null);
+        this(items, review, action, customerMessage, note, null, null);
     }
 
     public record Item(

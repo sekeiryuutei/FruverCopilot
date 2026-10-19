@@ -25,11 +25,13 @@ public class SaleController {
     private final SseHub hub;
     private final TicketService tickets;
     private final com.fruver.config.AppProperties props;
+    private final DeliveryZoneService deliveryZones;
     private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
     public SaleController(SalesQueryService salesQuery, SaleService sales, ReportService reports, CustomerService customers,
                           SseHub hub, TicketService tickets, com.fruver.config.AppProperties props,
-                          org.springframework.jdbc.core.simple.JdbcClient jdbc) {
+                          org.springframework.jdbc.core.simple.JdbcClient jdbc,
+                          DeliveryZoneService deliveryZones) {
         this.salesQuery = salesQuery;
         this.sales = sales;
         this.reports = reports;
@@ -38,6 +40,7 @@ public class SaleController {
         this.tickets = tickets;
         this.props = props;
         this.jdbc = jdbc;
+        this.deliveryZones = deliveryZones;
     }
 
     @GetMapping("/sales")
@@ -148,6 +151,57 @@ public class SaleController {
     @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public void deleteAddress(@PathVariable long addressId) {
         customers.deleteAddress(addressId, Actor.name());
+    }
+
+    // Delivery Zones
+    @GetMapping("/delivery-zones")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public List<DeliveryZoneService.DeliveryZoneView> deliveryZones() {
+        return deliveryZones.list();
+    }
+
+    public record DeliveryZoneBody(
+            @jakarta.validation.constraints.NotBlank String name,
+            boolean covered,
+            java.math.BigDecimal fee,
+            java.math.BigDecimal minFree,
+            String estimatedTime
+    ) {}
+
+    @PostMapping("/delivery-zones")
+    @PreAuthorize("hasRole('ADMIN')")
+    public DeliveryZoneService.DeliveryZoneView createDeliveryZone(@Valid @RequestBody DeliveryZoneBody b) {
+        return deliveryZones.create(b.name(), b.covered(), b.fee(), b.minFree(), b.estimatedTime(), Actor.name());
+    }
+
+    @PutMapping("/delivery-zones/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public DeliveryZoneService.DeliveryZoneView updateDeliveryZone(@PathVariable long id, @Valid @RequestBody DeliveryZoneBody b) {
+        return deliveryZones.update(id, b.name(), b.covered(), b.fee(), b.minFree(), b.estimatedTime(), Actor.name());
+    }
+
+    @DeleteMapping("/delivery-zones/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public void deleteDeliveryZone(@PathVariable long id) {
+        deliveryZones.delete(id, Actor.name());
+    }
+
+    // Despacho de pedido facturado
+    @PostMapping("/sales/{id}/dispatch")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public Map<String, Object> dispatch(@PathVariable long id) {
+        sales.dispatch(id, Actor.name());
+        jdbc.sql("SELECT order_id FROM sale WHERE id = :id").param("id", id).query(Long.class).optional().ifPresent(hub::orderChanged);
+        return Map.of("status", "DISPATCHED");
+    }
+
+    // Reenvío manual de factura por WhatsApp
+    @PostMapping("/sales/{id}/send-whatsapp")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public Map<String, Object> sendWhatsAppInvoice(@PathVariable long id) {
+        sales.sendInvoiceWhatsApp(id, Actor.name());
+        jdbc.sql("SELECT order_id FROM sale WHERE id = :id").param("id", id).query(Long.class).optional().ifPresent(hub::orderChanged);
+        return Map.of("status", "SENT");
     }
 }
 

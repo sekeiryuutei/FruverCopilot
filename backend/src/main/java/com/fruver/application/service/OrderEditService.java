@@ -248,6 +248,81 @@ public class OrderEditService {
         audit.log(user, "ORDER_CANCELLED", orderId, null, Map.of());
     }
 
+    @Transactional
+    public void mergeIntoOrder(long sourceOrderId, long targetOrderId, String user) {
+        OrderRow source = orders.findForUpdate(sourceOrderId)
+                .orElseThrow(() -> new ApiException(404, "ORDER_NOT_FOUND", "Pedido origen no encontrado"));
+        OrderRow target = orders.findForUpdate(targetOrderId)
+                .orElseThrow(() -> new ApiException(404, "ORDER_NOT_FOUND", "Pedido destino no encontrado"));
+
+        if ("CANCELLED".equals(source.status()) || "APPROVED".equals(source.status())) {
+            throw new ApiException(409, "SOURCE_ORDER_INVALID", "El pedido a anexar ya está cerrado o cancelado");
+        }
+        if (target.dispatchedAt() != null) {
+            throw new ApiException(409, "TARGET_ALREADY_DISPATCHED", "El pedido destino ya fue despachado y no admite modificaciones");
+        }
+
+        // Si el pedido destino ya tenía venta generada (pero no despachada), se cancela la venta previa para que el operador re-apruebe el pedido consolidado
+        if (target.saleId() != null) {
+            long sId = target.saleId();
+            jdbc.sql("DELETE FROM print_job WHERE sale_id = :s").param("s", sId).update();
+            jdbc.sql("DELETE FROM sale_item WHERE sale_id = :s").param("s", sId).update();
+            jdbc.sql("DELETE FROM sale WHERE id = :s").param("s", sId).update();
+        }
+
+        List<ItemRow> sourceItems = orders.items(sourceOrderId);
+        List<ItemRow> targetItems = orders.items(targetOrderId);
+        int nextLine = targetItems.size();
+
+        for (ItemRow si : sourceItems) {
+            if (si.productId() == null) continue;
+            Optional<ItemRow> matching = targetItems.stream()
+                    .filter(ti -> Objects.equals(ti.productId(), si.productId()) && Objects.equals(ti.unit(), si.unit()))
+                    .findFirst();
+
+            if (matching.isPresent()) {
+                ItemRow m = matching.get();
+                BigDecimal newQty = (m.quantity() != null ? m.quantity() : BigDecimal.ZERO)
+                        .add(si.quantity() != null ? si.quantity() : BigDecimal.ZERO);
+                jdbc.sql("UPDATE order_item SET quantity = :q, edited = TRUE WHERE id = :id")
+                        .param("q", newQty).param("id", m.id()).update();
+            } else {
+                jdbc.sql("""
+                        INSERT INTO order_item(order_id, line_no, mentioned, product_id, quantity, unit, manual_price, price_change_reason, edited)
+                        VALUES (:o, :ln, :m, :p, :q, :u, :mp, :r, TRUE)
+                        """).param("o", targetOrderId).param("ln", nextLine++)
+                        .param("m", si.mentioned() != null ? si.mentioned() : "Adición")
+                        .param("p", si.productId()).param("q", si.quantity()).param("u", si.unit())
+                        .param("mp", si.manualPrice()).param("r", si.priceChangeReason()).update();
+            }
+        }
+
+        String combinedNotes = (target.notes() != null ? target.notes() : "");
+        if (source.notes() != null && !source.notes().isBlank()) {
+            combinedNotes = combinedNotes.isBlank() ? source.notes() : (combinedNotes + " | Anexo: " + source.notes());
+        }
+        jdbc.sql("""
+                UPDATE orders
+                SET status = 'REVIEW',
+                    conversation_status = 'CONFIRMED',
+                    review_status = 'GREEN',
+                    notes = :n,
+                    approved_at = NULL,
+                    version = version + 1
+                WHERE id = :id
+                """).param("n", combinedNotes).param("id", targetOrderId).update();
+
+        jdbc.sql("""
+                UPDATE orders
+                SET status = 'CANCELLED',
+                    notes = COALESCE(notes, '') || ' [Anexado al Pedido #' || :t || ']',
+                    version = version + 1
+                WHERE id = :s
+                """).param("t", targetOrderId).param("s", sourceOrderId).update();
+
+        audit.log(user, "ORDER_MERGED", sourceOrderId, null, Map.of("targetOrderId", targetOrderId));
+    }
+
     private void validate(ItemEdit e) {
         if (e.productId() == null) throw new ApiException(422, "ITEM_INVALID", "Cada linea necesita un producto del catálogo");
         if (e.quantity() == null || e.quantity().signum() <= 0 || e.quantity().compareTo(new BigDecimal("100000")) > 0) {
