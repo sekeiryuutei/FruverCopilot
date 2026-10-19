@@ -240,7 +240,7 @@ public class OrderProcessingService {
             sb.append("¡Hola! \uD83D\uDC4B Sí tenemos disponible:\n\n");
             for (var p : matches) {
                 BigDecimal pr = p.prices().get("RETAIL");
-                String fPr = pr != null ? "$" + Money.format(pr) : "precio a consultar";
+                String fPr = pr != null ? Money.format(pr) : "precio a consultar";
                 sb.append("• ").append(p.name()).append(": ").append(fPr).append(" / ").append(p.unit()).append("\n");
             }
             sb.append("\n¿Deseas que te preparemos alguna cantidad? Puedes enviarnos un texto o audio \uD83D\uDE0A");
@@ -253,7 +253,7 @@ public class OrderProcessingService {
             }
             for (var p : all) {
                 BigDecimal pr = p.prices().get("RETAIL");
-                String fPr = pr != null ? "$" + Money.format(pr) : "precio a consultar";
+                String fPr = pr != null ? Money.format(pr) : "precio a consultar";
                 sb.append("• ").append(p.name()).append(": ").append(fPr).append(" / ").append(p.unit()).append("\n");
             }
             sb.append("\n¡Puedes enviarnos tu pedido por aquí en texto o nota de voz cuando desees! \uD83E\uDD51\uD83C\uDF45");
