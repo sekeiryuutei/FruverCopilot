@@ -29,13 +29,20 @@ public class GeminiOrderExtractor implements OrderExtractor {
     private static final Logger log = LoggerFactory.getLogger(GeminiOrderExtractor.class);
 
     private final RestClient http;
-    private final String model;
+    private final List<String> candidateModels;
     private final String apiKey;
     private final ObjectMapper mapper;
 
     public GeminiOrderExtractor(RestClient.Builder builder, AppProperties props, ObjectMapper mapper) {
         this.http = builder.baseUrl(props.ai().gemini().baseUrl()).build();
-        this.model = props.ai().gemini().model();
+        java.util.List<String> list = new java.util.ArrayList<>();
+        if (props.ai().gemini().model() != null && !props.ai().gemini().model().isBlank()) {
+            list.add(props.ai().gemini().model().strip());
+        }
+        for (String m : java.util.List.of("gemini-3.7-flash", "gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite")) {
+            if (!list.contains(m)) list.add(m);
+        }
+        this.candidateModels = java.util.List.copyOf(list);
         this.apiKey = props.ai().gemini().apiKey();
         this.mapper = mapper;
     }
@@ -70,48 +77,55 @@ public class GeminiOrderExtractor implements OrderExtractor {
         );
 
         JsonNode root = null;
-        for (int attempt = 1; attempt <= 4; attempt++) {
-            try {
-                root = http.post()
-                        .uri("/v1beta/models/" + model + ":generateContent")
-                        .header("x-goog-api-key", apiKey)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(payload)
-                        .retrieve()
-                        .body(JsonNode.class);
-                break;
-            } catch (org.springframework.web.client.RestClientResponseException e) {
-                int status = e.getStatusCode().value();
-                if ((status == 503 || status == 429) && attempt < 4) {
-                    long waitMs = (status == 429) ? attempt * 5000L : attempt * 1500L;
-                    log.warn("Gemini ocupado (HTTP {}), reintentando ({}/4) en {}ms...", status, attempt, waitMs);
-                    try {
-                        Thread.sleep(waitMs);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw new ExtractionUnavailableException("Interrumpido durante reintento de Gemini", ie);
+        Exception lastException = null;
+
+        for (String candidateModel : candidateModels) {
+            boolean modelSucceeded = false;
+            for (int attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    root = http.post()
+                            .uri("/v1beta/models/" + candidateModel + ":generateContent")
+                            .header("x-goog-api-key", apiKey)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .body(payload)
+                            .retrieve()
+                            .body(JsonNode.class);
+                    modelSucceeded = true;
+                    break;
+                } catch (org.springframework.web.client.RestClientResponseException e) {
+                    lastException = e;
+                    int status = e.getStatusCode().value();
+                    if (status == 429 || status == 404) {
+                        log.warn("Gemini modelo '{}' no disponible (HTTP {}), cambiando inmediatamente al modelo de respaldo...", candidateModel, status);
+                        break; // pasa al siguiente modelo
                     }
-                    continue;
-                }
-                log.warn("Fallo en extracción con Gemini (HTTP {}): {}", status, e.getMessage());
-                throw new ExtractionUnavailableException("Fallo la extracción con Gemini: " + e.getClass().getSimpleName(), e);
-            } catch (org.springframework.web.client.ResourceAccessException e) {
-                if (attempt < 4) {
-                    log.warn("Error de conexión con Gemini ({}), reintentando ({}/4)...", e.getMessage(), attempt);
-                    try {
-                        Thread.sleep(attempt * 2000L);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw new ExtractionUnavailableException("Interrumpido durante reintento de Gemini", ie);
+                    if (status == 503 && attempt < 2) {
+                        log.warn("Gemini modelo '{}' con 503, reintentando...", candidateModel);
+                        try { Thread.sleep(1500L); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                        continue;
                     }
-                    continue;
+                    log.warn("Gemini modelo '{}' falló (HTTP {}): {}", candidateModel, status, e.getMessage());
+                    break;
+                } catch (org.springframework.web.client.ResourceAccessException e) {
+                    lastException = e;
+                    log.warn("Error de conexión con Gemini modelo '{}': {}", candidateModel, e.getMessage());
+                    if (attempt < 2) {
+                        try { Thread.sleep(1000L); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                    }
+                } catch (Exception e) {
+                    lastException = e;
+                    log.warn("Error inesperado en Gemini modelo '{}': {}", candidateModel, e.getMessage());
+                    break;
                 }
-                log.warn("Fallo de conexión persistente con Gemini: {}", e.getMessage());
-                throw new ExtractionUnavailableException("Fallo la conexión con Gemini: " + e.getClass().getSimpleName(), e);
-            } catch (Exception e) {
-                log.warn("Fallo en extracción con Gemini: {}", e.getMessage());
-                throw new ExtractionUnavailableException("Fallo la extracción con Gemini: " + e.getClass().getSimpleName(), e);
             }
+            if (modelSucceeded && root != null) {
+                break;
+            }
+        }
+
+        if (root == null) {
+            String msg = lastException != null ? lastException.getClass().getSimpleName() : "sin respuesta";
+            throw new ExtractionUnavailableException("Fallo la extracción con Gemini en todos los modelos: " + msg, lastException);
         }
 
         try {

@@ -204,6 +204,21 @@ class SaleFlowIntegrationTest {
         assertNull(views.get(order).saleId(), "una confirmacion o respuesta NO es una venta");
     }
 
+    @Test void consecutiveMessagesAttachToSameActiveOrderWithoutCreatingDuplicates() {
+        String phone = "570000000099";
+        when(extractor.extract(any())).thenReturn(new AIOrderResponse(
+                List.of(), ConversationAction.NONE, null, "Saludo"));
+        ingest.ingestText(phone, "Cliente", "ext-1", "Hola");
+        long order = awaitReview(phone);
+
+        when(extractor.extract(any())).thenReturn(papaCriolla("3", "LB"));
+        ingest.ingestText(phone, "Cliente", "ext-2", "Necesito 3 libras de papa criolla");
+        await().atMost(10, TimeUnit.SECONDS).until(() -> !orders.items(order).isEmpty());
+
+        assertEquals(1, jdbc.sql("SELECT count(*) FROM orders WHERE customer_phone = :p").param("p", phone).query(Integer.class).single());
+        assertEquals(2, jdbc.sql("SELECT count(*) FROM conversation_message WHERE order_id = :o AND direction = 'INBOUND'").param("o", order).query(Integer.class).single());
+    }
+
     @Test void sameProductOnTwoLinesIsRejectedByTheServer() {
         long order = newOrder("570000000010", papaCriolla("2", "LB"));
         var row = orders.find(order).orElseThrow();

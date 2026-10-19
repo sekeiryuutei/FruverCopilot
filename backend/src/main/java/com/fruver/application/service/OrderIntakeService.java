@@ -37,15 +37,17 @@ public class OrderIntakeService {
                 """).param("n", name).param("p", phone)
                 .query((rs, i) -> new CustomerRef(rs.getLong(1), rs.getString(2))).single();
 
-        var waiting = jdbc.sql("""
-                SELECT id FROM orders WHERE customer_id = :c AND conversation_status = 'WAITING_FOR_CUSTOMER'
-                AND status IN ('RECEIVED','PROCESSING','REVIEW') ORDER BY id DESC LIMIT 1 FOR UPDATE
+        var activeOrder = jdbc.sql("""
+                SELECT id FROM orders WHERE customer_id = :c
+                AND status IN ('RECEIVED','PROCESSING','REVIEW')
+                AND received_at >= NOW() - INTERVAL '12 hours'
+                ORDER BY id DESC LIMIT 1 FOR UPDATE
                 """).param("c", customer.id()).query(Long.class).optional();
 
         long orderId;
-        boolean reply = waiting.isPresent();
+        boolean reply = activeOrder.isPresent();
         if (reply) {
-            orderId = waiting.get();
+            orderId = activeOrder.get();
             jdbc.sql("UPDATE orders SET status = 'PROCESSING', ai_status = 'PENDING', conversation_status = 'READY_FOR_REVIEW' WHERE id = :id")
                     .param("id", orderId).update();
         } else {

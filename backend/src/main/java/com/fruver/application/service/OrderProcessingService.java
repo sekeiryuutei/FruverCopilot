@@ -174,12 +174,16 @@ public class OrderProcessingService {
             }
 
             // Si no está confirmado en GREEN o requiere revisión:
-            // Siempre responde saludando y avisando que estamos revisando su pedido
-            String ack = "¡Hola! \uD83D\uDC4B Gracias por comunicarte con FruverCopilot. "
-                    + "Hemos recibido tu pedido y lo estamos revisando. En un momento te confirmamos.";
-            conversation.send(orderId, ack, ConversationService.Kind.INFO, "ia");
+            // Responde avisando que estamos revisando su pedido (solo si es el primer contacto del pedido)
+            boolean hasPriorOutbound = conversation.messages(orderId).stream()
+                    .anyMatch(m -> "OUTBOUND".equals(m.direction()));
+            if (!hasPriorOutbound) {
+                String ack = "¡Hola! \uD83D\uDC4B Gracias por comunicarte con FruverCopilot. "
+                        + "Hemos recibido tu pedido y lo estamos revisando. En un momento te confirmamos.";
+                conversation.send(orderId, ack, ConversationService.Kind.INFO, "ia");
+            }
 
-            // Si hay una pregunta de aclaración específica (ASK_CUSTOMER), envíala a continuación
+            // Si hay una pregunta de aclaración específica (ASK_CUSTOMER), envíala
             if (io.action() == ConversationAction.ASK_CUSTOMER && io.customerMessage() != null) {
                 conversation.send(orderId, io.customerMessage(), ConversationService.Kind.ASK, "ia");
             }

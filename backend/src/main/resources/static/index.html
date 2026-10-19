@@ -209,7 +209,7 @@ function card(o){
     catch(e){toast(e.code==='ORDER_REQUIRES_REVIEW'?'Falta revisar: '+(e.details||[]).join('; '):(e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message));if(e.code==='ORDER_CONFLICT'){delete S.draft[o.id];loadOrders()}}finally{approve.disabled=false}};
   el.append(h('div',{class:'row'},h('button',{class:'b',onclick:addRow},'+ Producto'),
     h('button',{class:'b',onclick:async()=>{try{await save(o,view);delete S.draft[o.id];toast('Guardado');loadOrders()}catch(e){toast((e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message));if(e.code==='ORDER_CONFLICT'){delete S.draft[o.id];loadOrders()}}}},'Guardar'),
-    h('button',{class:'b',onclick:()=>replyPanel(el,o,'ASK',o.suggestedReply||'')},'Preguntar al cliente'),
+    h('button',{class:'b',onclick:()=>replyPanel(el,o,o.suggestedReply?'ASK':'INFO',o.suggestedReply||'')},'💬 Mensaje al cliente'),
     o.confirmationDraft?h('button',{class:'b',onclick:()=>replyPanel(el,o,'CONFIRM',o.confirmationDraft)},'Enviar confirmación'):null,
     h('button',{class:'b danger',onclick:async()=>{if(confirm('¿Cancelar el pedido #'+o.id+'?')){try{await api(`/api/orders/${o.id}/cancel`,{method:'POST',body:{version:o.version}});delete S.draft[o.id];loadOrders()}catch(e){toast((e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message))}}}},'Cancelar'),
     h('span',{class:'sp',style:'flex:1'}),h('span',{},'Total '),totalEl,approve));
@@ -222,10 +222,36 @@ async function save(o,d){
   const items=payloadItems(d.items);                      // une repetidas antes de enviar; el servidor también las rechaza
   const body={version:d.version,address:d.address,notes:d.notes,items:items.map(i=>({id:i.id,productId:i.productId,quantity:i.quantity,unit:i.unit,manualPrice:i.manualPrice,priceChangeReason:i.reason}))};
   const r=await api(`/api/orders/${o.id}`,{method:'PUT',body});d.version=r.version;return r}
-function replyPanel(el,o,kind,text){el.querySelector('.reply')?.remove();const ta=h('textarea',{rows:4,style:'width:100%'});ta.value=text;
-  el.append(h('div',{class:'conv reply'},h('div',{class:'mut'},kind==='ASK'?'Mensaje al cliente (edítalo si quieres):':'Confirmación al cliente (el total lo calculó el sistema):'),ta,
-    h('div',{class:'row'},h('button',{class:'b main',onclick:async()=>{try{await api(`/api/orders/${o.id}/reply`,{method:'POST',body:{message:ta.value,kind}});toast('Mensaje registrado/enviado');loadOrders()}catch(e){toast((e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message))}}},'ENVIAR'),
-      h('button',{class:'b',onclick:()=>el.querySelector('.reply').remove()},'Cancelar'))))}
+function replyPanel(el,o,kind,text){
+  el.querySelector('.reply')?.remove();
+  const ta=h('textarea',{rows:4,style:'width:100%;font-size:14px;padding:8px;box-sizing:border-box;border-radius:6px;border:1px solid #444;background:#181818;color:#fff;'});
+  ta.value=text;
+  const sendBtn=h('button',{class:'b main'},'ENVIAR POR WHATSAPP');
+  const cancelBtn=h('button',{class:'b',onclick:()=>el.querySelector('.reply')?.remove()},'Cancelar');
+  sendBtn.onclick=async()=>{
+    const msg=ta.value.trim();
+    if(!msg){toast('Escribe un mensaje antes de enviar');return}
+    sendBtn.disabled=true;cancelBtn.disabled=true;ta.disabled=true;
+    sendBtn.textContent='Enviando... ⏳';
+    try{
+      await api(`/api/orders/${o.id}/reply`,{method:'POST',body:{message:msg,kind}});
+      toast('✓ Mensaje enviado al cliente por WhatsApp');
+      el.querySelector('.reply')?.remove();
+      await loadOrders();
+    }catch(e){
+      sendBtn.disabled=false;cancelBtn.disabled=false;ta.disabled=false;
+      sendBtn.textContent='ENVIAR POR WHATSAPP';
+      toast((e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message));
+    }
+  };
+  el.append(h('div',{class:'conv reply',style:'margin-top:10px;padding:12px;background:#142217;border:1px solid var(--g);border-radius:8px'},
+    h('div',{class:'mut',style:'font-weight:600;margin-bottom:6px'},
+      kind==='ASK'?'Pregunta / aclaración al cliente (por WhatsApp):':
+      kind==='CONFIRM'?'Confirmación al cliente (el total lo calculó el sistema):':
+      'Mensaje directo al cliente (por WhatsApp):'),
+    ta,h('div',{class:'row',style:'margin-top:8px'},sendBtn,cancelBtn)));
+  ta.focus();
+}
 
 /* ---------- Ventas ---------- */
 async function renderSales(){const m=$('#main');const today=new Date().toISOString().slice(0,10);const from=h('input',{type:'date',value:today}),to=h('input',{type:'date',value:today}),q=h('input',{placeholder:'Cliente, teléfono, dirección'});
@@ -273,6 +299,18 @@ function nav(){const tabs=[['ops','Operación'],['sales','Ventas']];if(S.me.role
 function show(){({ops:()=>{renderOps()},sales:renderSales,prices:renderPrices,customers:renderCustomers,reports:renderReports})[S.tab]()}
 $('#logout').onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'X-XSRF-TOKEN':csrf()}});location='/login.html'};
 (async()=>{S.me=await api('/api/me');S.products=await api('/api/products');fillDl();nav();await loadOrders();
-  let t;const es=new EventSource('/api/stream');es.addEventListener('orders',()=>{clearTimeout(t);t=setTimeout(async()=>{if(S.tab==='ops'){try{await loadOrders()}catch(e){}}},300)});
-  setInterval(()=>document.querySelectorAll('.ago').forEach(x=>{x.textContent=ago(x.dataset.t)}),30000)})();
+  let t;
+  const connectSse=()=>{
+    try{
+      const es=new EventSource('/api/stream');
+      es.addEventListener('orders',()=>{clearTimeout(t);t=setTimeout(async()=>{if(S.tab==='ops'){try{await loadOrders()}catch(e){}}},300)});
+      es.onerror=()=>{try{es.close()}catch(x){}setTimeout(connectSse,5000)};
+    }catch(e){}
+  };
+  connectSse();
+  // Auto-actualización periódica de respaldo (cada 3.5 segundos en operaciones):
+  setInterval(async()=>{
+    if(S.tab==='ops'&&!loading){try{await loadOrders()}catch(e){}}
+  },3500);
+  setInterval(()=>document.querySelectorAll('.ago').forEach(x=>{x.textContent=ago(x.dataset.t)}),15000)})();
 </script></body></html>

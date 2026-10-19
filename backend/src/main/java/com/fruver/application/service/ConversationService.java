@@ -33,23 +33,36 @@ public class ConversationService {
     }
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ConversationService.class);
+    private final java.util.Map<String, java.time.Instant> recentSends = new java.util.concurrent.ConcurrentHashMap<>();
 
     /** La llamada al proveedor ocurre SIN transaccion; el registro posterior es atomico. */
     public void send(long orderId, String text, Kind kind, String actor) {
         if (text == null || text.isBlank() || text.length() > 1000) {
             throw new ApiException(400, "VALIDATION_ERROR", "Mensaje invalido");
         }
+        String cleanText = text.strip();
+        String dedupKey = orderId + ":" + cleanText;
+        var now = java.time.Instant.now();
+        var lastSent = recentSends.get(dedupKey);
+        if (lastSent != null && java.time.Duration.between(lastSent, now).toSeconds() < 8) {
+            log.warn("Mensaje duplicado descartado por protección antirrebote para pedido {}: {}", orderId, cleanText);
+            return;
+        }
+        recentSends.put(dedupKey, now);
+        if (recentSends.size() > 500) {
+            recentSends.entrySet().removeIf(e -> java.time.Duration.between(e.getValue(), now).toMinutes() > 5);
+        }
         String phone = jdbc.sql("SELECT customer_phone FROM orders WHERE id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW')")
                 .param("id", orderId).query(String.class).optional()
                 .orElseThrow(() -> new ApiException(409, "ORDER_NOT_ACTIVE", "El pedido no admite mensajes"));
         String delivery;
         try {
-            delivery = gateway.sendText(phone, text.strip()).name();
+            delivery = gateway.sendText(phone, cleanText).name();
         } catch (MessagingUnavailableException e) {
             log.warn("Fallo envio por WhatsApp para pedido {}: {}", orderId, e.getMessage());
             delivery = "FAILED";
         }
-        persistSend(orderId, text.strip(), delivery, kind, actor);
+        persistSend(orderId, cleanText, delivery, kind, actor);
         hub.orderChanged(orderId);
     }
 
