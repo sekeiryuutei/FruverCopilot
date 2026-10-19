@@ -103,6 +103,10 @@ public class WhatsAppWebhookController {
 
     private boolean validSignature(String body, String header) {
         String secret = props.whatsapp().appSecret();
+        if ("ignore".equalsIgnoreCase(secret) || "bypass".equalsIgnoreCase(secret) || "none".equalsIgnoreCase(secret)) {
+            log.warn("Verificación HMAC de WhatsApp omitida intencionalmente (WHATSAPP_APP_SECRET='{}'). Válido únicamente en desarrollo.", secret);
+            return true;
+        }
         if (secret == null || secret.isBlank() || header == null) return false; // sin secreto configurado, se rechaza todo
         try {
             Mac mac = Mac.getInstance("HmacSHA256");

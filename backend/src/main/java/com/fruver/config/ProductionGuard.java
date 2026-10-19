@@ -36,8 +36,11 @@ public class ProductionGuard {
         }
         if (props.whatsapp() != null && props.whatsapp().enabled()) {
             if (props.whatsapp().appSecret() == null || props.whatsapp().appSecret().isBlank()
-                    || props.whatsapp().appSecret().length() < 16) {
-                throw new IllegalStateException("WHATSAPP_APP_SECRET obligatorio en prod si WHATSAPP_ENABLED=true");
+                    || props.whatsapp().appSecret().length() < 16
+                    || "ignore".equalsIgnoreCase(props.whatsapp().appSecret())
+                    || "bypass".equalsIgnoreCase(props.whatsapp().appSecret())
+                    || "none".equalsIgnoreCase(props.whatsapp().appSecret())) {
+                throw new IllegalStateException("WHATSAPP_APP_SECRET obligatorio y valido en prod si WHATSAPP_ENABLED=true");
             }
             if (props.whatsapp().verifyToken() == null || props.whatsapp().verifyToken().isBlank()
                     || props.whatsapp().verifyToken().contains("change_me")) {
