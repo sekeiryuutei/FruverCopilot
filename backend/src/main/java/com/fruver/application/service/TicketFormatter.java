@@ -36,6 +36,7 @@ public final class TicketFormatter {
         out.add(new TicketLine(leftRight("TOTAL", Money.format(t.total()), cols), true));
         out.add(new TicketLine(sep, false));
         if (t.address() != null && !t.address().isBlank()) wrap("DIRECCION: " + t.address(), cols, false, out);
+        if (t.deliveryPersonName() != null && !t.deliveryPersonName().isBlank()) wrap("REPARTIDOR: " + t.deliveryPersonName(), cols, true, out);
         if (t.notes() != null && !t.notes().isBlank()) wrap("OBS: " + t.notes(), cols, false, out);
         out.add(new TicketLine(sep, false));
         return out;

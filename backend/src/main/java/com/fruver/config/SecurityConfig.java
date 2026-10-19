@@ -51,7 +51,7 @@ public class SecurityConfig {
                     .referrerPolicy(r -> r.policy(org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.SAME_ORIGIN))
                     .contentSecurityPolicy(csp -> csp.policyDirectives(
                             "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
-                            + "img-src 'self' data:; media-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")))
+                            + "img-src 'self' data: https: http:; media-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")))
             .sessionManagement(s -> s
                     .sessionFixation(f -> f.migrateSession())
                     .maximumSessions(2)

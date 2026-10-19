@@ -98,7 +98,8 @@ public class OrderViewService {
                     new OrderView.CustomerInfo(r.customerId(), r.customerName(), Phones.mask(r.customerPhone()), r.customerType()),
                     r.address(), r.notes(), r.receivedAt(), texts.get(r.id()), r.hasAudio(), r.corrected(),
                     itemViews, quote.total(), quote.complete(), r.saleId(), r.printStatus(),
-                    r.dispatchedAt(), r.dispatchedBy(), msgCounts.getOrDefault(r.id(), 0), pendingDispatchOrderId));
+                    r.dispatchedAt(), r.dispatchedBy(), msgCounts.getOrDefault(r.id(), 0), pendingDispatchOrderId,
+                    r.deliveryPersonId(), r.deliveryPersonName()));
         }
         return out;
     }

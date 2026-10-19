@@ -7,7 +7,7 @@ import java.time.OffsetDateTime;
 public final class Rows {
     private Rows() {}
 
-    public record ProductRow(Long id, String name, String unit, boolean active) {}
+    public record ProductRow(Long id, String name, String unit, boolean active, String imageUrl) {}
 
     public record ItemRow(Long id, Long orderId, int lineNo, String mentioned, String aiProductName,
                           BigDecimal aiQuantity, String aiUnit, boolean aiAmbiguous, String observation,
@@ -19,5 +19,6 @@ public final class Rows {
                            String reviewStatus, String aiStatus, String aiNote, String suggestedReply,
                            boolean corrected, int version, OffsetDateTime receivedAt, OffsetDateTime extractedAt,
                            OffsetDateTime approvedAt, String customerType, boolean hasAudio,
-                           Long saleId, String printStatus, OffsetDateTime dispatchedAt, String dispatchedBy) {}
+                           Long saleId, String printStatus, OffsetDateTime dispatchedAt, String dispatchedBy,
+                           Long deliveryPersonId, String deliveryPersonName) {}
 }

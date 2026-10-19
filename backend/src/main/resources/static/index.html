@@ -45,7 +45,7 @@ async function api(path,opt={}){const o={method:'GET',headers:{},...opt};if(o.bo
   if(o.method!=='GET')o.headers['X-XSRF-TOKEN']=csrf();
   const r=await fetch(path,o);if(r.status===401){location='/login.html';throw new Error('401')}
   const j=r.status===204?null:await r.json().catch(()=>null);if(!r.ok){const e=new Error(j?.message||'Error '+r.status);e.code=j?.code;e.details=j?.details;throw e}return j}
-const S={me:null,products:[],orders:[],draft:{},open:{},openConvs:new Set(),tab:'ops'};
+const S={me:null,products:[],orders:[],deliveryPersons:[],draft:{},open:{},openConvs:new Set(),tab:'ops'};
 const byName=n=>S.products.find(p=>p.name.toLowerCase()===String(n).trim().toLowerCase());
 const ago=t=>{const s=Math.max(0,(Date.now()-new Date(t))/1000);return s<60?Math.round(s)+' s':s<3600?Math.round(s/60)+' min':Math.round(s/3600)+' h'};
 
@@ -54,7 +54,7 @@ const ago=t=>{const s=Math.max(0,(Date.now()-new Date(t))/1000);return s<60?Math
 const round3=n=>Math.round(n*1000)/1000;
 /** Firma barata de un pedido: si no cambia, su tarjeta NO se vuelve a dibujar (sin parpadeo). */
 function orderSig(o){return JSON.stringify([o.version,o.status,o.reviewStatus,o.conversationStatus,o.aiStatus,o.printStatus,o.saleId,o.total,
-  o.suggestedReply,o.confirmationDraft,o.messageText,o.customer?.name,o.customer?.type,o.address,o.notes,o.dispatchedAt||null,o.messageCount||0,o.pendingDispatchOrderId||null,
+  o.suggestedReply,o.confirmationDraft,o.messageText,o.customer?.name,o.customer?.type,o.address,o.notes,o.deliveryPersonId||null,o.deliveryPersonName||null,o.dispatchedAt||null,o.messageCount||0,o.pendingDispatchOrderId||null,
   (o.items||[]).map(i=>[i.id,i.productId,i.quantity,i.unit,i.manualPrice,i.problem])])}
 /** Otra línea del pedido con el mismo producto y la misma unidad (el precio es por unidad del producto). */
 function findTwin(items,it){return items.find(x=>x!==it&&x.productId&&x.productId===it.productId&&x.unit===it.unit)}
@@ -96,7 +96,7 @@ let loading=false,again=false;
 async function loadOrders(){if(loading){again=true;return}loading=true;
   try{S.orders=await api('/api/orders');if(S.tab==='ops')renderOps()}finally{loading=false;if(again){again=false;loadOrders()}}}
 function draftOf(o){return S.draft[o.id]||null}
-function buildDraft(o){return S.draft[o.id]||{version:o.version,customerName:o.customer.name||'',address:o.address||'',notes:o.notes||'',
+function buildDraft(o){return S.draft[o.id]||{version:o.version,customerName:o.customer.name||'',address:o.address||'',notes:o.notes||'',deliveryPersonId:o.deliveryPersonId||null,
   items:o.items.map(i=>({id:i.id,name:i.productName||i.mentioned||'',productId:i.productId,quantity:i.quantity,unit:i.unit||'LB',manualPrice:i.manualPrice,reason:i.priceChangeReason}))}}
 function priceFor(o,it){const p=S.products.find(x=>x.id===it.productId);if(it.manualPrice!=null)return it.manualPrice;return p?(p.prices[o.customer.type]??null):null}
 function totalOf(o,d){return d.items.reduce((s,it)=>{if(it.qtyError||it.priceError)return s;const p=priceFor(o,it);return s+(p!=null&&it.quantity>0?Math.round(it.quantity*p):0)},0)}
@@ -116,7 +116,10 @@ function renderOps(){
   const existing=new Map([...m.children].filter(n=>n.classList.contains('card')).map(n=>[n.dataset.id,n]));
   const opsBar = existing.get('toolbar') || h('div',{class:'card',dataset:{id:'toolbar'},style:'display:flex;justify-content:space-between;align-items:center;padding:10px 14px;margin-bottom:12px;border-left:5px solid var(--g);flex-wrap:wrap;gap:8px'},
     h('div',{},h('b',{style:'font-size:16px'},'Tablero de Operación'),h('span',{class:'mut',style:'margin-left:10px'},`Activos: ${active.length} · Finalizados hoy: ${done.length}`)),
-    h('button',{class:'b main',style:'font-size:14px;padding:8px 16px',onclick:()=>openManualOrderModal()},'➕ Nuevo Pedido (Llamada / Tienda)')
+    h('div',{style:'display:flex;gap:8px;align-items:center'},
+      h('button',{class:'b',style:'font-size:13px;padding:8px 14px;border:1px solid var(--g);color:var(--g)',onclick:()=>openManualOrderModal(true)},'⚡ Venta Rápida (Local)'),
+      h('button',{class:'b main',style:'font-size:14px;padding:8px 16px',onclick:()=>openManualOrderModal(false)},'➕ Nuevo Pedido (Llamada / Tienda)')
+    )
   );
   if(existing.get('toolbar')){
     const mutEl=opsBar.querySelector('.mut');if(mutEl)mutEl.textContent=`Activos: ${active.length} · Finalizados hoy: ${done.length}`;
@@ -158,6 +161,7 @@ function doneCard(o){
     h('div',{class:'top'},
       h('b',{},'#'+o.id),
       h('span',{},o.customer?.name||o.customer?.phoneMasked),
+      o.deliveryPersonName ? h('span',{class:'pill',style:'background:rgba(59,130,246,0.15);color:#60a5fa'},'🛵 '+o.deliveryPersonName) : null,
       h('span',{class:'sp'}),
       h('b',{},cop(o.total)),
       h('span',{class:'pill '+(ps==='PRINTED'?'GREEN':ps==='PRINT_FAILED'?'RED':'YELLOW')},ps==='PRINTED'?'🖨 IMPRESO':ps==='PRINT_FAILED'?'🔴 NO SE PUDO IMPRIMIR':'🖨 IMPRIMIENDO…'),
@@ -346,12 +350,21 @@ function card(o){
   const notesInput = h('input',{value:view.notes,placeholder:'Observaciones (timbre, horario, etc.)',oninput:e=>{view.notes=e.target.value;mark()}});
   el.append(h('div',{class:'grid2',style:'margin-top:8px'}, addrBox, notesInput));
   el.addEventListener('input',mark);el.addEventListener('change',mark);   // cualquier edición crea el borrador
+  const deliveryPersonSelect = h('select',{style:'max-width:180px;font-size:12px;padding:5px 6px',title:'Asignar repartidor antes de imprimir',onchange:e=>{
+    view.deliveryPersonId = e.target.value ? Number(e.target.value) : null;
+    mark();
+  }},
+    h('option',{value:''},'🛵 Sin repartidor...'),
+    ...(S.deliveryPersons||[]).map(dp => h('option',{value:dp.id,selected:dp.id===(view.deliveryPersonId||o.deliveryPersonId)},`🛵 ${dp.name}`))
+  );
+
   const approve=h('button',{class:'b main'},'APROBAR E IMPRIMIR');
   approve.onclick=async()=>{
     approve.disabled=true;
     try{
       const b=await save(o,view);
-      const r=await api(`/api/orders/${o.id}/approve`,{method:'POST',body:{version:b.version}});
+      const dpId = deliveryPersonSelect.value ? Number(deliveryPersonSelect.value) : (view.deliveryPersonId || null);
+      const r=await api(`/api/orders/${o.id}/approve`,{method:'POST',body:{version:b.version, deliveryPersonId: dpId}});
       delete S.draft[o.id];
       toast('✓ Venta '+cop(r.total)+' aprobada · Factura generada');
       await loadOrders();
@@ -372,7 +385,7 @@ function card(o){
     h('button',{class:'b',onclick:()=>replyPanel(el,o,o.suggestedReply?'ASK':'INFO',o.suggestedReply||'')},'💬 Mensaje al cliente'),
     o.confirmationDraft?h('button',{class:'b',onclick:()=>replyPanel(el,o,'CONFIRM',o.confirmationDraft)},'Enviar confirmación'):null,
     h('button',{class:'b danger',onclick:async()=>{if(confirm('¿Cancelar el pedido #'+o.id+'?')){try{await api(`/api/orders/${o.id}/cancel`,{method:'POST',body:{version:o.version}});delete S.draft[o.id];loadOrders()}catch(e){toast((e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message))}}}},'Cancelar'),
-    h('span',{class:'sp',style:'flex:1'}),h('span',{},'Total '),totalEl,approve));
+    h('span',{class:'sp',style:'flex:1'}),deliveryPersonSelect,h('span',{},'Total '),totalEl,approve));
   upd();return el}
 
 async function save(o,d){
@@ -394,7 +407,7 @@ async function save(o,d){
   if(bad)throw Object.assign(new Error('Corrige '+(bad.name||'la línea')+': '+(bad.qtyError||bad.priceError)),{code:'LOCAL'});
   if(d.items.some(i=>!i.productId||!(i.quantity>0)))throw Object.assign(new Error('Completa producto y cantidad de todas las líneas (o elimina la línea vacía)'),{code:'LOCAL'});
   const items=payloadItems(d.items);                      // une repetidas antes de enviar; el servidor también las rechaza
-  const body={version:d.version,customerName:d.customerName,address:d.address,notes:d.notes,items:items.map(i=>({id:i.id,productId:i.productId,quantity:i.quantity,unit:i.unit,manualPrice:i.manualPrice,priceChangeReason:i.reason}))};
+  const body={version:d.version,customerName:d.customerName,address:d.address,notes:d.notes,deliveryPersonId:d.deliveryPersonId||null,items:items.map(i=>({id:i.id,productId:i.productId,quantity:i.quantity,unit:i.unit,manualPrice:i.manualPrice,priceChangeReason:i.reason}))};
   const r=await api(`/api/orders/${o.id}`,{method:'PUT',body});d.version=r.version;return r}
 function replyPanel(el,o,kind,text){
   el.querySelector('.reply')?.remove();
@@ -428,28 +441,47 @@ function replyPanel(el,o,kind,text){
 }
 
 /* ---------- Pedido manual (Mostrador / Llamada / Tienda) ---------- */
-function openManualOrderModal(){
+function openManualOrderModal(isQuickSale = false){
   const modal = h('div',{class:'card',style:'position:fixed;inset:3% 5%;z-index:30;overflow:auto;box-shadow:0 12px 50px #000b;max-width:850px;margin:auto;display:flex;flex-direction:column;gap:12px;max-height:94vh'});
   
   let selectedCustomer = null;
   let customerAddresses = [];
+
+  const quickSaleBtn = h('button',{class:'b',style:'border:1px solid var(--g);color:var(--g);font-size:13px;padding:4px 10px',onclick:()=>applyQuickSale()},'⚡ Venta Rápida (Local)');
   
   const title = h('div',{class:'top'},
     h('b',{style:'font-size:18px'},'➕ Nuevo Pedido (Llamada / Mostrador / Tienda)'),
     h('span',{class:'sp'}),
+    quickSaleBtn,
     h('button',{class:'b',onclick:()=>modal.remove()},'✕ Cerrar')
   );
 
   const custSearch = h('input',{placeholder:'🔍 Buscar cliente por nombre o teléfono...',style:'width:100%'});
   const custDropdown = h('div',{style:'display:none;background:var(--bg);border:1px solid var(--line);border-radius:6px;max-height:160px;overflow-y:auto;padding:4px'});
   
-  const custName = h('input',{placeholder:'Nombre del cliente (ej: Don Carlos)',style:'flex:1'});
-  const custPhone = h('input',{placeholder:'Teléfono (ej: 3101234567)',style:'flex:1'});
+  const custName = h('input',{placeholder:'Nombre del cliente (ej: Don Carlos o dejar para mostrador)',style:'flex:1'});
+  const custPhone = h('input',{placeholder:'Teléfono (opcional para venta mostrador)',style:'flex:1'});
   const addrSelect = h('select',{style:'flex:1'}, h('option',{value:''},'-- Seleccionar dirección guardada --'));
-  const addrInput = h('input',{placeholder:'Dirección de entrega (o dejar vacío para mostrador)',style:'flex:2'});
-  const notesInput = h('input',{placeholder:'Observaciones (opcional)',style:'width:100%'});
+  const addrInput = h('input',{placeholder:'Dirección (o dejar vacío para mostrador)',style:'flex:2'});
+  const deliveryPersonSelect = h('select',{style:'flex:1'},
+    h('option',{value:''},'🛵 Sin repartidor (o mostrador)'),
+    ...(S.deliveryPersons||[]).map(dp=>h('option',{value:dp.id},`🛵 ${dp.name}`))
+  );
+  const notesInput = h('input',{placeholder:'Observaciones (opcional)',style:'flex:2'});
   
-  const addrRow = h('div',{class:'row',style:'display:flex;gap:8px;align-items:center'}, addrSelect, addrInput);
+  const addrRow = h('div',{class:'row',style:'display:flex;gap:8px;align-items:center'}, addrSelect, addrInput, deliveryPersonSelect);
+
+  const applyQuickSale = () => {
+    selectedCustomer = null;
+    custName.value = 'Cliente mostrador';
+    custPhone.value = '';
+    custSearch.value = 'Cliente mostrador (Venta rápida)';
+    addrInput.value = 'Mostrador / Local';
+    notesInput.value = 'Venta rápida local';
+    deliveryPersonSelect.value = '';
+    toast('Modo Venta Rápida activado: teléfono y nombre opcionales');
+  };
+  if(isQuickSale) setTimeout(applyQuickSale, 10);
   
   let searchTimer;
   custSearch.oninput = () => {
@@ -586,18 +618,15 @@ function openManualOrderModal(){
       return;
     }
     const cPhone = custPhone.value.trim();
-    if (!selectedCustomer && !cPhone) {
-      toast('Ingresa el teléfono del cliente para registrarlo');
-      custPhone.focus();
-      return;
-    }
+    const dpId = deliveryPersonSelect.value ? Number(deliveryPersonSelect.value) : null;
 
     const payload = {
       customerId: selectedCustomer?.id || null,
-      customerName: custName.value.trim() || null,
+      customerName: custName.value.trim() || 'Cliente mostrador',
       customerPhone: cPhone || null,
-      address: addrInput.value.trim() || null,
+      address: addrInput.value.trim() || 'Mostrador / Local',
       notes: notesInput.value.trim() || null,
+      deliveryPersonId: dpId,
       items: validItems.map(i => ({
         productId: i.productId,
         quantity: i.quantity,
@@ -615,7 +644,7 @@ function openManualOrderModal(){
 
       if (andApprove) {
         try {
-          const res = await api(`/api/orders/${order.id}/approve`, { method: 'POST', body: { version: order.version } });
+          const res = await api(`/api/orders/${order.id}/approve`, { method: 'POST', body: { version: order.version, deliveryPersonId: dpId } });
           toast(`✓ Venta #${res.saleId} (${cop(res.total)}) aprobada e impresa`);
           await loadOrders();
           showTicket(res.saleId);
@@ -763,10 +792,23 @@ async function renderPrices(){const m=$('#main');const q=h('input',{placeholder:
   const load=async()=>{S.products=await api('/api/products?all=true&q='+encodeURIComponent(q.value));body.replaceChildren(...S.products.map(p=>{
     const price=t=>h('input',{class:'pr',type:'number',min:'0',value:p.prices[t]??'',onkeydown:blockKeys,onchange:async e=>{const r=parsePrice(e.target.value);if(!r.ok||r.value==null){toast(r.error||'El precio es obligatorio');e.target.value=p.prices[t]??'';return}
       try{await api(`/api/products/${p.id}/prices/${t}`,{method:'PUT',body:{amount:r.value}});p.prices[t]=r.value;toast('Precio guardado');e.target.style.outline='2px solid var(--g)'}catch(x){toast(x.message);e.target.value=p.prices[t]??''}}});
-    return h('tr',{},h('td',{},p.name),h('td',{},p.unit==='UNIDAD'?'UN':p.unit),h('td',{},price('RETAIL')),h('td',{},price('WHOLESALE')),h('td',{},h('input',{type:'checkbox',checked:p.active,onchange:async e=>{try{await api('/api/products/'+p.id,{method:'PATCH',body:{active:e.target.checked}})}catch(x){toast(x.message)}}})))}));fillDl()};
-  const n=h('input',{placeholder:'Nombre'}),u=h('select',{},['LB','KG','UNIDAD'].map(x=>h('option',{value:x},x))),r=h('input',{type:'number',placeholder:'Minorista',class:'pr'}),w=h('input',{type:'number',placeholder:'Mayorista',class:'pr'});
+    const imgEl = p.imageUrl
+      ? h('img',{src:p.imageUrl,style:'width:28px;height:28px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;cursor:pointer',title:'Clic para cambiar foto',onclick:async()=>{
+          const u = prompt('URL de imagen para '+p.name+':', p.imageUrl||'');
+          if(u!==null&&u.trim()!==p.imageUrl){
+            try{await api('/api/products/'+p.id,{method:'PATCH',body:{imageUrl:u.trim()||null}});toast('✓ Foto actualizada');load()}catch(x){toast(x.message)}
+          }
+        }})
+      : h('button',{class:'b',style:'padding:1px 5px;font-size:11px;margin-right:6px',title:'Agregar foto',onclick:async()=>{
+          const u = prompt('Ingresa la URL de la imagen para '+p.name+':');
+          if(u&&u.trim()){
+            try{await api('/api/products/'+p.id,{method:'PATCH',body:{imageUrl:u.trim()}});toast('✓ Foto asignada');load()}catch(x){toast(x.message)}
+          }
+        }},'📷');
+    return h('tr',{},h('td',{},imgEl,p.name),h('td',{},p.unit==='UNIDAD'?'UN':p.unit),h('td',{},price('RETAIL')),h('td',{},price('WHOLESALE')),h('td',{},h('input',{type:'checkbox',checked:p.active,onchange:async e=>{try{await api('/api/products/'+p.id,{method:'PATCH',body:{active:e.target.checked}})}catch(x){toast(x.message)}}})))}));fillDl()};
+  const n=h('input',{placeholder:'Nombre',style:'flex:1'}),u=h('select',{},['LB','KG','UNIDAD'].map(x=>h('option',{value:x},x))),r=h('input',{type:'number',placeholder:'Minorista',class:'pr'}),w=h('input',{type:'number',placeholder:'Mayorista',class:'pr'}),imgInp=h('input',{placeholder:'URL de Imagen (opcional)',style:'flex:1'});
   m.replaceChildren(h('div',{class:'row'},q,h('button',{class:'b',onclick:load},'Buscar')),h('div',{class:'scroll'},h('table',{},h('thead',{},h('tr',{},['Producto','Unidad','Minorista','Mayorista','Activo'].map(t=>h('th',{},t)))),body)),
-    h('h3',{},'Nuevo producto'),h('div',{class:'row'},n,u,r,w,h('button',{class:'b main',onclick:async()=>{const rp=parsePrice(r.value),wp=parsePrice(w.value);if(!rp.ok||!wp.ok){toast(rp.error||wp.error);return}try{await api('/api/products',{method:'POST',body:{name:n.value,unit:u.value,retailPrice:rp.value,wholesalePrice:wp.value}});toast('Creado');n.value='';load()}catch(e){toast(e.message)}}},'Crear')));
+    h('h3',{},'Nuevo producto'),h('div',{class:'row'},n,u,r,w,imgInp,h('button',{class:'b main',onclick:async()=>{const rp=parsePrice(r.value),wp=parsePrice(w.value);if(!rp.ok||!wp.ok){toast(rp.error||wp.error);return}try{await api('/api/products',{method:'POST',body:{name:n.value,unit:u.value,retailPrice:rp.value,wholesalePrice:wp.value,imageUrl:imgInp.value.trim()||null}});toast('Creado');n.value='';imgInp.value='';load()}catch(e){toast(e.message)}}},'Crear')));
   q.addEventListener('keydown',e=>e.key==='Enter'&&load());load()}
 
 /* ---------- Clientes ---------- */
@@ -957,13 +999,225 @@ async function renderDeliveryZones(){
   load();
 }
 
+/* ---------- Repartidores (ADMIN) ---------- */
+async function renderDeliveryPersons(){
+  const m=$('#main');
+  const tbody=h('tbody');
+  const rankingBody=h('tbody');
+
+  const load=async()=>{
+    try{
+      S.deliveryPersons=await api('/api/delivery-persons?includeInactive=true');
+      tbody.replaceChildren(...S.deliveryPersons.map(dp=>{
+        const nameInput=h('input',{value:dp.name,style:'width:220px'});
+        const phoneInput=h('input',{value:dp.phone||'',style:'width:150px'});
+        const activeCheck=h('input',{type:'checkbox',checked:dp.active});
+
+        const saveBtn=h('button',{class:'b',onclick:async()=>{
+          const nm=nameInput.value.trim();
+          if(!nm){toast('El nombre es requerido');return}
+          try{
+            await api(`/api/delivery-persons/${dp.id}`,{
+              method:'PUT',
+              body:{name:nm,phone:phoneInput.value.trim()||null,active:activeCheck.checked}
+            });
+            toast('✓ Repartidor guardado');
+            await load();
+          }catch(e){toast(e.message)}
+        }},'Guardar');
+
+        const delBtn=h('button',{class:'b',style:'color:var(--r)',onclick:async()=>{
+          if(!confirm(`¿Eliminar al repartidor "${dp.name}"?`))return;
+          try{
+            await api(`/api/delivery-persons/${dp.id}`,{method:'DELETE'});
+            toast('✓ Repartidor eliminado');
+            await load();
+          }catch(e){toast(e.message)}
+        }},'✕');
+
+        return h('tr',{},
+          h('td',{},nameInput),
+          h('td',{},phoneInput),
+          h('td',{style:'text-align:center'},activeCheck),
+          h('td',{class:'row',style:'gap:6px'},saveBtn,delBtn)
+        );
+      }));
+
+      // Cargar ranking:
+      try{
+        const rk=await api('/api/reports/delivery-ranking');
+        rankingBody.replaceChildren(...(rk.items||[]).map(r=>h('tr',{},
+          h('td',{},h('b',{},'🛵 '+r.deliveryPersonName)),
+          h('td',{},h('span',{},r.dailyDeliveries+' pedidos'),h('span',{class:'mut',style:'margin-left:6px'},cop(r.dailyAmount))),
+          h('td',{},h('span',{},r.weeklyDeliveries+' pedidos'),h('span',{class:'mut',style:'margin-left:6px'},cop(r.weeklyAmount))),
+          h('td',{},h('span',{},r.monthlyDeliveries+' pedidos'),h('span',{class:'mut',style:'margin-left:6px'},cop(r.monthlyAmount))),
+          h('td',{},h('b',{},r.totalDeliveries+' pedidos'),h('span',{class:'mut',style:'margin-left:6px'},cop(r.totalAmount)))
+        )));
+      }catch(x){}
+    }catch(e){toast(e.message)}
+  };
+
+  const newBtn=h('button',{class:'b main',onclick:()=>{
+    const nameInput=h('input',{placeholder:'Nombre (ej: Carlos Gómez - Moto 1)',style:'width:220px'});
+    const phoneInput=h('input',{placeholder:'Teléfono WhatsApp',style:'width:150px'});
+    const saveNewBtn=h('button',{class:'b main',onclick:async()=>{
+      const nm=nameInput.value.trim();
+      if(!nm){toast('Ingresa el nombre del repartidor');return}
+      try{
+        await api('/api/delivery-persons',{
+          method:'POST',
+          body:{name:nm,phone:phoneInput.value.trim()||null,active:true}
+        });
+        toast('✓ Repartidor creado');
+        await load();
+      }catch(e){toast(e.message)}
+    }},'Crear');
+
+    tbody.prepend(h('tr',{style:'background:rgba(34,197,94,0.1)'},
+      h('td',{},nameInput),
+      h('td',{},phoneInput),
+      h('td',{style:'text-align:center'},'Activo'),
+      h('td',{},saveNewBtn)
+    ));
+    nameInput.focus();
+  }},'➕ Nuevo Repartidor');
+
+  m.replaceChildren(
+    h('div',{class:'row',style:'justify-content:space-between;margin-bottom:12px;align-items:center'},
+      h('div',{},
+        h('h3',{style:'margin:0'},'Gestión de Repartidores / Domiciliarios'),
+        h('span',{class:'mut'},'Asigna repartidores a los pedidos antes de imprimirlos para que su nombre salga en la factura.')
+      ),
+      newBtn
+    ),
+    h('div',{class:'scroll'},
+      h('table',{},
+        h('thead',{},h('tr',{},['Nombre / Vehículo','Teléfono','¿Activo?','Acciones'].map(t=>h('th',{},t)))),
+        tbody
+      )
+    ),
+    h('h3',{style:'margin-top:24px'},'🏆 Ranking de Repartidores (Entregas y Facturación)'),
+    h('p',{class:'mut'},'Métricas consolidadas de cuánto reparte cada domiciliario al día, semana y mes.'),
+    h('div',{class:'scroll'},
+      h('table',{},
+        h('thead',{},h('tr',{},['Repartidor','Hoy','Esta Semana','Este Mes','Total General'].map(t=>h('th',{},t)))),
+        rankingBody
+      )
+    )
+  );
+  load();
+}
+
+/* ---------- Usuarios del Sistema (ADMIN) ---------- */
+async function renderUsers(){
+  const m=$('#main');
+  const tbody=h('tbody');
+
+  const load=async()=>{
+    try{
+      const users=await api('/api/users');
+      tbody.replaceChildren(...users.map(u=>{
+        const isSelf=S.me.username.toLowerCase()===u.username.toLowerCase();
+        const rolePill=h('span',{class:'pill '+(u.role==='ADMIN'?'GREEN':'gray')},u.role);
+        const statusBtn=h('button',{class:'b',disabled:isSelf,onclick:async()=>{
+          try{
+            await api(`/api/users/${encodeURIComponent(u.username)}/enabled`,{method:'PUT',body:{enabled:!u.enabled}});
+            toast(`✓ Usuario ${u.enabled?'desactivado':'activado'}`);
+            await load();
+          }catch(e){toast(e.message)}
+        }},u.enabled?'🟢 Activo':'🔴 Inactivo');
+
+        const passBtn=h('button',{class:'b',title:'Cambiar contraseña',onclick:async()=>{
+          const p=prompt(`Nueva contraseña para ${u.username} (mínimo 6 caracteres):`);
+          if(p!==null){
+            if(p.trim().length<6){toast('La contraseña debe tener al menos 6 caracteres');return}
+            try{
+              await api(`/api/users/${encodeURIComponent(u.username)}/password`,{method:'PUT',body:{password:p.trim()}});
+              toast(`✓ Contraseña actualizada para ${u.username}`);
+            }catch(e){toast(e.message)}
+          }
+        }},'🔑 Contraseña');
+
+        const delBtn=h('button',{class:'b',disabled:isSelf,style:'color:var(--r)',onclick:async()=>{
+          if(!confirm(`¿Eliminar al usuario "${u.username}"?`))return;
+          try{
+            await api(`/api/users/${encodeURIComponent(u.username)}`,{method:'DELETE'});
+            toast('✓ Usuario eliminado');
+            await load();
+          }catch(e){toast(e.message)}
+        }},'✕');
+
+        return h('tr',{},
+          h('td',{},h('b',{},u.username),isSelf?h('span',{class:'pill gray',style:'margin-left:6px'},'Tú'):null),
+          h('td',{},rolePill),
+          h('td',{},statusBtn),
+          h('td',{},u.createdAt?new Date(u.createdAt).toLocaleDateString('es-CO'):'—'),
+          h('td',{class:'row',style:'gap:6px'},passBtn,delBtn)
+        );
+      }));
+    }catch(e){toast(e.message)}
+  };
+
+  const newBtn=h('button',{class:'b main',onclick:()=>{
+    const userInput=h('input',{placeholder:'Nombre de usuario (ej: vendedor1)',style:'width:180px'});
+    const passInput=h('input',{type:'password',placeholder:'Contraseña (mín 6 car.)',style:'width:170px'});
+    const roleSel=h('select',{},h('option',{value:'OPERADOR'},'Operador / Vendedor'),h('option',{value:'ADMIN'},'Administrador'));
+
+    const saveNewBtn=h('button',{class:'b main',onclick:async()=>{
+      const un=userInput.value.trim();
+      const pw=passInput.value.trim();
+      if(!un||un.length<3){toast('El usuario debe tener al menos 3 caracteres');return}
+      if(!pw||pw.length<6){toast('La contraseña debe tener al menos 6 caracteres');return}
+      try{
+        await api('/api/users',{
+          method:'POST',
+          body:{username:un,password:pw,role:roleSel.value}
+        });
+        toast(`✓ Usuario "${un}" creado exitosamente`);
+        await load();
+      }catch(e){toast(e.message)}
+    }},'Crear');
+
+    tbody.prepend(h('tr',{style:'background:rgba(34,197,94,0.1)'},
+      h('td',{},userInput),
+      h('td',{},roleSel),
+      h('td',{},passInput),
+      h('td',{},'Hoy'),
+      h('td',{},saveNewBtn)
+    ));
+    userInput.focus();
+  }},'➕ Nuevo Usuario');
+
+  m.replaceChildren(
+    h('div',{class:'row',style:'justify-content:space-between;margin-bottom:12px;align-items:center'},
+      h('div',{},
+        h('h3',{style:'margin:0'},'Usuarios del Sistema'),
+        h('span',{class:'mut'},'Crea y administra los usuarios con acceso al aplicativo (Administradores y Operadores).')
+      ),
+      newBtn
+    ),
+    h('div',{class:'scroll'},
+      h('table',{},
+        h('thead',{},h('tr',{},['Usuario','Rol','Estado','Fecha Registro','Acciones'].map(t=>h('th',{},t)))),
+        tbody
+      )
+    )
+  );
+  load();
+}
+
 /* ---------- Arranque ---------- */
 function fillDl(){$('#dl').replaceChildren(...S.products.filter(p=>p.active).map(p=>h('option',{value:p.name})))}
-function nav(){const tabs=[['ops','Operación'],['sales','Ventas'],['customers','Clientes']];if(S.me.role==='ADMIN')tabs.push(['prices','Precios'],['zones','Zonas Domicilio'],['reports','Reportes']);
+function nav(){const tabs=[['ops','Operación'],['sales','Ventas'],['customers','Clientes']];
+  if(S.me.role==='ADMIN')tabs.push(['delivery-persons','Repartidores'],['users','Usuarios'],['prices','Precios'],['zones','Zonas Domicilio'],['reports','Reportes']);
   $('#nav').replaceChildren(...tabs.map(([k,l])=>h('button',{class:S.tab===k?'on':'',onclick:()=>{S.tab=k;nav();show()}},l)))}
-function show(){({ops:()=>{renderOps()},sales:renderSales,prices:renderPrices,customers:renderCustomers,zones:renderDeliveryZones,reports:renderReports})[S.tab]()}
+function show(){({ops:()=>{renderOps()},sales:renderSales,'delivery-persons':renderDeliveryPersons,users:renderUsers,prices:renderPrices,customers:renderCustomers,zones:renderDeliveryZones,reports:renderReports})[S.tab]()}
 $('#logout').onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'X-XSRF-TOKEN':csrf()}});location='/login.html'};
-(async()=>{S.me=await api('/api/me');S.products=await api('/api/products');fillDl();nav();await loadOrders();
+(async()=>{
+  S.me=await api('/api/me');
+  S.products=await api('/api/products');
+  try{S.deliveryPersons=await api('/api/delivery-persons')}catch(e){S.deliveryPersons=[]}
+  fillDl();nav();await loadOrders();
   let t;
   const connectSse=()=>{
     try{

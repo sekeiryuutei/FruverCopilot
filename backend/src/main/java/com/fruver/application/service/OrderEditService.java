@@ -21,7 +21,11 @@ public class OrderEditService {
 
     public record ItemEdit(Long id, Long productId, BigDecimal quantity, String unit, BigDecimal manualPrice, String priceChangeReason) {}
 
-    public record OrderEdit(int version, String customerName, String address, String notes, List<ItemEdit> items) {}
+    public record OrderEdit(int version, String customerName, String address, String notes, Long deliveryPersonId, List<ItemEdit> items) {
+        public OrderEdit(int version, String customerName, String address, String notes, List<ItemEdit> items) {
+            this(version, customerName, address, notes, null, items);
+        }
+    }
 
     private final JdbcClient jdbc;
     private final OrderRepository orders;
@@ -128,15 +132,25 @@ public class OrderEditService {
                 }
             }
         }
+
+        Long dpId = edit.deliveryPersonId();
+        String dpName = null;
+        if (dpId != null) {
+            dpName = jdbc.sql("SELECT name FROM delivery_person WHERE id = :id").param("id", dpId)
+                    .query(String.class).optional().orElse(null);
+        }
+
         jdbc.sql("""
                 UPDATE orders SET customer_name = COALESCE(:n, customer_name), address = :a, notes = :no, status = 'REVIEW',
                        review_status = :r, corrected = :c, version = version + 1,
+                       delivery_person_id = COALESCE(:dpid, delivery_person_id),
+                       delivery_person_name = COALESCE(:dpname, delivery_person_name),
                        conversation_status = CASE WHEN conversation_status = 'WAITING_FOR_CUSTOMER' THEN conversation_status
                                                   WHEN :r = 'GREEN' THEN 'READY_FOR_APPROVAL' ELSE 'READY_FOR_REVIEW' END
                 WHERE id = :id
                 """).param("n", blankToNull(edit.customerName())).param("a", blankToNull(clip(edit.address(), 300)))
                 .param("no", blankToNull(clip(edit.notes(), 500))).param("r", review.name()).param("c", corrected)
-                .param("id", orderId).update();
+                .param("dpid", dpId).param("dpname", dpName).param("id", orderId).update();
 
         if (edit.customerName() != null && !edit.customerName().isBlank() && order.customerId() != null) {
             jdbc.sql("UPDATE customer SET name = :n WHERE id = :cid")
@@ -166,8 +180,13 @@ public class OrderEditService {
             String customerPhone,
             String address,
             String notes,
+            Long deliveryPersonId,
             List<ItemEdit> items
-    ) {}
+    ) {
+        public ManualOrderRequest(Long customerId, String customerName, String customerPhone, String address, String notes, List<ItemEdit> items) {
+            this(customerId, customerName, customerPhone, address, notes, null, items);
+        }
+    }
 
     @Transactional
     public long createManualOrder(ManualOrderRequest req, String user) {
@@ -176,6 +195,12 @@ public class OrderEditService {
         String phone = req.customerPhone() != null && !req.customerPhone().isBlank() ? req.customerPhone().strip() : null;
         String address = req.address() != null && !req.address().isBlank() ? req.address().strip() : null;
         String notes = req.notes() != null && !req.notes().isBlank() ? req.notes().strip() : null;
+        Long dpId = req.deliveryPersonId();
+        String dpName = null;
+        if (dpId != null) {
+            dpName = jdbc.sql("SELECT name FROM delivery_person WHERE id = :id").param("id", dpId)
+                    .query(String.class).optional().orElse(null);
+        }
 
         if (customerId != null) {
             var c = jdbc.sql("SELECT name, phone, address FROM customer WHERE id = :id")
@@ -210,12 +235,12 @@ public class OrderEditService {
 
         long orderId = jdbc.sql("""
                 INSERT INTO orders(customer_id, customer_name, customer_phone, address, notes, input_type, status,
-                                   conversation_status, review_status, ai_status, ai_note)
+                                   conversation_status, review_status, ai_status, ai_note, delivery_person_id, delivery_person_name)
                 VALUES (:cid, :cn, :cp, :addr, :notes, 'MANUAL', 'REVIEW', 'READY_FOR_APPROVAL', 'GREEN', 'OK',
-                        'Creado en mostrador / llamada por ' || :u)
+                        'Creado en mostrador / llamada por ' || :u, :dpid, :dpname)
                 RETURNING id
                 """).param("cid", customerId).param("cn", name).param("cp", phone).param("addr", address)
-                .param("notes", notes).param("u", user).query(Long.class).single();
+                .param("notes", notes).param("u", user).param("dpid", dpId).param("dpname", dpName).query(Long.class).single();
 
         if (req.items() != null && !req.items().isEmpty()) {
             int line = 0;

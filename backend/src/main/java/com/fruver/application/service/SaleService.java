@@ -46,6 +46,11 @@ public class SaleService {
 
     @Transactional
     public SaleResult approve(long orderId, int expectedVersion, String user) {
+        return approve(orderId, expectedVersion, null, user);
+    }
+
+    @Transactional
+    public SaleResult approve(long orderId, int expectedVersion, Long deliveryPersonId, String user) {
         OrderRow o = orders.findForUpdate(orderId)
                 .orElseThrow(() -> new ApiException(404, "ORDER_NOT_FOUND", "Pedido no encontrado"));
 
@@ -59,6 +64,13 @@ public class SaleService {
         }
         if (o.version() != expectedVersion) {
             throw new ApiException(409, "ORDER_CONFLICT", "El pedido cambio mientras lo revisabas. Recarga y vuelve a aprobar.");
+        }
+
+        Long dpId = deliveryPersonId != null ? deliveryPersonId : o.deliveryPersonId();
+        String dpName = o.deliveryPersonName();
+        if (deliveryPersonId != null) {
+            dpName = jdbc.sql("SELECT name FROM delivery_person WHERE id = :id").param("id", deliveryPersonId)
+                    .query(String.class).optional().orElse(null);
         }
 
         List<ItemRow> items = orders.items(orderId);
@@ -87,11 +99,12 @@ public class SaleService {
 
         long saleId = jdbc.sql("""
                 INSERT INTO sale(order_id, customer_id, customer_name, customer_phone, address, notes, customer_type, price_type,
-                                 input_type, total, approved_by)
-                VALUES (:o, :c, :n, :p, :a, :no, :ct, :pt, :it, :t, :u) RETURNING id
+                                 input_type, total, approved_by, delivery_person_id, delivery_person_name)
+                VALUES (:o, :c, :n, :p, :a, :no, :ct, :pt, :it, :t, :u, :dpid, :dpname) RETURNING id
                 """).param("o", orderId).param("c", o.customerId()).param("n", o.customerName()).param("p", o.customerPhone())
                 .param("a", o.address()).param("no", o.notes()).param("ct", o.customerType()).param("pt", priceType.name())
-                .param("it", o.inputType()).param("t", quote.total()).param("u", user).query(Long.class).single();
+                .param("it", o.inputType()).param("t", quote.total()).param("u", user)
+                .param("dpid", dpId).param("dpname", dpName).query(Long.class).single();
 
         for (int i = 0; i < items.size(); i++) {
             QuoteLine l = quote.lines().get(i);
@@ -106,8 +119,11 @@ public class SaleService {
                     .param("st", l.subtotal()).update();
         }
 
-        jdbc.sql("UPDATE orders SET status = 'APPROVED', conversation_status = 'COMPLETED', approved_at = now(), version = version + 1 WHERE id = :id")
-                .param("id", orderId).update();
+        jdbc.sql("""
+                UPDATE orders SET status = 'APPROVED', conversation_status = 'COMPLETED', approved_at = now(),
+                       delivery_person_id = :dpid, delivery_person_name = :dpname, version = version + 1
+                WHERE id = :id
+                """).param("dpid", dpId).param("dpname", dpName).param("id", orderId).update();
         jdbc.sql("INSERT INTO print_job(sale_id, reprint) VALUES (:s, FALSE)").param("s", saleId).update();
         audit.log(user, "ORDER_APPROVED", orderId, saleId, Map.of("total", quote.total().toPlainString(),
                 "priceType", priceType.name(), "lines", items.size()));
@@ -121,10 +137,10 @@ public class SaleService {
     }
 
     public String buildInvoiceWhatsAppText(long saleId) {
-        var sale = jdbc.sql("SELECT id, order_id, customer_name, address, notes, total FROM sale WHERE id = :id")
+        var sale = jdbc.sql("SELECT id, order_id, customer_name, address, notes, total, delivery_person_name FROM sale WHERE id = :id")
                 .param("id", saleId)
                 .query((rs, n) -> new Object[] {
-                        rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getString(4), rs.getString(5), rs.getBigDecimal(6)
+                        rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getString(4), rs.getString(5), rs.getBigDecimal(6), rs.getString(7)
                 }).optional().orElseThrow(() -> new ApiException(404, "SALE_NOT_FOUND", "Venta no encontrada"));
 
         long oId = (Long) sale[1];
@@ -132,6 +148,7 @@ public class SaleService {
         String address = (String) sale[3];
         String notes = (String) sale[4];
         BigDecimal total = (BigDecimal) sale[5];
+        String dpName = (String) sale[6];
 
         var items = jdbc.sql("SELECT product_name, unit, quantity, applied_price, subtotal FROM sale_item WHERE sale_id = :id ORDER BY id")
                 .param("id", saleId)
@@ -145,6 +162,7 @@ public class SaleService {
         if (name != null && !name.isBlank()) sb.append("👤 Cliente: ").append(name).append("\n");
         if (address != null && !address.isBlank()) sb.append("📍 Dirección: ").append(address).append("\n");
         if (notes != null && !notes.isBlank()) sb.append("📝 Horario/Notas: ").append(notes).append("\n");
+        if (dpName != null && !dpName.isBlank()) sb.append("🛵 Repartidor: ").append(dpName).append("\n");
         sb.append("\n*Detalle de productos:*\n");
         for (var it : items) {
             String pName = (String) it[0];
@@ -186,20 +204,23 @@ public class SaleService {
 
     @Transactional
     public void dispatch(long saleId, String user) {
-        var sale = jdbc.sql("SELECT order_id, customer_phone, address FROM sale WHERE id = :id FOR UPDATE")
+        var sale = jdbc.sql("SELECT order_id, customer_phone, address, delivery_person_name FROM sale WHERE id = :id FOR UPDATE")
                 .param("id", saleId)
-                .query((rs, n) -> new Object[]{ rs.getLong(1), rs.getString(2), rs.getString(3) })
+                .query((rs, n) -> new Object[]{ rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4) })
                 .optional().orElseThrow(() -> new ApiException(404, "SALE_NOT_FOUND", "Venta no encontrada"));
         long orderId = (Long) sale[0];
         String phone = (String) sale[1];
         String address = (String) sale[2];
+        String dpName = (String) sale[3];
 
         jdbc.sql("UPDATE sale SET dispatched_at = now(), dispatched_by = :u WHERE id = :id").param("u", user).param("id", saleId).update();
         jdbc.sql("UPDATE orders SET dispatched_at = now(), dispatched_by = :u, version = version + 1 WHERE id = :id").param("u", user).param("id", orderId).update();
         audit.log(user, "ORDER_DISPATCHED", orderId, saleId, Map.of());
 
         if (phone != null && !phone.isBlank()) {
-            String msg = "🛵💨 *¡Tu pedido va en camino!*\nEl domiciliario ha salido hacia tu dirección"
+            String msg = "🛵💨 *¡Tu pedido va en camino!*\n"
+                    + (dpName != null && !dpName.isBlank() ? "Tu repartidor es: *" + dpName + "*.\n" : "")
+                    + "El domiciliario ha salido hacia tu dirección"
                     + (address != null && !address.isBlank() ? ": " + address : "") + ".\n¡Pronto llegará! Gracias por tu confianza.";
             try {
                 var del = gateway.sendText(phone, msg).name();

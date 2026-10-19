@@ -44,5 +44,29 @@ class OrderProcessingInquiryTest {
         assertTrue(service.isGreetingOnly("buenas"));
         assertFalse(service.isGreetingOnly("Hola, deme 2 libras de tomate"));
     }
+
+    @Test
+    void detectsProductPhotoRequests() {
+        assertTrue(service.isProductPhotoRequest("¿Tienen foto de la papaya?"));
+        assertTrue(service.isProductPhotoRequest("Me manda una foto del tomate?"));
+        assertTrue(service.isProductPhotoRequest("¿Tiene imagenes del producto?"));
+        assertTrue(service.isProductPhotoRequest("fotos del aguacate"));
+        assertFalse(service.isProductPhotoRequest("Deme 2 libras de tomate"));
+        assertFalse(service.isProductPhotoRequest(""));
+        assertFalse(service.isProductPhotoRequest(null));
+    }
+
+    @Test
+    void detectsDeliveryTimeInquiries() {
+        assertTrue(service.isDeliveryTimeInquiry("¿Cuánto se demora el pedido?"));
+        assertTrue(service.isDeliveryTimeInquiry("¿A qué hora llega?"));
+        assertTrue(service.isDeliveryTimeInquiry("¿Ya viene el domiciliario?"));
+        assertTrue(service.isDeliveryTimeInquiry("¿Cuánto falta para que llegue?"));
+        assertTrue(service.isDeliveryTimeInquiry("¿Cuánto tarda la entrega?"));
+        assertTrue(service.isDeliveryTimeInquiry("¿A qué hora me entregan?"));
+        assertTrue(service.isDeliveryTimeInquiry("¿Se demora mucho?"));
+        assertFalse(service.isDeliveryTimeInquiry("Buenas tardes, quiero 3 libras de papa"));
+        assertFalse(service.isDeliveryTimeInquiry(null));
+    }
 }
 

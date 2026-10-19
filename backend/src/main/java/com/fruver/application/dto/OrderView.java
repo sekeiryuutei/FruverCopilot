@@ -30,7 +30,9 @@ public record OrderView(
         OffsetDateTime dispatchedAt,
         String dispatchedBy,
         int messageCount,
-        Long pendingDispatchOrderId) {
+        Long pendingDispatchOrderId,
+        Long deliveryPersonId,
+        String deliveryPersonName) {
 
     public OrderView(
             long id, int version, String status, String conversationStatus, String reviewStatus,
@@ -40,7 +42,7 @@ public record OrderView(
             List<ItemView> items, BigDecimal total, boolean complete, Long saleId, String printStatus) {
         this(id, version, status, conversationStatus, reviewStatus, inputType, aiStatus, aiNote,
                 suggestedReply, confirmationDraft, customer, address, notes, receivedAt, messageText,
-                hasAudio, corrected, items, total, complete, saleId, printStatus, null, null, 0, null);
+                hasAudio, corrected, items, total, complete, saleId, printStatus, null, null, 0, null, null, null);
     }
 
     /** Telefono enmascarado: la pantalla no necesita el numero completo. */

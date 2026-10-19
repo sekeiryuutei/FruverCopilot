@@ -104,6 +104,18 @@ public class OrderProcessingService {
             return;
         }
 
+        // 3. Si solicitan foto o imagen de un producto:
+        if (isProductPhotoRequest(text)) {
+            handleProductPhotoRequest(r, text);
+            return;
+        }
+
+        // 4. Si el cliente pregunta cosas como tiempo de entrega / demora:
+        if (isDeliveryTimeInquiry(text)) {
+            handleDeliveryTimeInquiry(r, text);
+            return;
+        }
+
         ExtractionRequest req = new ExtractionRequest(text,
                 writer.recentTurns(r.orderId(), r.messageId()),
                 r.reply() ? writer.currentItems(r.orderId()) : java.util.List.of(),
@@ -291,5 +303,62 @@ public class OrderProcessingService {
             sb.append("\n¿Te gustaría pedir alguno de estos productos o necesitas algo más? \uD83E\uDD51\uD83C\uDF45");
         }
         return sb.toString();
+    }
+
+    public boolean isProductPhotoRequest(String text) {
+        if (text == null || text.isBlank()) return false;
+        String t = text.toLowerCase(Locale.ROOT);
+        return t.contains("foto") || t.contains("fotos") || t.contains("imagen") || t.contains("imagenes") || t.contains("imágenes");
+    }
+
+    private void handleProductPhotoRequest(IntakeResult r, String text) {
+        var all = catalog.list("", false);
+        List<String> tokens = TextTokens.significant(text);
+        ProductCatalogService.ProductView matched = null;
+        for (var p : all) {
+            String pName = p.name().toLowerCase(Locale.ROOT);
+            for (String tok : tokens) {
+                String tl = tok.toLowerCase(Locale.ROOT);
+                if (tl.length() >= 3 && !List.of("foto","fotos","imagen","imagenes","imágenes","como","cómo","mira","ve","tiene","tienen","compartir","mandar","enviar").contains(tl)
+                        && pName.contains(tl)) {
+                    matched = p;
+                    break;
+                }
+            }
+            if (matched != null) break;
+        }
+
+        if (matched != null && matched.imageUrl() != null && !matched.imageUrl().isBlank()) {
+            String caption = "Aquí tienes la foto de " + matched.name() + " 📸. ¿Deseas que te agreguemos alguna cantidad a tu pedido?";
+            conversation.sendImage(r.orderId(), matched.imageUrl(), caption, "ia");
+            writer.markInquiryHandled(r.orderId(), "Foto de producto enviada: " + matched.name());
+        } else if (matched != null) {
+            String msg = "¡Hola! En este momento no tenemos foto cargada de " + matched.name() + ", pero te aseguramos que está fresca y de excelente calidad. ¿Deseas ordenar alguna cantidad?";
+            conversation.send(r.orderId(), msg, ConversationService.Kind.INFO, "ia");
+            writer.markInquiryHandled(r.orderId(), "Consulta de foto (" + matched.name() + " no tiene foto cargada)");
+        } else {
+            String msg = "¡Hola! Con gusto te enviamos fotos de nuestros productos frescos. ¿De cuál de nuestros productos te gustaría ver foto (por ejemplo papaya, tomate, aguacate)? 😊";
+            conversation.send(r.orderId(), msg, ConversationService.Kind.INFO, "ia");
+            writer.markInquiryHandled(r.orderId(), "Consulta general de fotos respondida.");
+        }
+    }
+
+    public boolean isDeliveryTimeInquiry(String text) {
+        if (text == null || text.isBlank()) return false;
+        String t = TextTokens.fold(text).toLowerCase(Locale.ROOT);
+        return t.contains("cuanto se demora") || t.contains("se demora") || t.contains("demora mucho")
+                || (t.contains("a que hora") && (t.contains("llega") || t.contains("entrega") || t.contains("traen") || t.contains("envia")))
+                || t.contains("cuanto tarda") || t.contains("cuanto falta")
+                || t.contains("ya viene") || t.contains("ya salio") || t.contains("donde viene")
+                || (t.contains("cuando") && (t.contains("llega") || t.contains("traen") || t.contains("entrega")))
+                || t.contains("tiempo de entrega") || t.contains("tiempo se demora") || t.contains("tiempo tardan")
+                || (t.contains("tiempo") && (t.contains("entrega") || t.contains("demora") || t.contains("llegar")));
+    }
+
+    private void handleDeliveryTimeInquiry(IntakeResult r, String text) {
+        // "si el usuario pregunta cosas como tiempo que sea el humano quien responda"
+        String note = "Cliente pregunta por tiempos de entrega/estado. Requiere respuesta humana.";
+        String suggested = "¡Hola! Tu pedido se encuentra en preparación/camino y te llegará aproximadamente en [XX] minutos 🛵💨";
+        writer.markWaitingForOperator(r.orderId(), note, suggested);
     }
 }

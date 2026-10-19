@@ -20,7 +20,8 @@ public class OrderRepository {
                    COALESCE(c.customer_type, 'RETAIL') AS customer_type,
                    EXISTS (SELECT 1 FROM audio a WHERE a.order_id = o.id) AS has_audio,
                    s.id AS sale_id, s.print_status AS print_status,
-                   o.dispatched_at, o.dispatched_by
+                   o.dispatched_at, o.dispatched_by,
+                   o.delivery_person_id, o.delivery_person_name
             FROM orders o
             LEFT JOIN customer c ON c.id = o.customer_id
             LEFT JOIN sale s ON s.order_id = o.id

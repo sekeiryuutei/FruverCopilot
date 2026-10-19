@@ -112,6 +112,16 @@ public class OrderWriter {
     }
 
     @Transactional
+    public void markWaitingForOperator(long orderId, String note, String suggestedReply) {
+        jdbc.sql("""
+                UPDATE orders SET status = 'REVIEW', review_status = 'YELLOW', ai_status = 'OK', ai_note = :note,
+                       suggested_reply = :reply, conversation_status = 'READY_FOR_REVIEW', extracted_at = now(), version = version + 1
+                WHERE id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW')
+                """).param("note", note).param("reply", suggestedReply).param("id", orderId).update();
+        audit.log("ia", "AI_WAITING_FOR_OPERATOR", orderId, null, Map.of("note", note));
+    }
+
+    @Transactional
     public void markFailed(long orderId, String aiStatus, String note) {
         jdbc.sql("""
                 UPDATE orders SET status = 'REVIEW', review_status = 'RED', ai_status = :s, ai_note = :n,

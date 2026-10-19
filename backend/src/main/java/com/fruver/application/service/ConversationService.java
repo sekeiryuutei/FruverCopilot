@@ -66,6 +66,25 @@ public class ConversationService {
         hub.orderChanged(orderId);
     }
 
+    public void sendImage(long orderId, String imageUrl, String caption, String actor) {
+        if (imageUrl == null || imageUrl.isBlank()) return;
+        String phone = jdbc.sql("SELECT customer_phone FROM orders WHERE id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW')")
+                .param("id", orderId).query(String.class).optional()
+                .orElseThrow(() -> new ApiException(409, "ORDER_NOT_ACTIVE", "El pedido no admite mensajes"));
+        String delivery;
+        try {
+            delivery = gateway.sendImage(phone, imageUrl.strip(), caption != null ? caption.strip() : "").name();
+        } catch (Exception e) {
+            log.warn("Fallo envio de imagen por WhatsApp para pedido {}: {}", orderId, e.getMessage());
+            delivery = "FAILED";
+        }
+        String content = "📷 " + (caption != null && !caption.isBlank() ? caption.strip() + " " : "") + "[" + imageUrl.strip() + "]";
+        jdbc.sql("INSERT INTO conversation_message(order_id, direction, message_type, content, delivery_status) VALUES (:o, 'OUTBOUND', 'TEXT', :c, :d)")
+                .param("o", orderId).param("c", content).param("d", delivery).update();
+        audit.log(actor, "CUSTOMER_IMAGE_SENT", orderId, null, Map.of("delivery", delivery, "imageUrl", imageUrl));
+        hub.orderChanged(orderId);
+    }
+
     /** Registro atomico: mensaje + estado conversacional en una sola transaccion. */
     @Transactional
     void persistSend(long orderId, String text, String delivery, Kind kind, String actor) {

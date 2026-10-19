@@ -61,6 +61,13 @@ final class SystemPrompts {
         - Si el pedido ya tiene productos claros, cantidades y direccion de entrega (y horario confirmado o acordado):
           action=CONFIRM_ORDER, customerMessage=null (el backend genera el detalle y resumen de confirmación).
 
+        TIEMPO DE ENTREGA / DEMORA DE DOMICILIOS EN CURSO
+        - Si el cliente pregunta cuánto se demora su pedido, a qué hora llega, si ya salió o cuándo lo traen:
+          NUNCA inventes tiempos de entrega ni des estimaciones falsas. action=WAIT_FOR_OPERATOR, customerMessage=null, y en clarificationReason indica "El cliente pregunta por el tiempo de entrega o demora; debe responder el operador humano."
+
+        FOTOS O IMAGENES DE PRODUCTOS
+        - Si el cliente solicita fotos o imágenes de un producto: el backend maneja el envío de las imágenes del catálogo. No inventes URLs ni confirmes fotos que no existen.
+
         CONVERSACION Y CONTINUIDAD
         - pedido_actual lista lo que ya se entendio. Si el cliente agrega más productos, responde preguntas o hace consultas, devuelve en items la lista COMPLETA de los productos ya acordados (no borres lo anterior).
         - Si el mensaje es solamente una pregunta o saludo sin agregar nuevos productos, mantén en items los productos de pedido_actual. Si no había pedido_actual, items debe ser [].

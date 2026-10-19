@@ -17,9 +17,9 @@ import java.util.Map;
 @RequestMapping("/api/products")
 public class ProductController {
 
-    public record CreateBody(@NotBlank @Size(max = 120) String name, @NotBlank String unit, BigDecimal retailPrice, BigDecimal wholesalePrice) {}
+    public record CreateBody(@NotBlank @Size(max = 120) String name, @NotBlank String unit, BigDecimal retailPrice, BigDecimal wholesalePrice, String imageUrl) {}
 
-    public record PatchBody(@Size(max = 120) String name, String unit, Boolean active) {}
+    public record PatchBody(@Size(max = 120) String name, String unit, Boolean active, String imageUrl) {}
 
     public record PriceBody(@NotNull BigDecimal amount) {}
 
@@ -46,7 +46,7 @@ public class ProductController {
                 throw new com.fruver.application.service.ApiException(400, "VALIDATION_ERROR", "Precio invalido");
             }
         }
-        long id = catalog.create(b.name(), b.unit());
+        long id = catalog.create(b.name(), b.unit(), b.imageUrl());
         if (b.retailPrice() != null) prices.setPrice(id, PriceType.RETAIL, b.retailPrice(), Actor.name());
         if (b.wholesalePrice() != null) prices.setPrice(id, PriceType.WHOLESALE, b.wholesalePrice(), Actor.name());
         return Map.of("id", id);
@@ -55,7 +55,7 @@ public class ProductController {
     @PatchMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public void patch(@PathVariable long id, @Valid @RequestBody PatchBody b) {
-        catalog.update(id, b.name(), b.unit(), b.active());
+        catalog.update(id, b.name(), b.unit(), b.active(), b.imageUrl());
     }
 
     @PutMapping("/{id}/prices/{type}")

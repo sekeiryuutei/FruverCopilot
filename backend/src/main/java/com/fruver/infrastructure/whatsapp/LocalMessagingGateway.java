@@ -21,6 +21,12 @@ public class LocalMessagingGateway implements MessagingGateway, MediaDownloader 
     }
 
     @Override
+    public DeliveryStatus sendImage(String phone, String imageUrl, String caption) {
+        log.info("[WhatsApp deshabilitado] imagen NO enviada a un cliente real: {} ({})", imageUrl, caption);
+        return DeliveryStatus.LOCAL_ONLY;
+    }
+
+    @Override
     public MediaFile download(String mediaId) {
         throw new UnsupportedOperationException("WhatsApp esta deshabilitado");
     }

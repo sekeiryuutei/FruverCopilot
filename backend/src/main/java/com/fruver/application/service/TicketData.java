@@ -15,7 +15,14 @@ public record TicketData(
         BigDecimal total,
         String address,
         String notes,
-        boolean reprint) {
+        boolean reprint,
+        String deliveryPersonName) {
+
+    public TicketData(
+            String shop, long orderNumber, OffsetDateTime at, String customer, String phone,
+            String customerType, List<Line> lines, BigDecimal total, String address, String notes, boolean reprint) {
+        this(shop, orderNumber, at, customer, phone, customerType, lines, total, address, notes, reprint, null);
+    }
 
     public record Line(String name, BigDecimal quantity, String unit, BigDecimal price, BigDecimal subtotal) {}
 }

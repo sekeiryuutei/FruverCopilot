@@ -15,7 +15,11 @@ import java.util.*;
 @Service
 public class ProductCatalogService implements ProductLookup {
 
-    public record ProductView(Long id, String name, String unit, boolean active, Map<String, BigDecimal> prices) {}
+    public record ProductView(Long id, String name, String unit, boolean active, String imageUrl, Map<String, BigDecimal> prices) {
+        public ProductView(Long id, String name, String unit, boolean active, Map<String, BigDecimal> prices) {
+            this(id, name, unit, active, null, prices);
+        }
+    }
 
     private final JdbcClient jdbc;
     private final AuditService audit;
@@ -80,7 +84,7 @@ public class ProductCatalogService implements ProductLookup {
         if (term.length() > 100) term = term.substring(0, 100);
         String esc = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
         List<ProductRow> rows = jdbc.sql("""
-                SELECT id, name, unit, active FROM product
+                SELECT id, name, unit, active, image_url FROM product
                 WHERE (:inactive OR active) AND (:q = '' OR unaccent(lower(name)) LIKE unaccent(lower(:like)))
                 ORDER BY name LIMIT 500
                 """).param("inactive", includeInactive).param("q", term).param("like", "%" + esc + "%")
@@ -94,15 +98,20 @@ public class ProductCatalogService implements ProductLookup {
                         return 0;
                     }).list();
         }
-        return rows.stream().map(p -> new ProductView(p.id(), p.name(), p.unit(), p.active(),
+        return rows.stream().map(p -> new ProductView(p.id(), p.name(), p.unit(), p.active(), p.imageUrl(),
                 prices.getOrDefault(p.id(), Map.of()))).toList();
     }
 
     @Transactional
     public long create(String name, String unit) {
+        return create(name, unit, null);
+    }
+
+    @Transactional
+    public long create(String name, String unit, String imageUrl) {
         String u = requireUnit(unit);
-        long id = jdbc.sql("INSERT INTO product(name, unit) VALUES (:n, :u) RETURNING id")
-                .param("n", requireName(name)).param("u", u).query(Long.class).single();
+        long id = jdbc.sql("INSERT INTO product(name, unit, image_url) VALUES (:n, :u, :img) RETURNING id")
+                .param("n", requireName(name)).param("u", u).param("img", blankToNull(imageUrl)).query(Long.class).single();
         audit.log("PRODUCT_CREATED", null, null, Map.of("productId", id, "name", name.strip()));
         return id;
     }
@@ -110,13 +119,23 @@ public class ProductCatalogService implements ProductLookup {
     /** No se elimina fisicamente: se desactiva. Las ventas historicas conservan su snapshot. */
     @Transactional
     public void update(long id, String name, String unit, Boolean active) {
+        update(id, name, unit, active, null);
+    }
+
+    @Transactional
+    public void update(long id, String name, String unit, Boolean active, String imageUrl) {
         if (jdbc.sql("SELECT count(*) FROM product WHERE id = :id").param("id", id).query(Integer.class).single() == 0) {
             throw new ApiException(404, "PRODUCT_NOT_FOUND", "Producto no encontrado");
         }
         if (name != null) jdbc.sql("UPDATE product SET name = :n WHERE id = :id").param("n", requireName(name)).param("id", id).update();
         if (unit != null) jdbc.sql("UPDATE product SET unit = :u WHERE id = :id").param("u", requireUnit(unit)).param("id", id).update();
         if (active != null) jdbc.sql("UPDATE product SET active = :a WHERE id = :id").param("a", active).param("id", id).update();
+        if (imageUrl != null) jdbc.sql("UPDATE product SET image_url = :img WHERE id = :id").param("img", blankToNull(imageUrl)).param("id", id).update();
         audit.log("PRODUCT_UPDATED", null, null, Map.of("productId", id));
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.strip();
     }
 
     private static String requireName(String n) {

@@ -26,9 +26,13 @@ public class OrderController {
     public record ItemBody(Long id, Long productId, BigDecimal quantity, String unit, BigDecimal manualPrice, String priceChangeReason) {}
 
     public record UpdateBody(@NotNull Integer version, @Size(max = 120) String customerName, @Size(max = 300) String address,
-                             @Size(max = 500) String notes, List<ItemBody> items) {}
+                             @Size(max = 500) String notes, Long deliveryPersonId, List<ItemBody> items) {}
 
-    public record VersionBody(@NotNull Integer version) {}
+    public record VersionBody(@NotNull Integer version, Long deliveryPersonId) {
+        public VersionBody(@NotNull Integer version) {
+            this(version, null);
+        }
+    }
 
     public record ReplyBody(@NotBlank @Size(max = 1000) String message, @NotNull ConversationService.Kind kind) {}
 
@@ -74,7 +78,7 @@ public class OrderController {
     public OrderView update(@PathVariable long id, @Valid @RequestBody UpdateBody b) {
         List<OrderEditService.ItemEdit> items = b.items() == null ? List.of() : b.items().stream()
                 .map(i -> new OrderEditService.ItemEdit(i.id(), i.productId(), i.quantity(), i.unit(), i.manualPrice(), i.priceChangeReason())).toList();
-        edits.update(id, new OrderEditService.OrderEdit(b.version(), b.customerName(), b.address(), b.notes(), items), Actor.name());
+        edits.update(id, new OrderEditService.OrderEdit(b.version(), b.customerName(), b.address(), b.notes(), b.deliveryPersonId(), items), Actor.name());
         hub.orderChanged(id);
         return views.get(id);
     }
@@ -82,7 +86,7 @@ public class OrderController {
     /** APROBAR E IMPRIMIR: un solo request. El backend valida, recalcula, persiste la venta y encola la impresion. */
     @PostMapping("/{id}/approve")
     public SaleService.SaleResult approve(@PathVariable long id, @Valid @RequestBody VersionBody b) {
-        SaleService.SaleResult r = sales.approve(id, b.version(), Actor.name());
+        SaleService.SaleResult r = sales.approve(id, b.version(), b.deliveryPersonId(), Actor.name());
         metrics.approved();
         hub.orderChanged(id);
         return r;

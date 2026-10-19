@@ -35,7 +35,7 @@ public class QuoteService {
         for (PriceType t : PriceType.values()) prices.put(t, new HashMap<>());
         Set<Long> ids = productIds.stream().filter(Objects::nonNull).collect(Collectors.toSet());
         if (ids.isEmpty()) return new PriceBook(products, prices);
-        jdbc.sql("SELECT id, name, unit, active FROM product WHERE id IN (:ids)").param("ids", ids)
+        jdbc.sql("SELECT id, name, unit, active, image_url FROM product WHERE id IN (:ids)").param("ids", ids)
                 .query(ProductRow.class).list().forEach(p -> products.put(p.id(), p));
         jdbc.sql("""
                 SELECT product_id, price_type, amount FROM product_price

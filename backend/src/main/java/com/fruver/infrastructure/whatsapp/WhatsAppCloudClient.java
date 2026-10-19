@@ -48,6 +48,27 @@ public class WhatsAppCloudClient implements MessagingGateway, MediaDownloader {
     }
 
     @Override
+    public DeliveryStatus sendImage(String phone, String imageUrl, String caption) {
+        java.util.Map<String, Object> imgMap = new java.util.HashMap<>();
+        imgMap.put("link", imageUrl);
+        if (caption != null && !caption.isBlank()) imgMap.put("caption", caption);
+        Map<String, Object> body = Map.of(
+                "messaging_product", "whatsapp",
+                "to", phone,
+                "type", "image",
+                "image", imgMap
+        );
+        try {
+            http.post().uri("/{id}/messages", phoneNumberId).contentType(MediaType.APPLICATION_JSON)
+                    .body(body).retrieve().toBodilessEntity();
+            return DeliveryStatus.SENT;
+        } catch (RestClientException e) {
+            // Fallback a texto
+            return sendText(phone, (caption != null && !caption.isBlank() ? caption + "\n" : "") + imageUrl);
+        }
+    }
+
+    @Override
     public MediaFile download(String mediaId) {
         JsonNode meta = http.get().uri("/{id}", mediaId).retrieve().body(JsonNode.class);
         if (meta == null || meta.path("url").asText("").isBlank()) throw new IllegalStateException("Media sin URL");
