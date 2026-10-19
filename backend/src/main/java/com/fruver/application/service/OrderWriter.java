@@ -50,6 +50,17 @@ public class OrderWriter {
                 .param("cs", conversation).param("id", orderId).update();
         if (updated == 0) return false;
 
+        if (io.address() != null && !io.address().isBlank()) {
+            jdbc.sql("""
+                    UPDATE orders SET address = :addr
+                    WHERE id = :id AND (address IS NULL OR address = '')
+                    """).param("addr", io.address()).param("id", orderId).update();
+            jdbc.sql("""
+                    UPDATE customer SET address = COALESCE(customer.address, :addr)
+                    FROM orders o WHERE o.id = :id AND customer.id = o.customer_id
+                    """).param("addr", io.address()).param("id", orderId).update();
+        }
+
         jdbc.sql("DELETE FROM order_item WHERE order_id = :o").param("o", orderId).update();
         int line = 0;
         for (InterpretedOrder.Item i : io.items()) {

@@ -12,7 +12,12 @@ public record InterpretedOrder(
         ReviewStatus review,
         ConversationAction action,
         String customerMessage,
-        String note) {
+        String note,
+        String address) {
+
+    public InterpretedOrder(List<Item> items, ReviewStatus review, ConversationAction action, String customerMessage, String note) {
+        this(items, review, action, customerMessage, note, null);
+    }
 
     public record Item(
             String mentioned,

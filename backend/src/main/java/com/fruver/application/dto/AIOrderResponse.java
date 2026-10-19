@@ -7,4 +7,10 @@ public record AIOrderResponse(
         List<ItemSugeridoDTO> items,
         ConversationAction action,
         String customerMessage,
-        String clarificationReason) {}
+        String clarificationReason,
+        String direccion) {
+
+    public AIOrderResponse(List<ItemSugeridoDTO> items, ConversationAction action, String customerMessage, String clarificationReason) {
+        this(items, action, customerMessage, clarificationReason, null);
+    }
+}

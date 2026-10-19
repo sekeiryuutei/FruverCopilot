@@ -60,9 +60,23 @@ public class SaleService {
         Quote quote = quotes.quote(items, priceType);
         if (!quote.complete()) {
             List<String> details = new ArrayList<>();
-            for (QuoteLine l : quote.lines()) if (l.problem() != null) details.add("Linea " + l.itemId() + ": " + l.problem());
-            if (items.isEmpty()) details.add("El pedido no tiene lineas");
-            throw new ApiException(422, "ORDER_REQUIRES_REVIEW", "El pedido requiere revision manual", details);
+            for (QuoteLine l : quote.lines()) {
+                if (l.problem() != null) {
+                    String pName = l.productName() != null ? l.productName() : ("Línea " + l.itemId());
+                    String expl = switch (l.problem()) {
+                        case "UNIT_MISMATCH" -> "la unidad '" + l.unit() + "' no coincide con la del catálogo";
+                        case "NO_QUANTITY" -> "cantidad inválida o vacía";
+                        case "NO_UNIT" -> "falta la unidad de medida";
+                        case "NO_PRICE" -> "no tiene precio configurado";
+                        case "NO_PRODUCT" -> "producto no seleccionado";
+                        case "INACTIVE_PRODUCT" -> "producto inactivo";
+                        default -> l.problem();
+                    };
+                    details.add(pName + ": " + expl + " (" + l.problem() + ")");
+                }
+            }
+            if (items.isEmpty()) details.add("El pedido no tiene líneas");
+            throw new ApiException(422, "ORDER_REQUIRES_REVIEW", "El pedido requiere revisión manual", details);
         }
 
         long saleId = jdbc.sql("""

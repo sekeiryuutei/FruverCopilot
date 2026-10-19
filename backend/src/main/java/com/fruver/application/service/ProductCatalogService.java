@@ -30,23 +30,25 @@ public class ProductCatalogService implements ProductLookup {
     @Override
     public Resolution resolve(ItemSugeridoDTO item) {
         if (item.productoNormalizado() != null && !item.productoNormalizado().isBlank()) {
-            List<Long> exact = jdbc.sql("SELECT id FROM product WHERE active AND lower(name) = lower(:n)")
-                    .param("n", item.productoNormalizado().strip()).query(Long.class).list();
-            if (exact.size() == 1) return new Resolution(exact.get(0), 1);
+            List<Resolution> exact = jdbc.sql("SELECT id, unit FROM product WHERE active AND lower(name) = lower(:n)")
+                    .param("n", item.productoNormalizado().strip())
+                    .query((rs, i) -> new Resolution(rs.getLong(1), 1, rs.getString(2))).list();
+            if (exact.size() == 1) return exact.get(0);
         }
         // La IA pudo inventar o no normalizar: se busca por palabras significativas (todas deben aparecer).
         String source = item.productoNormalizado() != null && !item.productoNormalizado().isBlank()
                 ? item.productoNormalizado() : item.productoMencionado();
         List<String> tokens = TextTokens.significant(source);
-        if (tokens.isEmpty()) return new Resolution(null, 0);
-        StringBuilder sql = new StringBuilder("SELECT id FROM product WHERE active");
+        if (tokens.isEmpty()) return new Resolution(null, 0, null);
+        StringBuilder sql = new StringBuilder("SELECT id, unit FROM product WHERE active");
         Map<String, Object> params = new HashMap<>();
         for (int i = 0; i < tokens.size(); i++) {
             sql.append(" AND unaccent(lower(name)) LIKE :t").append(i);
             params.put("t" + i, "%" + tokens.get(i) + "%");
         }
-        List<Long> ids = jdbc.sql(sql.toString()).params(params).query(Long.class).list();
-        return new Resolution(ids.size() == 1 ? ids.get(0) : null, ids.size());
+        List<Resolution> ids = jdbc.sql(sql.toString()).params(params)
+                .query((rs, i) -> new Resolution(rs.getLong(1), 1, rs.getString(2))).list();
+        return ids.size() == 1 ? ids.get(0) : new Resolution(null, ids.size(), null);
     }
 
     /** Nombres reales del catalogo relacionados con el mensaje: contexto de solo lectura para el LLM. */

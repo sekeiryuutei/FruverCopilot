@@ -164,8 +164,13 @@ public class OrderProcessingService {
             if (io.review() == ReviewStatus.GREEN && props.conversation().autoConfirmClearOrders()) {
                 var row = orders.find(orderId).orElse(null);
                 if (row != null) {
+                    if (row.address() == null || row.address().isBlank()) {
+                        String askAddr = "¡Hola! \uD83D\uDC4B Ya tenemos lista tu orden. Para coordinar el despacho, ¿a qué dirección te la llevamos? 🛵";
+                        conversation.send(orderId, askAddr, ConversationService.Kind.ASK, "ia");
+                        return;
+                    }
                     Quote q = quotes.quote(orders.items(orderId), PriceType.forCustomer(CustomerType.valueOf(row.customerType())));
-                    String msg = buildOrderReceivedAndConfirmedMessage(q);
+                    String msg = buildOrderReceivedAndConfirmedMessage(q, row.address());
                     if (msg != null) {
                         conversation.send(orderId, msg, ConversationService.Kind.CONFIRM, "ia");
                         return;
@@ -192,7 +197,7 @@ public class OrderProcessingService {
         }
     }
 
-    private String buildOrderReceivedAndConfirmedMessage(Quote quote) {
+    private String buildOrderReceivedAndConfirmedMessage(Quote quote, String address) {
         if (quote == null || !quote.complete()) return null;
         StringBuilder sb = new StringBuilder("¡Hola! \uD83D\uDC4B Gracias por comunicarte con FruverCopilot. ");
         sb.append("Hemos recibido tu pedido y lo estamos preparando:\n\n");
@@ -201,8 +206,11 @@ public class OrderProcessingService {
               .append(ConfirmationMessageBuilder.unitWord(l.unit(), l.quantity()))
               .append(" de ").append(l.productName()).append('\n');
         }
-        sb.append("\nTotal estimado: ").append(Money.format(quote.total()))
-          .append("\nEn un momento te confirmamos el despacho \uD83D\uDE0A");
+        sb.append("\nTotal estimado: ").append(Money.format(quote.total()));
+        if (address != null && !address.isBlank()) {
+            sb.append("\n📍 Dirección de entrega: ").append(address);
+        }
+        sb.append("\nEn un momento te confirmamos el despacho \uD83D\uDE0A");
         return sb.toString();
     }
 

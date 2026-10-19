@@ -168,14 +168,19 @@ function card(o){
   const removeRow=it=>{const i=view.items.indexOf(it);if(i>=0)view.items.splice(i,1);rows.get(it)?.tr.remove();rows.delete(it);upd()};
 
   const rowFor=it=>{
+    const p0=S.products.find(x=>x.id===it.productId);
     const sub=h('td',{class:'sub'});
     const errEl=h('div',{class:'prob'});
-    const showErr=()=>{errEl.textContent=[it.qtyError,it.priceError].filter(Boolean).join(' · ');setBad(q,!!it.qtyError);setBad(pr,!!it.priceError)};
+    const showErr=()=>{
+      const pCur=S.products.find(x=>x.id===it.productId);
+      const unitWarn=pCur&&it.unit&&it.unit!==pCur.unit?`En catálogo se vende por ${pCur.unit==='UNIDAD'?'UNIDAD':pCur.unit}`:null;
+      errEl.textContent=[it.qtyError,it.priceError,unitWarn].filter(Boolean).join(' · ');
+      setBad(q,!!it.qtyError);setBad(pr,!!it.priceError);setBad(us,!!unitWarn);
+    };
     const calc=()=>{const p=priceFor(o,it);sub.textContent=!it.qtyError&&!it.priceError&&p!=null&&it.quantity>0?cop(it.quantity*p):'—';upd()};
     const q=h('input',{class:'q',type:'number',step:'0.5',min:'0',max:MAX_QTY,inputmode:'decimal',value:it.quantity??'',onkeydown:blockKeys,
       oninput:e=>{const r=parseQty(e.target.value);it.quantity=r.value;it.qtyError=r.ok?null:r.error;showErr();calc()}});
-    const us=h('select',{onchange:e=>{it.unit=e.target.value;calc()}},['LB','KG','UNIDAD'].map(u=>h('option',{value:u,selected:u===it.unit},u==='UNIDAD'?'UN':u)));
-    const p0=S.products.find(x=>x.id===it.productId);
+    const us=h('select',{onchange:e=>{it.unit=e.target.value;showErr();calc()}},['LB','KG','UNIDAD'].map(u=>h('option',{value:u,selected:u===it.unit},u==='UNIDAD'?'UN':u)));
     const pr=h('input',{class:'pr',type:'number',min:'0',max:MAX_PRICE,inputmode:'numeric',value:it.manualPrice??'',placeholder:p0?(p0.prices[o.customer.type]??''):'',onkeydown:blockKeys,
       oninput:e=>{const r=parsePrice(e.target.value);it.manualPrice=r.value;it.priceError=r.ok?null:r.error;showErr();calc()}});
     const pn=h('input',{class:'pn',list:'dl',value:it.name,placeholder:'Producto',onchange:e=>{
@@ -188,7 +193,7 @@ function card(o){
       calc()}});
     const flags=[];const server=o.items.find(x=>x.id===it.id);
     if(server?.aiSummary)flags.push('IA: '+server.aiSummary);if(server?.observation)flags.push(server.observation);if(server?.problem)flags.push('⚠ '+server.problem);
-    calc();
+    showErr();calc();
     const tr=h('tr',{},h('td',{},pn,flags.length?h('div',{class:server?.problem?'prob':'ai'},flags.join(' · ')):null,errEl),h('td',{},q),h('td',{},us),h('td',{},pr),sub,
       h('td',{},h('button',{class:'b danger',onclick:()=>{removeRow(it);mark()}},'✕')));
     rows.set(it,{tr,pn,q,calc});return tr};
@@ -202,11 +207,29 @@ function card(o){
 
   view.items.forEach(it=>tb.append(rowFor(it)));
   el.append(h('div',{class:'scroll'},h('table',{},h('thead',{},h('tr',{},['Producto','Cantidad','Unidad','Precio','Subtotal',''].map(t=>h('th',{},t)))),tb)));
-  el.append(h('div',{class:'grid2'},h('input',{value:view.address,placeholder:'Dirección',oninput:e=>{view.address=e.target.value;mark()}}),h('input',{value:view.notes,placeholder:'Observaciones',oninput:e=>{view.notes=e.target.value;mark()}})));
+  el.append(h('div',{class:'grid2'},h('input',{value:view.address,placeholder:'Dirección de entrega',oninput:e=>{view.address=e.target.value;mark()}}),h('input',{value:view.notes,placeholder:'Observaciones',oninput:e=>{view.notes=e.target.value;mark()}})));
   el.addEventListener('input',mark);el.addEventListener('change',mark);   // cualquier edición crea el borrador
   const approve=h('button',{class:'b main'},'APROBAR E IMPRIMIR');
-  approve.onclick=async()=>{approve.disabled=true;try{const b=await save(o,view);const r=await api(`/api/orders/${o.id}/approve`,{method:'POST',body:{version:b.version}});delete S.draft[o.id];toast('Venta '+cop(r.total)+' guardada · mostrando factura');await loadOrders();showTicket(r.saleId)}
-    catch(e){toast(e.code==='ORDER_REQUIRES_REVIEW'?'Falta revisar: '+(e.details||[]).join('; '):(e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message));if(e.code==='ORDER_CONFLICT'){delete S.draft[o.id];loadOrders()}}finally{approve.disabled=false}};
+  approve.onclick=async()=>{
+    approve.disabled=true;
+    try{
+      const b=await save(o,view);
+      const r=await api(`/api/orders/${o.id}/approve`,{method:'POST',body:{version:b.version}});
+      delete S.draft[o.id];
+      toast('✓ Venta '+cop(r.total)+' aprobada · Factura generada');
+      await loadOrders();
+      showTicket(r.saleId);
+    }catch(e){
+      let msg=e.message;
+      if(e.code==='ORDER_REQUIRES_REVIEW'&&e.details&&e.details.length){
+        msg='Falta revisar: '+e.details.join('; ');
+      }
+      toast(msg);
+      if(e.code==='ORDER_CONFLICT'){delete S.draft[o.id];loadOrders()}
+    }finally{
+      approve.disabled=false;
+    }
+  };
   el.append(h('div',{class:'row'},h('button',{class:'b',onclick:addRow},'+ Producto'),
     h('button',{class:'b',onclick:async()=>{try{await save(o,view);delete S.draft[o.id];toast('Guardado');loadOrders()}catch(e){toast((e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message));if(e.code==='ORDER_CONFLICT'){delete S.draft[o.id];loadOrders()}}}},'Guardar'),
     h('button',{class:'b',onclick:()=>replyPanel(el,o,o.suggestedReply?'ASK':'INFO',o.suggestedReply||'')},'💬 Mensaje al cliente'),
@@ -216,6 +239,20 @@ function card(o){
   upd();return el}
 
 async function save(o,d){
+  // Auto-ajuste de unidades contra catálogo antes de guardar/aprobar
+  for(const it of d.items){
+    const p=S.products.find(x=>x.id===it.productId);
+    if(p&&it.unit&&it.unit!==p.unit){
+      if(it.unit==='KG'&&p.unit==='LB'&&it.quantity>0){
+        it.quantity=Math.round(it.quantity*2*10)/10;
+        toast(`Ajustado: ${p.name} se convirtió de KG a LB (${it.quantity} LB)`);
+      }else if(it.unit==='LB'&&p.unit==='KG'&&it.quantity>0){
+        it.quantity=Math.round(it.quantity*0.5*10)/10;
+        toast(`Ajustado: ${p.name} se convirtió de LB a KG (${it.quantity} KG)`);
+      }
+      it.unit=p.unit;
+    }
+  }
   const bad=d.items.find(i=>i.qtyError||i.priceError);
   if(bad)throw Object.assign(new Error('Corrige '+(bad.name||'la línea')+': '+(bad.qtyError||bad.priceError)),{code:'LOCAL'});
   if(d.items.some(i=>!i.productId||!(i.quantity>0)))throw Object.assign(new Error('Completa producto y cantidad de todas las líneas (o elimina la línea vacía)'),{code:'LOCAL'});
