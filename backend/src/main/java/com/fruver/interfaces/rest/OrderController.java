@@ -63,6 +63,13 @@ public class OrderController {
         return views.get(id);
     }
 
+    @PostMapping("/manual")
+    public OrderView createManual(@Valid @RequestBody OrderEditService.ManualOrderRequest req) {
+        long id = edits.createManualOrder(req, Actor.name());
+        hub.orderChanged(id);
+        return views.get(id);
+    }
+
     @PutMapping("/{id}")
     public OrderView update(@PathVariable long id, @Valid @RequestBody UpdateBody b) {
         List<OrderEditService.ItemEdit> items = b.items() == null ? List.of() : b.items().stream()

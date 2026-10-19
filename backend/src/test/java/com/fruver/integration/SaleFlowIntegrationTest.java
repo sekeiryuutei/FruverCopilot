@@ -58,6 +58,8 @@ class SaleFlowIntegrationTest {
     @Autowired OrderRepository orders;
     @Autowired OrderViewService views;
     @Autowired JdbcClient jdbc;
+    @Autowired CustomerService customerService;
+    @Autowired TicketService tickets;
 
     private static AIOrderResponse papaCriolla(String qty, String unit) {
         return new AIOrderResponse(List.of(new ItemSugeridoDTO("papa criolla", "Papa criolla", new BigDecimal(qty), unit, false, null)),
@@ -250,5 +252,57 @@ class SaleFlowIntegrationTest {
                 () -> jdbc.sql("UPDATE order_item SET quantity = -9 WHERE id = :id").param("id", item.id()).update());
         assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
                 () -> jdbc.sql("UPDATE order_item SET manual_price = -1 WHERE id = :id").param("id", item.id()).update());
+    }
+
+    @Test void manualOrderAndCustomerAddressFlow() {
+        // 1. Create customer with address
+        String phone = "573109999888";
+        var cust = customerService.createCustomer("Don Pedro", phone, "Calle 10 # 5-20", "Casa", com.fruver.domain.enums.CustomerType.RETAIL, "operador");
+        assertNotNull(cust.id());
+        assertEquals("Don Pedro", cust.name());
+
+        // 2. Add an alternate labeled address ("Negocio")
+        var addrNegocio = customerService.addAddress(cust.id(), "Negocio", "Cra 15 # 4-20 Local 2", false, "operador");
+        assertNotNull(addrNegocio.id());
+        assertEquals("Negocio", addrNegocio.label());
+
+        var addresses = customerService.listAddresses(cust.id());
+        assertEquals(2, addresses.size());
+
+        // 3. Create a manual POS / call order for this customer selecting the business address
+        long orderId = edits.createManualOrder(new OrderEditService.ManualOrderRequest(
+                cust.id(),
+                cust.name(),
+                phone,
+                addrNegocio.address(),
+                "Entregar antes de las 11am",
+                List.of(new OrderEditService.ItemEdit(null, papaId(), new BigDecimal("5"), "LB", null, null))
+        ), "vendedor1");
+
+        var view = views.get(orderId);
+        assertEquals("MANUAL", view.inputType());
+        assertEquals("GREEN", view.reviewStatus());
+        assertEquals(addrNegocio.address(), view.address());
+        assertEquals("Entregar antes de las 11am", view.notes());
+        assertEquals(1, view.items().size());
+
+        // 4. Update customer name directly via order edit
+        edits.update(orderId, new OrderEditService.OrderEdit(view.version(), "Don Pedro Picapiedra", view.address(), view.notes(),
+                List.of(new OrderEditService.ItemEdit(view.items().get(0).id(), papaId(), new BigDecimal("5"), "LB", null, null))), "vendedor1");
+
+        var updatedOrder = views.get(orderId);
+        assertEquals("Don Pedro Picapiedra", updatedOrder.customer().name());
+        var updatedCust = customerService.search("Pedro Picapiedra");
+        assertFalse(updatedCust.isEmpty());
+        assertEquals("Don Pedro Picapiedra", updatedCust.get(0).name());
+
+        // 5. Approve and generate ticket: ticket contains delivery address
+        var saleResult = sales.approve(orderId, updatedOrder.version(), "vendedor1");
+        assertNotNull(saleResult.saleId());
+        var ticketData = tickets.build(saleResult.saleId(), false);
+        assertEquals("Cra 15 # 4-20 Local 2", ticketData.address());
+        var lines = TicketFormatter.format(ticketData, 32);
+        boolean foundAddr = lines.stream().anyMatch(l -> l.text().contains("Cra 15 # 4-20"));
+        assertTrue(foundAddr, "El ticket impreso debe contener la dirección seleccionada");
     }
 }

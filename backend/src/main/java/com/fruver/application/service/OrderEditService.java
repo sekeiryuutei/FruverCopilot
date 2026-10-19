@@ -138,10 +138,102 @@ public class OrderEditService {
                 .param("no", blankToNull(clip(edit.notes(), 500))).param("r", review.name()).param("c", corrected)
                 .param("id", orderId).update();
 
+        if (edit.customerName() != null && !edit.customerName().isBlank() && order.customerId() != null) {
+            jdbc.sql("UPDATE customer SET name = :n WHERE id = :cid")
+                    .param("n", edit.customerName().strip()).param("cid", order.customerId()).update();
+        }
+        if (edit.address() != null && !edit.address().isBlank() && order.customerId() != null) {
+            jdbc.sql("""
+                    INSERT INTO customer_address(customer_id, label, address, is_default)
+                    SELECT :cid, 'Casa', :addr, TRUE
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM customer_address WHERE customer_id = :cid AND lower(trim(address)) = lower(trim(:addr))
+                    )
+                    """).param("cid", order.customerId()).param("addr", edit.address().strip()).update();
+            jdbc.sql("UPDATE customer SET address = :addr WHERE id = :cid")
+                    .param("addr", edit.address().strip()).param("cid", order.customerId()).update();
+        }
+
         if (!changes.isEmpty()) {
             audit.log(user, "ORDER_EDITED", orderId, null, Map.of("changes", changes));
             if (!order.corrected() && corrected) metrics.humanCorrection();
         }
+    }
+
+    public record ManualOrderRequest(
+            Long customerId,
+            String customerName,
+            String customerPhone,
+            String address,
+            String notes,
+            List<ItemEdit> items
+    ) {}
+
+    @Transactional
+    public long createManualOrder(ManualOrderRequest req, String user) {
+        Long customerId = req.customerId();
+        String name = req.customerName() != null && !req.customerName().isBlank() ? req.customerName().strip() : null;
+        String phone = req.customerPhone() != null && !req.customerPhone().isBlank() ? req.customerPhone().strip() : null;
+        String address = req.address() != null && !req.address().isBlank() ? req.address().strip() : null;
+        String notes = req.notes() != null && !req.notes().isBlank() ? req.notes().strip() : null;
+
+        if (customerId != null) {
+            var c = jdbc.sql("SELECT name, phone, address FROM customer WHERE id = :id")
+                    .param("id", customerId)
+                    .query((rs, n) -> new String[]{rs.getString(1), rs.getString(2), rs.getString(3)})
+                    .optional().orElse(null);
+            if (c != null) {
+                if (name == null) name = c[0];
+                if (phone == null) phone = c[1];
+                if (address == null) address = c[2];
+            }
+        } else if (phone != null) {
+            var c = jdbc.sql("SELECT id, name, address FROM customer WHERE phone = :p")
+                    .param("p", phone)
+                    .query((rs, n) -> new Object[]{rs.getLong(1), rs.getString(2), rs.getString(3)})
+                    .optional().orElse(null);
+            if (c != null) {
+                customerId = (Long) c[0];
+                if (name == null) name = (String) c[1];
+                if (address == null) address = (String) c[2];
+            } else {
+                customerId = jdbc.sql("INSERT INTO customer(name, phone, address, customer_type) VALUES (:n, :p, :a, 'RETAIL') RETURNING id")
+                        .param("n", name != null ? name : "Cliente mostrador").param("p", phone).param("a", address).query(Long.class).single();
+                if (address != null) {
+                    jdbc.sql("INSERT INTO customer_address(customer_id, label, address, is_default) VALUES (:c, 'Casa', :a, TRUE)")
+                            .param("c", customerId).param("a", address).update();
+                }
+            }
+        }
+
+        if (name == null) name = "Cliente mostrador";
+
+        long orderId = jdbc.sql("""
+                INSERT INTO orders(customer_id, customer_name, customer_phone, address, notes, input_type, status,
+                                   conversation_status, review_status, ai_status, ai_note)
+                VALUES (:cid, :cn, :cp, :addr, :notes, 'MANUAL', 'REVIEW', 'READY_FOR_APPROVAL', 'GREEN', 'OK',
+                        'Creado en mostrador / llamada por ' || :u)
+                RETURNING id
+                """).param("cid", customerId).param("cn", name).param("cp", phone).param("addr", address)
+                .param("notes", notes).param("u", user).query(Long.class).single();
+
+        if (req.items() != null && !req.items().isEmpty()) {
+            int line = 0;
+            for (ItemEdit e : req.items()) {
+                if (e.productId() == null) continue;
+                String unit = UnitOfMeasure.parse(e.unit()).orElse(UnitOfMeasure.LB).name();
+                BigDecimal qty = e.quantity() != null ? e.quantity().setScale(3, RoundingMode.HALF_UP) : BigDecimal.ONE;
+                BigDecimal price = e.manualPrice() != null ? e.manualPrice().setScale(0, Money.ROUNDING) : null;
+                jdbc.sql("""
+                        INSERT INTO order_item(order_id, line_no, mentioned, product_id, quantity, unit, manual_price, price_change_reason, edited)
+                        VALUES (:o, :ln, (SELECT name FROM product WHERE id = :p), :p, :q, :u, :mp, :r, TRUE)
+                        """).param("o", orderId).param("ln", line++).param("p", e.productId()).param("q", qty)
+                        .param("u", unit).param("mp", price).param("r", e.priceChangeReason()).update();
+            }
+        }
+
+        audit.log(user, "ORDER_CREATED_MANUAL", orderId, null, Map.of("customerId", customerId != null ? customerId : -1));
+        return orderId;
     }
 
     @Transactional

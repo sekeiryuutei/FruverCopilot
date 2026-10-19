@@ -54,7 +54,7 @@ const ago=t=>{const s=Math.max(0,(Date.now()-new Date(t))/1000);return s<60?Math
 const round3=n=>Math.round(n*1000)/1000;
 /** Firma barata de un pedido: si no cambia, su tarjeta NO se vuelve a dibujar (sin parpadeo). */
 function orderSig(o){return JSON.stringify([o.version,o.status,o.reviewStatus,o.conversationStatus,o.aiStatus,o.printStatus,o.saleId,o.total,
-  o.suggestedReply,o.confirmationDraft,o.messageText,o.customer.type,o.items.map(i=>[i.id,i.productId,i.quantity,i.unit,i.manualPrice,i.problem])])}
+  o.suggestedReply,o.confirmationDraft,o.messageText,o.customer.name,o.customer.type,o.address,o.notes,o.items.map(i=>[i.id,i.productId,i.quantity,i.unit,i.manualPrice,i.problem])])}
 /** Otra línea del pedido con el mismo producto y la misma unidad (el precio es por unidad del producto). */
 function findTwin(items,it){return items.find(x=>x!==it&&x.productId&&x.productId===it.productId&&x.unit===it.unit)}
 /** Suma a `twin` la cantidad de `it` (1 si la dejó vacía). Devuelve la cantidad resultante. */
@@ -95,7 +95,7 @@ let loading=false,again=false;
 async function loadOrders(){if(loading){again=true;return}loading=true;
   try{S.orders=await api('/api/orders');if(S.tab==='ops')renderOps()}finally{loading=false;if(again){again=false;loadOrders()}}}
 function draftOf(o){return S.draft[o.id]||null}
-function buildDraft(o){return S.draft[o.id]||{version:o.version,address:o.address||'',notes:o.notes||'',
+function buildDraft(o){return S.draft[o.id]||{version:o.version,customerName:o.customer.name||'',address:o.address||'',notes:o.notes||'',
   items:o.items.map(i=>({id:i.id,name:i.productName||i.mentioned||'',productId:i.productId,quantity:i.quantity,unit:i.unit||'LB',manualPrice:i.manualPrice,reason:i.priceChangeReason}))}}
 function priceFor(o,it){const p=S.products.find(x=>x.id===it.productId);if(it.manualPrice!=null)return it.manualPrice;return p?(p.prices[o.customer.type]??null):null}
 function totalOf(o,d){return d.items.reduce((s,it)=>{if(it.qtyError||it.priceError)return s;const p=priceFor(o,it);return s+(p!=null&&it.quantity>0?Math.round(it.quantity*p):0)},0)}
@@ -113,7 +113,14 @@ function renderOps(){
   for(const id of Object.keys(S.draft))if(!S.orders.some(o=>String(o.id)===id))delete S.draft[id]; // borradores de pedidos que ya no existen
   const m=$('#main');
   const existing=new Map([...m.children].filter(n=>n.classList.contains('card')).map(n=>[n.dataset.id,n]));
-  const wanted=[...(active.length?[]:[emptyMsg]),...active.map(o=>cardFor(o,existing)),...(done.length?[doneTitle]:[]),...done.map(o=>cardFor(o,existing))];
+  const opsBar = existing.get('toolbar') || h('div',{class:'card',dataset:{id:'toolbar'},style:'display:flex;justify-content:space-between;align-items:center;padding:10px 14px;margin-bottom:12px;border-left:5px solid var(--g);flex-wrap:wrap;gap:8px'},
+    h('div',{},h('b',{style:'font-size:16px'},'Tablero de Operación'),h('span',{class:'mut',style:'margin-left:10px'},`Activos: ${active.length} · Finalizados hoy: ${done.length}`)),
+    h('button',{class:'b main',style:'font-size:14px;padding:8px 16px',onclick:()=>openManualOrderModal()},'➕ Nuevo Pedido (Llamada / Tienda)')
+  );
+  if(existing.get('toolbar')){
+    const mutEl=opsBar.querySelector('.mut');if(mutEl)mutEl.textContent=`Activos: ${active.length} · Finalizados hoy: ${done.length}`;
+  }
+  const wanted=[opsBar,...(active.length?[]:[emptyMsg]),...active.map(o=>cardFor(o,existing)),...(done.length?[doneTitle]:[]),...done.map(o=>cardFor(o,existing))];
   const keep=new Set(wanted);[...m.children].forEach(n=>{if(!keep.has(n))n.remove()});
   let ref=m.firstElementChild;                       // coloca en orden moviendo solo lo necesario
   for(const el of wanted){if(el===ref)ref=ref.nextElementSibling;else m.insertBefore(el,ref)}}
@@ -146,8 +153,30 @@ function card(o){
   const busy=o.status==='PROCESSING'||o.status==='RECEIVED';
   const view=draftOf(o)||buildDraft(o);
   const el=h('div',{class:'card '+(o.reviewStatus||''),dataset:{id:o.id}});
-  el.append(h('div',{class:'top'},h('span',{class:'pill gray'},o.inputType==='AUDIO'?'🎙️ AUDIO':'📝 TEXTO'),h('b',{},'PEDIDO #'+o.id),statusPill(o),
-    h('span',{class:'sp'}),h('span',{class:'mut'},(o.customer.name||'Cliente')+' · '+o.customer.phoneMasked+(o.customer.type==='WHOLESALE'?' · MAYORISTA':'')+' · hace ',h('span',{class:'ago',dataset:{t:o.receivedAt}},ago(o.receivedAt)))));
+  const custNameEl = h('b',{style:'color:var(--ink);cursor:pointer;border-bottom:1px dashed var(--mut)',title:'Clic para modificar nombre del cliente',onclick:async()=>{
+    const current = view.customerName || o.customer.name || '';
+    const n = prompt('Modificar nombre del cliente (WhatsApp / Real):', current);
+    if(n !== null && n.trim() && n.trim() !== current){
+      const clean = n.trim();
+      view.customerName = clean;
+      mark();
+      try{
+        if(o.customer.id){
+          await api(`/api/customers/${o.customer.id}`,{method:'PUT',body:{name:clean,phone:o.customer.phoneMasked}});
+          toast(`✓ Nombre actualizado: "${clean}"`);
+          await loadOrders();
+        }
+      }catch(e){toast(e.message)}
+    }
+  }}, (view.customerName || o.customer.name || 'Cliente') + ' ✏️');
+
+  el.append(h('div',{class:'top'},
+    h('span',{class:'pill gray'},o.inputType==='AUDIO'?'🎙️ AUDIO':o.inputType==='MANUAL'?'🏪 MANUAL / LLAMADA':'📝 TEXTO'),
+    h('b',{},'PEDIDO #'+o.id),
+    statusPill(o),
+    h('span',{class:'sp'}),
+    h('span',{class:'mut'}, custNameEl, ' · ' + (o.customer.phoneMasked || '') + (o.customer.type==='WHOLESALE'?' · MAYORISTA':'') + ' · hace ', h('span',{class:'ago',dataset:{t:o.receivedAt}},ago(o.receivedAt)))
+  ));
   if(o.aiStatus==='FAILED')el.append(h('div',{class:'banner'},'🔴 IA NO DISPONIBLE — digita el pedido manualmente'));
   if(o.aiStatus==='TRANSCRIPTION_FAILED')el.append(h('div',{class:'banner'},'🎙️ 🔴 TRANSCRIPCIÓN FALLIDA — escucha el audio y digita manualmente'));
   if(o.conversationStatus==='WAITING_FOR_CUSTOMER')el.append(h('div',{class:'ai'},'⏳ Esperando respuesta del cliente'));
@@ -207,7 +236,39 @@ function card(o){
 
   view.items.forEach(it=>tb.append(rowFor(it)));
   el.append(h('div',{class:'scroll'},h('table',{},h('thead',{},h('tr',{},['Producto','Cantidad','Unidad','Precio','Subtotal',''].map(t=>h('th',{},t)))),tb)));
-  el.append(h('div',{class:'grid2'},h('input',{value:view.address,placeholder:'Dirección de entrega',oninput:e=>{view.address=e.target.value;mark()}}),h('input',{value:view.notes,placeholder:'Observaciones',oninput:e=>{view.notes=e.target.value;mark()}})));
+
+  const addrInput = h('input',{style:'flex:1',value:view.address,placeholder:'Dirección de entrega',oninput:e=>{view.address=e.target.value;mark()}});
+  const addrSelect = h('select',{style:'max-width:170px;font-size:13px',title:'Direcciones guardadas del cliente',onchange:e=>{
+    if(e.target.value){addrInput.value=e.target.value;view.address=e.target.value;mark()}
+  }}, h('option',{value:''},'📍 Direcciones...'));
+  if(o.customer.id){
+    api(`/api/customers/${o.customer.id}/addresses`).then(addrs=>{
+      if(addrs&&addrs.length){
+        addrSelect.replaceChildren(
+          h('option',{value:''},'📍 Guardadas ('+addrs.length+')...'),
+          ...addrs.map(a=>h('option',{value:a.address},`${a.label}: ${a.address}`))
+        );
+      } else { addrSelect.style.display='none'; }
+    }).catch(()=>{addrSelect.style.display='none'});
+  } else { addrSelect.style.display='none'; }
+
+  const saveAddrBtn = h('button',{class:'b',style:'padding:6px 10px;font-size:12px',title:'Guardar esta dirección en la libreta del cliente',onclick:async()=>{
+    const clean=addrInput.value.trim();if(!clean){toast('Escribe una dirección primero');return}
+    if(!o.customer.id){toast('El pedido no tiene cliente asociado');return}
+    const label=prompt('Etiqueta para esta dirección (ej: Casa, Apartamento, Negocio, Oficina):','Casa');
+    if(!label)return;
+    try{
+      await api(`/api/customers/${o.customer.id}/addresses`,{method:'POST',body:{label:label.trim(),address:clean,isDefault:false}});
+      toast(`✓ Dirección guardada como "${label.trim()}"`);
+      const addrs=await api(`/api/customers/${o.customer.id}/addresses`);
+      addrSelect.style.display='';
+      addrSelect.replaceChildren(h('option',{value:''},'📍 Guardadas ('+addrs.length+')...'),...addrs.map(a=>h('option',{value:a.address},`${a.label}: ${a.address}`)));
+    }catch(e){toast(e.message)}
+  }},'💾 Guardar dir');
+
+  const addrBox = h('div',{style:'display:flex;gap:6px;align-items:center'}, addrInput, addrSelect, saveAddrBtn);
+  const notesInput = h('input',{value:view.notes,placeholder:'Observaciones (timbre, horario, etc.)',oninput:e=>{view.notes=e.target.value;mark()}});
+  el.append(h('div',{class:'grid2',style:'margin-top:8px'}, addrBox, notesInput));
   el.addEventListener('input',mark);el.addEventListener('change',mark);   // cualquier edición crea el borrador
   const approve=h('button',{class:'b main'},'APROBAR E IMPRIMIR');
   approve.onclick=async()=>{
@@ -257,7 +318,7 @@ async function save(o,d){
   if(bad)throw Object.assign(new Error('Corrige '+(bad.name||'la línea')+': '+(bad.qtyError||bad.priceError)),{code:'LOCAL'});
   if(d.items.some(i=>!i.productId||!(i.quantity>0)))throw Object.assign(new Error('Completa producto y cantidad de todas las líneas (o elimina la línea vacía)'),{code:'LOCAL'});
   const items=payloadItems(d.items);                      // une repetidas antes de enviar; el servidor también las rechaza
-  const body={version:d.version,address:d.address,notes:d.notes,items:items.map(i=>({id:i.id,productId:i.productId,quantity:i.quantity,unit:i.unit,manualPrice:i.manualPrice,priceChangeReason:i.reason}))};
+  const body={version:d.version,customerName:d.customerName,address:d.address,notes:d.notes,items:items.map(i=>({id:i.id,productId:i.productId,quantity:i.quantity,unit:i.unit,manualPrice:i.manualPrice,priceChangeReason:i.reason}))};
   const r=await api(`/api/orders/${o.id}`,{method:'PUT',body});d.version=r.version;return r}
 function replyPanel(el,o,kind,text){
   el.querySelector('.reply')?.remove();
@@ -290,13 +351,334 @@ function replyPanel(el,o,kind,text){
   ta.focus();
 }
 
+/* ---------- Pedido manual (Mostrador / Llamada / Tienda) ---------- */
+function openManualOrderModal(){
+  const modal = h('div',{class:'card',style:'position:fixed;inset:3% 5%;z-index:30;overflow:auto;box-shadow:0 12px 50px #000b;max-width:850px;margin:auto;display:flex;flex-direction:column;gap:12px;max-height:94vh'});
+  
+  let selectedCustomer = null;
+  let customerAddresses = [];
+  
+  const title = h('div',{class:'top'},
+    h('b',{style:'font-size:18px'},'➕ Nuevo Pedido (Llamada / Mostrador / Tienda)'),
+    h('span',{class:'sp'}),
+    h('button',{class:'b',onclick:()=>modal.remove()},'✕ Cerrar')
+  );
+
+  const custSearch = h('input',{placeholder:'🔍 Buscar cliente por nombre o teléfono...',style:'width:100%'});
+  const custDropdown = h('div',{style:'display:none;background:var(--bg);border:1px solid var(--line);border-radius:6px;max-height:160px;overflow-y:auto;padding:4px'});
+  
+  const custName = h('input',{placeholder:'Nombre del cliente (ej: Don Carlos)',style:'flex:1'});
+  const custPhone = h('input',{placeholder:'Teléfono (ej: 3101234567)',style:'flex:1'});
+  const addrSelect = h('select',{style:'flex:1'}, h('option',{value:''},'-- Seleccionar dirección guardada --'));
+  const addrInput = h('input',{placeholder:'Dirección de entrega (o dejar vacío para mostrador)',style:'flex:2'});
+  const notesInput = h('input',{placeholder:'Observaciones (opcional)',style:'width:100%'});
+  
+  const addrRow = h('div',{class:'row',style:'display:flex;gap:8px;align-items:center'}, addrSelect, addrInput);
+  
+  let searchTimer;
+  custSearch.oninput = () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(async () => {
+      const q = custSearch.value.trim();
+      if (!q) { custDropdown.style.display = 'none'; return; }
+      try {
+        const list = await api('/api/customers?q=' + encodeURIComponent(q));
+        if (!list || !list.length) {
+          custDropdown.replaceChildren(h('div',{class:'mut',style:'padding:6px'},'No se encontraron clientes. Completa los campos abajo para registrarlo.'));
+        } else {
+          custDropdown.replaceChildren(...list.map(c => {
+            const item = h('div',{style:'padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center',
+              onclick: async () => {
+                selectedCustomer = c;
+                custName.value = c.name || '';
+                custPhone.value = c.phone || c.phoneMasked || '';
+                custDropdown.style.display = 'none';
+                custSearch.value = (c.name || 'Cliente') + ' (' + (c.phone || c.phoneMasked) + ')';
+                try {
+                  customerAddresses = await api(`/api/customers/${c.id}/addresses`);
+                  addrSelect.replaceChildren(
+                    h('option',{value:''},'📍 Seleccionar dirección...'),
+                    ...customerAddresses.map(a => h('option',{value:a.address,selected:a.isDefault},`${a.label}: ${a.address}`)),
+                    h('option',{value:'MOSTRADOR'},'🏢 Entrega en Mostrador / Tienda'),
+                    h('option',{value:'NUEVA'},'+ Nueva dirección...')
+                  );
+                  const def = customerAddresses.find(a => a.isDefault);
+                  if (def) addrInput.value = def.address;
+                } catch(x){}
+                calcTotal();
+              }},
+              h('b',{},c.name || '(Sin nombre)'),
+              h('span',{class:'mut'},(c.phone || c.phoneMasked) + (c.address ? ' · ' + c.address : ''))
+            );
+            item.onmouseover = () => item.style.background = 'var(--line)';
+            item.onmouseout = () => item.style.background = '';
+            return item;
+          }));
+        }
+        custDropdown.style.display = 'block';
+      } catch(e) {
+        custDropdown.style.display = 'none';
+      }
+    }, 250);
+  };
+
+  addrSelect.onchange = () => {
+    if (addrSelect.value === 'MOSTRADOR') {
+      addrInput.value = 'Mostrador / Para llevar';
+    } else if (addrSelect.value === 'NUEVA') {
+      addrInput.value = '';
+      addrInput.focus();
+    } else if (addrSelect.value) {
+      addrInput.value = addrSelect.value;
+    }
+  };
+
+  const items = [];
+  const tb = h('tbody');
+  const totalEl = h('b',{class:'total'},cop(0));
+
+  const calcTotal = () => {
+    const custType = selectedCustomer?.customerType || 'RETAIL';
+    let sum = 0;
+    for (const it of items) {
+      if (!it.productId || !(it.quantity > 0)) continue;
+      const p = S.products.find(x => x.id === it.productId);
+      const pr = it.manualPrice != null ? it.manualPrice : (p?.prices[custType] ?? 0);
+      sum += Math.round(it.quantity * pr);
+    }
+    totalEl.textContent = cop(sum);
+  };
+
+  const addItemRow = (initialName = '', initialQty = null) => {
+    const it = { productId: null, name: initialName, quantity: initialQty, unit: 'LB', manualPrice: null };
+    items.push(it);
+    
+    const sub = h('td',{class:'sub'},'—');
+    const qInput = h('input',{class:'q',type:'number',step:'0.5',min:'0',max:MAX_QTY,value:it.quantity??'',onkeydown:blockKeys,
+      oninput: e => {
+        const r = parseQty(e.target.value);
+        it.quantity = r.value;
+        const p = S.products.find(x => x.id === it.productId);
+        const pr = it.manualPrice != null ? it.manualPrice : (p?.prices[selectedCustomer?.customerType||'RETAIL'] ?? 0);
+        sub.textContent = r.ok && it.quantity > 0 && pr != null ? cop(it.quantity * pr) : '—';
+        calcTotal();
+      }});
+    const unitSelect = h('select',{onchange: e => { it.unit = e.target.value; }}, ['LB','KG','UNIDAD'].map(u=>h('option',{value:u,selected:u===it.unit},u==='UNIDAD'?'UN':u)));
+    const prInput = h('input',{class:'pr',type:'number',min:'0',placeholder:'Catálogo',onkeydown:blockKeys,
+      oninput: e => {
+        const r = parsePrice(e.target.value);
+        it.manualPrice = r.value;
+        const p = S.products.find(x => x.id === it.productId);
+        const pr = it.manualPrice != null ? it.manualPrice : (p?.prices[selectedCustomer?.customerType||'RETAIL'] ?? 0);
+        sub.textContent = it.quantity > 0 && pr != null ? cop(it.quantity * pr) : '—';
+        calcTotal();
+      }});
+    const nameInput = h('input',{class:'pn',list:'dl',placeholder:'Escribe producto...',value:it.name,
+      onchange: e => {
+        const p = byName(e.target.value);
+        if (!p) { it.productId = null; toast('Producto no encontrado'); return; }
+        it.productId = p.id;
+        it.name = p.name;
+        it.unit = p.unit;
+        unitSelect.value = p.unit;
+        prInput.placeholder = p.prices[selectedCustomer?.customerType||'RETAIL'] ?? '';
+        const pr = it.manualPrice != null ? it.manualPrice : (p.prices[selectedCustomer?.customerType||'RETAIL'] ?? 0);
+        sub.textContent = it.quantity > 0 ? cop(it.quantity * pr) : '—';
+        calcTotal();
+      }});
+
+    const delBtn = h('button',{class:'b danger',onclick:()=>{
+      const idx = items.indexOf(it);
+      if (idx >= 0) items.splice(idx, 1);
+      tr.remove();
+      calcTotal();
+    }},'✕');
+
+    const tr = h('tr',{}, h('td',{},nameInput), h('td',{},qInput), h('td',{},unitSelect), h('td',{},prInput), sub, h('td',{},delBtn));
+    tb.append(tr);
+    nameInput.focus();
+  };
+
+  addItemRow();
+
+  const addRowBtn = h('button',{class:'b',onclick:()=>addItemRow()},'+ Agregar Producto');
+
+  const createOrder = async (andApprove = false) => {
+    const validItems = items.filter(i => i.productId && i.quantity > 0);
+    if (!validItems.length) {
+      toast('Agrega al menos un producto con cantidad válida');
+      return;
+    }
+    const cPhone = custPhone.value.trim();
+    if (!selectedCustomer && !cPhone) {
+      toast('Ingresa el teléfono del cliente para registrarlo');
+      custPhone.focus();
+      return;
+    }
+
+    const payload = {
+      customerId: selectedCustomer?.id || null,
+      customerName: custName.value.trim() || null,
+      customerPhone: cPhone || null,
+      address: addrInput.value.trim() || null,
+      notes: notesInput.value.trim() || null,
+      items: validItems.map(i => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        unit: i.unit,
+        manualPrice: i.manualPrice,
+        priceChangeReason: i.manualPrice != null ? 'Precio manual en mostrador' : null
+      }))
+    };
+
+    try {
+      const order = await api('/api/orders/manual', { method: 'POST', body: payload });
+      toast(`✓ Pedido manual #${order.id} creado`);
+      modal.remove();
+      await loadOrders();
+
+      if (andApprove) {
+        try {
+          const res = await api(`/api/orders/${order.id}/approve`, { method: 'POST', body: { version: order.version } });
+          toast(`✓ Venta #${res.saleId} (${cop(res.total)}) aprobada e impresa`);
+          await loadOrders();
+          showTicket(res.saleId);
+        } catch(e) {
+          toast('Pedido creado pero falló al aprobar: ' + e.message);
+        }
+      }
+    } catch(e) {
+      toast(e.message);
+    }
+  };
+
+  const createBtn = h('button',{class:'b',onclick:()=>createOrder(false)},'Crear Pedido');
+  const createAndApproveBtn = h('button',{class:'b main',onclick:()=>createOrder(true)},'⚡ Cobrar e Imprimir');
+
+  modal.append(
+    title,
+    h('div',{style:'display:flex;flex-direction:column;gap:6px'},
+      custSearch, custDropdown,
+      h('div',{class:'row'}, custName, custPhone),
+      addrRow,
+      notesInput
+    ),
+    h('div',{class:'scroll',style:'max-height:280px;overflow-y:auto'},
+      h('table',{}, h('thead',{},h('tr',{},['Producto','Cantidad','Unidad','Precio','Subtotal',''].map(t=>h('th',{},t)))), tb)
+    ),
+    h('div',{class:'row',style:'justify-content:space-between;margin-top:8px'},
+      addRowBtn,
+      h('div',{class:'row',style:'gap:12px;align-items:center'},
+        h('span',{},'Total estimado: '), totalEl,
+        createBtn, createAndApproveBtn
+      )
+    )
+  );
+
+  document.body.append(modal);
+}
+
+function openAddressModal(c) {
+  const modal = h('div',{class:'card',style:'position:fixed;inset:10% 12%;z-index:30;overflow:auto;box-shadow:0 12px 50px #000b;max-width:650px;margin:auto;max-height:85vh'});
+  const listEl = h('tbody');
+
+  const load = async () => {
+    try {
+      const addrs = await api(`/api/customers/${c.id}/addresses`);
+      if (!addrs || !addrs.length) {
+        listEl.replaceChildren(h('tr',{},h('td',{colspan:4,class:'mut'},'No hay direcciones guardadas aún.')));
+      } else {
+        listEl.replaceChildren(...addrs.map(a => h('tr',{},
+          h('td',{},h('span',{class:'pill gray'},a.label)),
+          h('td',{},a.address),
+          h('td',{},a.isDefault ? h('span',{class:'pill GREEN'},'⭐ Principal') : ''),
+          h('td',{},h('button',{class:'b danger',style:'padding:3px 8px;font-size:12px',onclick:async()=>{
+            if(confirm(`¿Eliminar dirección "${a.label}: ${a.address}"?`)){
+              try{await api(`/api/customers/addresses/${a.id}`,{method:'DELETE'});toast('Dirección eliminada');load();}catch(e){toast(e.message)}
+            }
+          }},'🗑'))
+        )));
+      }
+    } catch(e) { toast(e.message); }
+  };
+
+  const labelSel = h('select',{},['Casa','Apartamento','Negocio','Oficina','Finca','Otro'].map(l=>h('option',{value:l},l)));
+  const addrInput = h('input',{placeholder:'Dirección (ej: Calle 10 # 5-20 Apt 301)',style:'flex:2'});
+  const defCheck = h('input',{type:'checkbox'});
+  const addBtn = h('button',{class:'b main',style:'padding:6px 12px',onclick:async()=>{
+    const addr = addrInput.value.trim();
+    if(!addr){toast('Ingresa la dirección');return;}
+    try{
+      await api(`/api/customers/${c.id}/addresses`,{method:'POST',body:{label:labelSel.value,address:addr,isDefault:defCheck.checked}});
+      toast('✓ Dirección agregada');
+      addrInput.value='';
+      defCheck.checked=false;
+      load();
+    }catch(e){toast(e.message)}
+  }},'+ Agregar');
+
+  modal.replaceChildren(
+    h('div',{class:'top'},h('b',{style:'font-size:16px'},`📍 Direcciones de ${c.name || 'Cliente'}`),h('span',{class:'sp'}),h('button',{class:'b',onclick:()=>modal.remove()},'✕ Cerrar')),
+    h('div',{class:'scroll',style:'margin:12px 0'},h('table',{},h('thead',{},h('tr',{},['Etiqueta','Dirección','Estado',''].map(t=>h('th',{},t)))),listEl)),
+    h('h4',{style:'margin:10px 0 6px'},'Agregar nueva dirección:'),
+    h('div',{class:'row',style:'gap:8px;align-items:center'},labelSel,addrInput,h('label',{style:'display:flex;align-items:center;gap:4px;font-size:13px'},defCheck,'Principal'),addBtn)
+  );
+
+  document.body.append(modal);
+  load();
+}
+
+function openNewCustomerModal(onDone) {
+  const modal = h('div',{class:'card',style:'position:fixed;inset:15% 15%;z-index:30;overflow:auto;box-shadow:0 12px 50px #000b;max-width:550px;margin:auto'});
+  const nameInput = h('input',{placeholder:'Nombre completo (ej: Don Carlos Gómez)',style:'width:100%'});
+  const phoneInput = h('input',{placeholder:'Teléfono WhatsApp (ej: 573101234567)',style:'width:100%'});
+  const labelSel = h('select',{},['Casa','Apartamento','Negocio','Oficina','Tienda'].map(l=>h('option',{value:l},l)));
+  const addrInput = h('input',{placeholder:'Dirección inicial (opcional)',style:'flex:1'});
+  const typeSel = h('select',{},[h('option',{value:'RETAIL'},'Minorista'),h('option',{value:'WHOLESALE'},'Mayorista')]);
+
+  const saveBtn = h('button',{class:'b main',onclick:async()=>{
+    const name = nameInput.value.trim();
+    const phone = phoneInput.value.trim();
+    if(!name){toast('El nombre es requerido');nameInput.focus();return;}
+    if(!phone){toast('El teléfono es requerido');phoneInput.focus();return;}
+    try{
+      await api('/api/customers',{method:'POST',body:{
+        name,
+        phone,
+        address:addrInput.value.trim()||null,
+        addressLabel:labelSel.value,
+        customerType:typeSel.value
+      }});
+      toast('✓ Cliente creado con éxito');
+      modal.remove();
+      if(onDone) onDone();
+    }catch(e){toast(e.message)}
+  }},'Guardar Cliente');
+
+  modal.replaceChildren(
+    h('div',{class:'top'},h('b',{style:'font-size:16px'},'➕ Registrar Nuevo Cliente'),h('span',{class:'sp'}),h('button',{class:'b',onclick:()=>modal.remove()},'✕ Cerrar')),
+    h('div',{style:'display:flex;flex-direction:column;gap:10px;margin-top:12px'},
+      h('label',{},'Nombre: ',nameInput),
+      h('label',{},'Teléfono: ',phoneInput),
+      h('div',{class:'row'},h('label',{},'Etiqueta: ',labelSel),h('label',{style:'flex:1'},'Dirección: ',addrInput)),
+      S.me.role==='ADMIN'?h('label',{},'Tipo de precio: ',typeSel):null,
+      h('div',{class:'row',style:'justify-content:flex-end;margin-top:10px'},
+        h('button',{class:'b',onclick:()=>modal.remove()},'Cancelar'),
+        saveBtn
+      )
+    )
+  );
+
+  document.body.append(modal);
+}
+
 /* ---------- Ventas ---------- */
 async function renderSales(){const m=$('#main');const today=new Date().toISOString().slice(0,10);const from=h('input',{type:'date',value:today}),to=h('input',{type:'date',value:today}),q=h('input',{placeholder:'Cliente, teléfono, dirección'});
   const ct=h('select',{},h('option',{value:''},'Todos'),h('option',{value:'RETAIL'},'Minorista'),h('option',{value:'WHOLESALE'},'Mayorista'));const out=h('div');
   const go=async()=>{try{const p=new URLSearchParams({from:from.value,to:to.value});if(q.value)p.set('q',q.value);if(ct.value)p.set('customerType',ct.value);const rows=await api('/api/sales?'+p);
     out.replaceChildren(h('p',{class:'mut'},rows.length+' ventas · '+cop(rows.reduce((s,r)=>s+r.total,0))),h('div',{class:'scroll'},h('table',{},h('thead',{},h('tr',{},['#','Hora','Cliente','Tipo','Origen','Total','Impresión',''].map(t=>h('th',{},t)))),
       h('tbody',{},rows.map(r=>h('tr',{},h('td',{},r.orderId),h('td',{},new Date(r.createdAt).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})),h('td',{},(r.customerName||'')+' '+(r.phoneMasked||'')),h('td',{},r.customerType==='WHOLESALE'?'Mayorista':'Minorista'),
-        h('td',{},r.inputType==='AUDIO'?'🎙️':'📝'),h('td',{},cop(r.total)),h('td',{},r.printStatus==='PRINTED'?'🖨 OK':r.printStatus==='PRINT_FAILED'?'🔴 Falló':'…'),
+        h('td',{},r.inputType==='AUDIO'?'🎙️':r.inputType==='MANUAL'?'🏪':'📝'),h('td',{},cop(r.total)),h('td',{},r.printStatus==='PRINTED'?'🖨 OK':r.printStatus==='PRINT_FAILED'?'🔴 Falló':'…'),
         h('td',{},h('button',{class:'b',onclick:async()=>{try{await api(`/api/sales/${r.id}/reprint`,{method:'POST'});toast('Reimpresión encolada');go()}catch(e){toast(e.message)}}},'Reimprimir'))))))))}catch(e){toast(e.message)}};
   m.replaceChildren(h('div',{class:'row'},h('label',{},'Desde ',from),h('label',{},'Hasta ',to),ct,q,h('button',{class:'b',onclick:go},'Buscar')),out);go()}
 
@@ -311,18 +693,81 @@ async function renderPrices(){const m=$('#main');const q=h('input',{placeholder:
     h('h3',{},'Nuevo producto'),h('div',{class:'row'},n,u,r,w,h('button',{class:'b main',onclick:async()=>{const rp=parsePrice(r.value),wp=parsePrice(w.value);if(!rp.ok||!wp.ok){toast(rp.error||wp.error);return}try{await api('/api/products',{method:'POST',body:{name:n.value,unit:u.value,retailPrice:rp.value,wholesalePrice:wp.value}});toast('Creado');n.value='';load()}catch(e){toast(e.message)}}},'Crear')));
   q.addEventListener('keydown',e=>e.key==='Enter'&&load());load()}
 
-/* ---------- Clientes y reportes (ADMIN) ---------- */
-async function renderCustomers(){const m=$('#main');const q=h('input',{placeholder:'Buscar cliente…'});const body=h('tbody');
-  const load=async()=>{const rows=await api('/api/customers?q='+encodeURIComponent(q.value));body.replaceChildren(...rows.map(c=>h('tr',{},h('td',{},c.name||'(sin nombre)'),h('td',{},c.phoneMasked),
-    h('td',{},h('select',{onchange:async e=>{try{await api(`/api/customers/${c.id}/type`,{method:'PUT',body:{customerType:e.target.value}});toast('Tipo actualizado')}catch(x){toast(x.message)}}},
-      ['RETAIL','WHOLESALE'].map(t=>h('option',{value:t,selected:t===c.customerType},t==='RETAIL'?'Minorista':'Mayorista')))))))};
-  m.replaceChildren(h('div',{class:'row'},q,h('button',{class:'b',onclick:load},'Buscar')),h('table',{},h('thead',{},h('tr',{},['Cliente','Teléfono','Tipo de precio'].map(t=>h('th',{},t)))),body));load()}
+/* ---------- Clientes ---------- */
+async function renderCustomers(){
+  const m=$('#main');
+  const q=h('input',{placeholder:'Buscar por nombre o teléfono…',style:'flex:1'});
+  const body=h('tbody');
+  
+  const load=async()=>{
+    try {
+      const rows=await api('/api/customers?q='+encodeURIComponent(q.value));
+      body.replaceChildren(...rows.map(c=>h('tr',{},
+        h('td',{},
+          h('b',{},c.name||'(sin nombre)'),
+          h('button',{class:'b',style:'padding:2px 6px;margin-left:6px;font-size:11px',title:'Editar nombre',onclick:async()=>{
+            const n = prompt('Nuevo nombre para el cliente:', c.name || '');
+            if(n !== null && n.trim() && n.trim() !== c.name){
+              try {
+                await api(`/api/customers/${c.id}`,{method:'PUT',body:{name:n.trim(),phone:c.phone||c.phoneMasked}});
+                toast('✓ Nombre actualizado');
+                load();
+              } catch(e){toast(e.message)}
+            }
+          }},'✏️')
+        ),
+        h('td',{},
+          h('span',{},c.phoneMasked||c.phone||'—'),
+          h('button',{class:'b',style:'padding:2px 6px;margin-left:6px;font-size:11px',title:'Editar teléfono',onclick:async()=>{
+            const p = prompt('Nuevo teléfono para el cliente:', c.phone || '');
+            if(p !== null && p.trim() && p.trim() !== c.phone){
+              try {
+                await api(`/api/customers/${c.id}`,{method:'PUT',body:{name:c.name||'Cliente',phone:p.trim()}});
+                toast('✓ Teléfono actualizado');
+                load();
+              } catch(e){toast(e.message)}
+            }
+          }},'✏️')
+        ),
+        h('td',{},
+          S.me.role==='ADMIN'
+            ? h('select',{onchange:async e=>{try{await api(`/api/customers/${c.id}/type`,{method:'PUT',body:{customerType:e.target.value}});toast('Tipo actualizado')}catch(x){toast(x.message)}}},
+                ['RETAIL','WHOLESALE'].map(t=>h('option',{value:t,selected:t===c.customerType},t==='RETAIL'?'Minorista':'Mayorista')))
+            : h('span',{class:'pill gray'},c.customerType==='WHOLESALE'?'Mayorista':'Minorista')
+        ),
+        h('td',{},
+          h('button',{class:'b',style:'padding:5px 10px;font-size:13px',onclick:()=>openAddressModal(c)},'📍 Direcciones')
+        )
+      )));
+    } catch(e) { toast(e.message); }
+  };
+
+  const newCustBtn = h('button',{class:'b main',onclick:()=>openNewCustomerModal(load)},'➕ Nuevo Cliente');
+  
+  m.replaceChildren(
+    h('div',{class:'row',style:'justify-content:space-between;margin-bottom:12px'},
+      h('div',{class:'row',style:'flex:1'},q,h('button',{class:'b',onclick:load},'Buscar')),
+      newCustBtn
+    ),
+    h('div',{class:'scroll'},
+      h('table',{},
+        h('thead',{},h('tr',{},['Cliente','Teléfono','Tipo de precio','Direcciones'].map(t=>h('th',{},t)))),
+        body
+      )
+    )
+  );
+  
+  q.addEventListener('keydown', e => e.key==='Enter' && load());
+  load();
+}
+
+/* ---------- Reportes (ADMIN) ---------- */
 async function renderReports(){const m=$('#main');const today=new Date().toISOString().slice(0,10);const from=h('input',{type:'date',value:today}),to=h('input',{type:'date',value:today}),out=h('div');
   const kv=(t,rows)=>h('div',{},h('h3',{},t),h('table',{},rows.map(r=>h('tr',{},r.map(c=>h('td',{},c))))));
   const go=async()=>{try{const r=await api(`/api/reports/sales?from=${from.value}&to=${to.value}`);
     out.replaceChildren(h('p',{class:'total'},cop(r.totals.revenue)+' · '+r.totals.sales+' ventas'),
       kv('Por tipo de cliente',r.byCustomerType.map(x=>[x.key==='WHOLESALE'?'Mayorista':'Minorista',x.sales+' ventas',cop(x.revenue)])),
-      kv('Por origen',r.byInputType.map(x=>[x.key==='AUDIO'?'🎙️ Audio':'📝 Texto',x.sales+' ventas',cop(x.revenue)])),
+      kv('Por origen',r.byInputType.map(x=>[x.key==='AUDIO'?'🎙️ Audio':x.key==='MANUAL'?'🏪 Mostrador':'📝 Texto',x.sales+' ventas',cop(x.revenue)])),
       kv('Semáforo (pedidos recibidos)',r.reviewStatus.map(x=>[x.status,x.orders])),
       kv('Calidad de la IA y velocidad',[['Pedidos recibidos',r.orders.received],['Corregidos por empleados',r.orders.correctedByHumans+' ('+r.orders.correctedPercent+'%)'],['Fallas de IA/transcripción',r.orders.aiFailures],
         ['Promedio recibido → aprobado',r.orders.avgSecondsReceivedToApproved+' s'],['Promedio aprobado → impreso',r.avgSecondsApprovedToPrinted+' s']]),
@@ -331,7 +776,7 @@ async function renderReports(){const m=$('#main');const today=new Date().toISOSt
 
 /* ---------- Arranque ---------- */
 function fillDl(){$('#dl').replaceChildren(...S.products.filter(p=>p.active).map(p=>h('option',{value:p.name})))}
-function nav(){const tabs=[['ops','Operación'],['sales','Ventas']];if(S.me.role==='ADMIN')tabs.push(['prices','Precios'],['customers','Clientes'],['reports','Reportes']);
+function nav(){const tabs=[['ops','Operación'],['sales','Ventas'],['customers','Clientes']];if(S.me.role==='ADMIN')tabs.push(['prices','Precios'],['reports','Reportes']);
   $('#nav').replaceChildren(...tabs.map(([k,l])=>h('button',{class:S.tab===k?'on':'',onclick:()=>{S.tab=k;nav();show()}},l)))}
 function show(){({ops:()=>{renderOps()},sales:renderSales,prices:renderPrices,customers:renderCustomers,reports:renderReports})[S.tab]()}
 $('#logout').onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'X-XSRF-TOKEN':csrf()}});location='/login.html'};

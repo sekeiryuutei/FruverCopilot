@@ -87,10 +87,43 @@ public class SaleController {
         return reports.sales(from, to);
     }
 
+    public record CreateCustomerBody(
+            @jakarta.validation.constraints.NotBlank String name,
+            @jakarta.validation.constraints.NotBlank String phone,
+            String address,
+            String addressLabel,
+            CustomerType customerType
+    ) {}
+
+    public record UpdateCustomerBody(
+            @jakarta.validation.constraints.NotBlank String name,
+            @jakarta.validation.constraints.NotBlank String phone,
+            CustomerType customerType
+    ) {}
+
+    public record AddressBody(
+            @jakarta.validation.constraints.NotBlank String label,
+            @jakarta.validation.constraints.NotBlank String address,
+            boolean isDefault
+    ) {}
+
     @GetMapping("/customers")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public List<CustomerService.CustomerView> customers(@RequestParam(required = false) String q) {
         return customers.search(q);
+    }
+
+    @PostMapping("/customers")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public CustomerService.CustomerView createCustomer(@Valid @RequestBody CreateCustomerBody b) {
+        return customers.createCustomer(b.name(), b.phone(), b.address(), b.addressLabel(),
+                b.customerType() != null ? b.customerType() : CustomerType.RETAIL, Actor.name());
+    }
+
+    @PutMapping("/customers/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public CustomerService.CustomerView updateCustomer(@PathVariable long id, @Valid @RequestBody UpdateCustomerBody b) {
+        return customers.updateCustomer(id, b.name(), b.phone(), b.customerType(), Actor.name());
     }
 
     @PutMapping("/customers/{id}/type")
@@ -98,4 +131,23 @@ public class SaleController {
     public void setType(@PathVariable long id, @Valid @RequestBody TypeBody b) {
         customers.setType(id, b.customerType(), Actor.name());
     }
+
+    @GetMapping("/customers/{id}/addresses")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public List<CustomerService.CustomerAddressView> addresses(@PathVariable long id) {
+        return customers.listAddresses(id);
+    }
+
+    @PostMapping("/customers/{id}/addresses")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public CustomerService.CustomerAddressView addAddress(@PathVariable long id, @Valid @RequestBody AddressBody b) {
+        return customers.addAddress(id, b.label(), b.address(), b.isDefault(), Actor.name());
+    }
+
+    @DeleteMapping("/customers/addresses/{addressId}")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public void deleteAddress(@PathVariable long addressId) {
+        customers.deleteAddress(addressId, Actor.name());
+    }
 }
+
