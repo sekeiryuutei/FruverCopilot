@@ -64,6 +64,9 @@ class ExtractionEvalTest {
     @Autowired OrderExtractor extractor;
 
     private AIOrderResponse run(String msg, String... candidates) {
+        try {
+            Thread.sleep(2000L); // Respetar rate limits de Gemini free tier (15 RPM)
+        } catch (InterruptedException ignored) {}
         return extractor.extract(new ExtractionRequest(msg, List.of(), List.of(), List.of(candidates)));
     }
 

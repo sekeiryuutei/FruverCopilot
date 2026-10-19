@@ -33,7 +33,13 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 /** Flujo completo contra PostgreSQL real (Testcontainers). Se omite si no hay Docker. */
-@SpringBootTest(properties = {"app.security.admin-password=test-only-password", "app.audio.storage-path=target/test-audio", "app.printing.poll-ms=3600000"})
+@SpringBootTest(properties = {
+        "app.security.admin-password=test-only-password",
+        "app.audio.storage-path=target/test-audio",
+        "app.printing.poll-ms=3600000",
+        "app.conversation.ai-auto-reply=false",
+        "app.conversation.auto-confirm-clear-orders=false"
+})
 @Testcontainers(disabledWithoutDocker = true)
 class SaleFlowIntegrationTest {
 

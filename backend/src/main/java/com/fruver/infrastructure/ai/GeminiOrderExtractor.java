@@ -70,7 +70,7 @@ public class GeminiOrderExtractor implements OrderExtractor {
         );
 
         JsonNode root = null;
-        for (int attempt = 1; attempt <= 3; attempt++) {
+        for (int attempt = 1; attempt <= 4; attempt++) {
             try {
                 root = http.post()
                         .uri("/v1beta/models/" + model + ":generateContent")
@@ -82,10 +82,11 @@ public class GeminiOrderExtractor implements OrderExtractor {
                 break;
             } catch (org.springframework.web.client.RestClientResponseException e) {
                 int status = e.getStatusCode().value();
-                if ((status == 503 || status == 429) && attempt < 3) {
-                    log.warn("Gemini ocupado (HTTP {}), reintentando ({}/3)...", status, attempt);
+                if ((status == 503 || status == 429) && attempt < 4) {
+                    long waitMs = (status == 429) ? attempt * 5000L : attempt * 1500L;
+                    log.warn("Gemini ocupado (HTTP {}), reintentando ({}/4) en {}ms...", status, attempt, waitMs);
                     try {
-                        Thread.sleep(attempt * 1200L);
+                        Thread.sleep(waitMs);
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                         throw new ExtractionUnavailableException("Interrumpido durante reintento de Gemini", ie);
@@ -94,6 +95,19 @@ public class GeminiOrderExtractor implements OrderExtractor {
                 }
                 log.warn("Fallo en extracción con Gemini (HTTP {}): {}", status, e.getMessage());
                 throw new ExtractionUnavailableException("Fallo la extracción con Gemini: " + e.getClass().getSimpleName(), e);
+            } catch (org.springframework.web.client.ResourceAccessException e) {
+                if (attempt < 4) {
+                    log.warn("Error de conexión con Gemini ({}), reintentando ({}/4)...", e.getMessage(), attempt);
+                    try {
+                        Thread.sleep(attempt * 2000L);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new ExtractionUnavailableException("Interrumpido durante reintento de Gemini", ie);
+                    }
+                    continue;
+                }
+                log.warn("Fallo de conexión persistente con Gemini: {}", e.getMessage());
+                throw new ExtractionUnavailableException("Fallo la conexión con Gemini: " + e.getClass().getSimpleName(), e);
             } catch (Exception e) {
                 log.warn("Fallo en extracción con Gemini: {}", e.getMessage());
                 throw new ExtractionUnavailableException("Fallo la extracción con Gemini: " + e.getClass().getSimpleName(), e);

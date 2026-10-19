@@ -21,9 +21,9 @@ public final class ConfirmationMessageBuilder {
         return sb.toString();
     }
 
-    private static String unitWord(String unit, java.math.BigDecimal q) {
-        boolean one = q.compareTo(java.math.BigDecimal.ONE) == 0;
-        return switch (unit) {
+    public static String unitWord(String unit, java.math.BigDecimal q) {
+        boolean one = q != null && q.compareTo(java.math.BigDecimal.ONE) == 0;
+        return switch (unit == null ? "" : unit) {
             case "LB" -> one ? "libra" : "libras";
             case "KG" -> one ? "kilo" : "kilos";
             default -> one ? "unidad" : "unidades";

@@ -16,7 +16,7 @@ import java.util.Map;
 @Service
 public class ConversationService {
 
-    public enum Kind { ASK, CONFIRM }
+    public enum Kind { ASK, CONFIRM, INFO }
 
     public record MessageView(long id, String direction, String type, String content, String delivery, java.time.OffsetDateTime createdAt) {}
 
@@ -61,9 +61,18 @@ public class ConversationService {
                 .param("id", orderId).query(Integer.class).optional().orElse(null);
         if (locked == null) throw new ApiException(409, "ORDER_NOT_ACTIVE", "El pedido no admite mensajes");
         record(orderId, text, delivery);
+        String cs = switch (kind) {
+            case ASK -> "WAITING_FOR_CUSTOMER";
+            case CONFIRM -> "CONFIRMED";
+            case INFO -> "READY_FOR_REVIEW";
+        };
         jdbc.sql("UPDATE orders SET conversation_status = :cs, suggested_reply = NULL WHERE id = :id")
-                .param("cs", kind == Kind.ASK ? "WAITING_FOR_CUSTOMER" : "CONFIRMED").param("id", orderId).update();
-        audit.log(actor, kind == Kind.ASK ? "CUSTOMER_ASKED" : "CUSTOMER_CONFIRMATION_SENT", orderId, null, Map.of("delivery", delivery));
+                .param("cs", cs).param("id", orderId).update();
+        audit.log(actor, switch (kind) {
+            case ASK -> "CUSTOMER_ASKED";
+            case CONFIRM -> "CUSTOMER_CONFIRMATION_SENT";
+            case INFO -> "CUSTOMER_INFO_SENT";
+        }, orderId, null, Map.of("delivery", delivery));
     }
 
     public List<MessageView> messages(long orderId) {

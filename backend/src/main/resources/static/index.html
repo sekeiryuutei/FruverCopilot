@@ -106,7 +106,8 @@ const doneTitle=h('h3',{},'Aprobados hoy');
 function renderOps(){
   const rank={RED:0,YELLOW:1,GREEN:2};
   const active=S.orders.filter(o=>o.status!=='APPROVED'),done=S.orders.filter(o=>o.status==='APPROVED');
-  active.sort((a,b)=>(rank[a.reviewStatus]??3)-(rank[b.reviewStatus]??3)||a.id-b.id);
+  active.sort((a,b)=>b.id-a.id);
+  done.sort((a,b)=>b.id-a.id);
   const c={GREEN:0,YELLOW:0,RED:0};active.forEach(o=>c[o.reviewStatus]!==undefined&&c[o.reviewStatus]++);
   $('#cnt').textContent=`Pedidos: ${active.length}  🟢 ${c.GREEN}  🟡 ${c.YELLOW}  🔴 ${c.RED}`;
   for(const id of Object.keys(S.draft))if(!S.orders.some(o=>String(o.id)===id))delete S.draft[id]; // borradores de pedidos que ya no existen
