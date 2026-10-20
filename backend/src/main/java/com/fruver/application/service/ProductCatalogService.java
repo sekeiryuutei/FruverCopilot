@@ -34,14 +34,18 @@ public class ProductCatalogService implements ProductLookup {
     @Override
     public Resolution resolve(ItemSugeridoDTO item) {
         if (item.productoNormalizado() != null && !item.productoNormalizado().isBlank()) {
+            String clean = item.productoNormalizado().replaceAll("\\[.*?\\]", "").replaceAll("\\(.*?\\)", "").strip();
             List<Resolution> exact = jdbc.sql("SELECT id, unit FROM product WHERE active AND lower(name) = lower(:n)")
-                    .param("n", item.productoNormalizado().strip())
+                    .param("n", clean)
                     .query((rs, i) -> new Resolution(rs.getLong(1), 1, rs.getString(2))).list();
             if (exact.size() == 1) return exact.get(0);
         }
         // La IA pudo inventar o no normalizar: se busca por palabras significativas (todas deben aparecer).
         String source = item.productoNormalizado() != null && !item.productoNormalizado().isBlank()
                 ? item.productoNormalizado() : item.productoMencionado();
+        if (source != null) {
+            source = source.replaceAll("\\[.*?\\]", "").replaceAll("\\(.*?\\)", "").strip();
+        }
         List<String> tokens = TextTokens.significant(source);
         if (tokens.isEmpty()) return new Resolution(null, 0, null);
         StringBuilder sql = new StringBuilder("SELECT id, unit FROM product WHERE active");
@@ -57,11 +61,19 @@ public class ProductCatalogService implements ProductLookup {
 
     /** Nombres reales del catalogo relacionados con el mensaje: contexto de solo lectura para el LLM. */
     public List<String> candidates(String text) {
+        // En una tienda de fruver el catálogo activo suele tener < 150 productos.
+        // Los enviamos todos con su unidad de venta para que la IA conozca TODO el inventario disponible
+        // y nunca diga que no hay algo que sí existe en la tienda.
+        List<String> all = jdbc.sql("SELECT concat(name, ' [', unit, ']') FROM product WHERE active ORDER BY name")
+                .query(String.class).list();
+        if (all.size() <= 150) {
+            return all;
+        }
         List<String> tokens = TextTokens.significant(text);
         if (tokens.isEmpty()) {
-            return jdbc.sql("SELECT name FROM product WHERE active ORDER BY name LIMIT 30").query(String.class).list();
+            return all.stream().limit(50).toList();
         }
-        StringBuilder sql = new StringBuilder("SELECT name FROM product WHERE active AND (");
+        StringBuilder sql = new StringBuilder("SELECT concat(name, ' [', unit, ']') FROM product WHERE active AND (");
         Map<String, Object> params = new HashMap<>();
         for (int i = 0; i < tokens.size(); i++) {
             if (i > 0) sql.append(" OR ");
@@ -70,11 +82,9 @@ public class ProductCatalogService implements ProductLookup {
             params.put("t" + i, "%" + tokens.get(i) + "%");
             params.put("s" + i, tokens.get(i));
         }
-        sql.append(") ORDER BY name LIMIT 30");
+        sql.append(") ORDER BY name LIMIT 50");
         List<String> matches = jdbc.sql(sql.toString()).params(params).query(String.class).list();
-        return matches.isEmpty()
-                ? jdbc.sql("SELECT name FROM product WHERE active ORDER BY name LIMIT 30").query(String.class).list()
-                : matches;
+        return matches.isEmpty() ? all.stream().limit(50).toList() : matches;
     }
 
     // ------------------------------------------------------------------ administracion

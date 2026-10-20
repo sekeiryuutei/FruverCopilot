@@ -1,14 +1,15 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>FruverCopilot</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E🥑%3C/text%3E%3C/svg%3E">
 <style>
 :root{--bg:#f4f6f4;--card:#fff;--ink:#14231a;--mut:#607066;--line:#dbe3dd;--g:#1f9d55;--y:#d99a00;--r:#d33;--brand:#14361f}
 @media (prefers-color-scheme:dark){:root{--bg:#0e1712;--card:#16261d;--ink:#e9f2ec;--mut:#93a89b;--line:#274233;--brand:#0a1f12}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,sans-serif}
-header{background:var(--brand);color:#fff;padding:10px 16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:5}
-header b{font-size:18px}nav{display:flex;gap:6px;flex:1;flex-wrap:wrap}
-nav button{background:transparent;color:#cfe;border:1px solid #ffffff33;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:14px}
-nav button.on{background:#fff;color:#123}.cnt{font-size:14px;white-space:nowrap}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,sans-serif;-webkit-text-size-adjust:100%}
+header{background:var(--brand);color:#fff;padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:25;box-shadow:0 2px 8px #0002}
+header b{font-size:18px}nav{display:flex;gap:6px;flex:1;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 0}
+nav::-webkit-scrollbar{display:none}
+nav button{background:transparent;color:#cfe;border:1px solid #ffffff33;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:13.5px;flex-shrink:0;font-weight:500;touch-action:manipulation}
+nav button.on{background:#fff;color:#123;font-weight:700}.cnt{font-size:13.5px;white-space:nowrap}
 main{max-width:1100px;margin:0 auto;padding:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;border-left:8px solid var(--line)}
 .card.GREEN{border-left-color:var(--g)}.card.YELLOW{border-left-color:var(--y)}.card.RED{border-left-color:var(--r)}
@@ -20,16 +21,35 @@ main{max-width:1100px;margin:0 auto;padding:14px}
 table{width:100%;border-collapse:collapse}td,th{padding:5px 4px;text-align:left;vertical-align:middle}th{font-size:12px;color:var(--mut)}
 input,select,textarea{font:inherit;padding:8px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);min-width:0}
 td input.pn{width:100%;min-width:140px}td input.q{width:78px}td input.pr{width:96px}
-button.b{padding:9px 14px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;cursor:pointer;font-weight:600}
+button.b{padding:9px 14px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;cursor:pointer;font-weight:600;touch-action:manipulation}
 button.b.main{background:var(--g);border-color:var(--g);color:#fff;font-size:16px;padding:11px 18px}button.b.danger{color:var(--r)}
 button.b:disabled{opacity:.5;cursor:wait}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
 .total{font-size:22px;font-weight:800}.prob{color:var(--r);font-size:12px}.ai{color:var(--mut);font-size:12px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}@media(max-width:640px){.grid2{grid-template-columns:1fr}td input.pn{min-width:110px}}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .conv{font-size:13px;background:var(--bg);border-radius:8px;padding:8px;margin-top:8px}.conv .out{color:var(--g)}
-#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:9px;display:none;z-index:9;max-width:90vw}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:9px;display:none;z-index:999;max-width:90vw}
 @keyframes fl{from{background:#2fb76766}to{background:transparent}}tr.flash{animation:fl 1.2s}
 input.bad{border-color:var(--r);box-shadow:0 0 0 2px #d3332255}
-h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto}
+h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(3px);z-index:90;display:flex;align-items:center;justify-content:center;padding:12px}
+.modal-card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 50px rgba(0,0,0,0.5);width:100%;max-width:850px;max-height:92vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:16px;z-index:91}
+@media(max-width:640px){
+  header{padding:8px 10px;gap:6px}
+  header b{font-size:16px}
+  .cnt{width:100%;font-size:12px;order:3;padding:2px 0}
+  main{padding:8px}
+  .card{padding:10px;margin-bottom:10px;border-radius:10px;border-left-width:5px}
+  .grid2{grid-template-columns:1fr}
+  td input.pn{min-width:110px;font-size:14px}
+  td input.q{width:60px;font-size:14px}
+  td input.pr{width:74px;font-size:14px}
+  td,th{padding:5px 2px;font-size:12px}
+  button.b{padding:8px 11px;font-size:13px;min-height:36px}
+  button.b.main{padding:10px 14px;font-size:15px;min-height:42px}
+  .total{font-size:20px}
+  .modal-overlay{padding:0}
+  .modal-card{height:100vh;max-height:100vh;border-radius:0;border:none;padding:12px}
+}
 </style></head><body>
 <header><b>🥑 FruverCopilot</b><nav id="nav"></nav><span class="cnt" id="cnt"></span><button class="b" style="padding:5px 10px" id="logout">Salir</button></header>
 <main id="main"></main><div id="toast"></div><datalist id="dl"></datalist>
@@ -142,11 +162,13 @@ function flagStale(el,o){const d=S.draft[o.id];if(!d||d.version===o.version||el.
 function statusPill(o){return o.status==='PROCESSING'||o.status==='RECEIVED'?h('span',{class:'pill gray'},'⏳ PROCESANDO'):h('span',{class:'pill '+(o.reviewStatus||'gray')},{GREEN:'🟢 LISTO',YELLOW:'🟡 REVISAR',RED:'🔴 PROBLEMA'}[o.reviewStatus]||'—')}
 /** Vista previa de factura (demo sin impresora): mismo texto del papel en un modal. */
 async function showTicket(saleId){try{const t=await api(`/api/sales/${saleId}/ticket`);
-  const pre=h('pre',{style:'background:var(--bg);padding:12px;border-radius:8px;white-space:pre-wrap;font-family:monospace'},t.text);
-  const m=h('div',{class:'card GREEN',style:'position:fixed;inset:10% 8%;z-index:20;overflow:auto;box-shadow:0 10px 40px #0008'},
-    h('div',{class:'top'},h('b',{},'Factura pedido #'+t.orderId),h('span',{class:'sp'}),h('button',{class:'b',onclick:()=>m.remove()},'Cerrar')),
+  const overlay=h('div',{class:'modal-overlay',onclick:e=>{if(e.target===overlay)overlay.remove()}});
+  const pre=h('pre',{style:'background:var(--bg);padding:12px;border-radius:8px;white-space:pre-wrap;font-family:monospace;overflow-x:auto'},t.text);
+  const m=h('div',{class:'modal-card GREEN',style:'max-width:500px'},
+    h('div',{class:'top'},h('b',{},'Factura pedido #'+t.orderId),h('span',{class:'sp'}),h('button',{class:'b',onclick:()=>overlay.remove()},'Cerrar')),
     pre,h('div',{class:'row'},h('button',{class:'b main',onclick:()=>window.print()},'Imprimir')));
-  document.body.append(m)}catch(e){toast(e.message)}}
+  overlay.append(m);
+  document.body.append(overlay)}catch(e){toast(e.message)}}
 function doneCard(o){
   const ps=o.printStatus;
   const cardEl=h('div',{class:'card GREEN',dataset:{id:o.id}});
@@ -442,7 +464,9 @@ function replyPanel(el,o,kind,text){
 
 /* ---------- Pedido manual (Mostrador / Llamada / Tienda) ---------- */
 function openManualOrderModal(isQuickSale = false){
-  const modal = h('div',{class:'card',style:'position:fixed;inset:3% 5%;z-index:30;overflow:auto;box-shadow:0 12px 50px #000b;max-width:850px;margin:auto;display:flex;flex-direction:column;gap:12px;max-height:94vh'});
+  const overlay = h('div',{class:'modal-overlay',onclick:e=>{if(e.target===overlay)closeModal()}});
+  const modal = h('div',{class:'modal-card'});
+  const closeModal = () => overlay.remove();
   
   let selectedCustomer = null;
   let customerAddresses = [];
@@ -453,7 +477,7 @@ function openManualOrderModal(isQuickSale = false){
     h('b',{style:'font-size:18px'},'➕ Nuevo Pedido (Llamada / Mostrador / Tienda)'),
     h('span',{class:'sp'}),
     quickSaleBtn,
-    h('button',{class:'b',onclick:()=>modal.remove()},'✕ Cerrar')
+    h('button',{class:'b',onclick:closeModal},'✕ Cerrar')
   );
 
   const custSearch = h('input',{placeholder:'🔍 Buscar cliente por nombre o teléfono...',style:'width:100%'});
@@ -639,7 +663,7 @@ function openManualOrderModal(isQuickSale = false){
     try {
       const order = await api('/api/orders/manual', { method: 'POST', body: payload });
       toast(`✓ Pedido manual #${order.id} creado`);
-      modal.remove();
+      closeModal();
       await loadOrders();
 
       if (andApprove) {
@@ -680,11 +704,14 @@ function openManualOrderModal(isQuickSale = false){
     )
   );
 
-  document.body.append(modal);
+  overlay.append(modal);
+  document.body.append(overlay);
 }
 
 function openAddressModal(c) {
-  const modal = h('div',{class:'card',style:'position:fixed;inset:10% 12%;z-index:30;overflow:auto;box-shadow:0 12px 50px #000b;max-width:650px;margin:auto;max-height:85vh'});
+  const overlay = h('div',{class:'modal-overlay',onclick:e=>{if(e.target===overlay)closeModal()}});
+  const modal = h('div',{class:'modal-card',style:'max-width:650px'});
+  const closeModal = () => overlay.remove();
   const listEl = h('tbody');
 
   const load = async () => {
@@ -723,18 +750,21 @@ function openAddressModal(c) {
   }},'+ Agregar');
 
   modal.replaceChildren(
-    h('div',{class:'top'},h('b',{style:'font-size:16px'},`📍 Direcciones de ${c.name || 'Cliente'}`),h('span',{class:'sp'}),h('button',{class:'b',onclick:()=>modal.remove()},'✕ Cerrar')),
+    h('div',{class:'top'},h('b',{style:'font-size:16px'},`📍 Direcciones de ${c.name || 'Cliente'}`),h('span',{class:'sp'}),h('button',{class:'b',onclick:closeModal},'✕ Cerrar')),
     h('div',{class:'scroll',style:'margin:12px 0'},h('table',{},h('thead',{},h('tr',{},['Etiqueta','Dirección','Estado',''].map(t=>h('th',{},t)))),listEl)),
     h('h4',{style:'margin:10px 0 6px'},'Agregar nueva dirección:'),
     h('div',{class:'row',style:'gap:8px;align-items:center'},labelSel,addrInput,h('label',{style:'display:flex;align-items:center;gap:4px;font-size:13px'},defCheck,'Principal'),addBtn)
   );
 
-  document.body.append(modal);
+  overlay.append(modal);
+  document.body.append(overlay);
   load();
 }
 
 function openNewCustomerModal(onDone) {
-  const modal = h('div',{class:'card',style:'position:fixed;inset:15% 15%;z-index:30;overflow:auto;box-shadow:0 12px 50px #000b;max-width:550px;margin:auto'});
+  const overlay = h('div',{class:'modal-overlay',onclick:e=>{if(e.target===overlay)closeModal()}});
+  const modal = h('div',{class:'modal-card',style:'max-width:550px'});
+  const closeModal = () => overlay.remove();
   const nameInput = h('input',{placeholder:'Nombre completo (ej: Don Carlos Gómez)',style:'width:100%'});
   const phoneInput = h('input',{placeholder:'Teléfono WhatsApp (ej: 573101234567)',style:'width:100%'});
   const labelSel = h('select',{},['Casa','Apartamento','Negocio','Oficina','Tienda'].map(l=>h('option',{value:l},l)));
@@ -755,26 +785,27 @@ function openNewCustomerModal(onDone) {
         customerType:typeSel.value
       }});
       toast('✓ Cliente creado con éxito');
-      modal.remove();
+      closeModal();
       if(onDone) onDone();
     }catch(e){toast(e.message)}
   }},'Guardar Cliente');
 
   modal.replaceChildren(
-    h('div',{class:'top'},h('b',{style:'font-size:16px'},'➕ Registrar Nuevo Cliente'),h('span',{class:'sp'}),h('button',{class:'b',onclick:()=>modal.remove()},'✕ Cerrar')),
+    h('div',{class:'top'},h('b',{style:'font-size:16px'},'➕ Registrar Nuevo Cliente'),h('span',{class:'sp'}),h('button',{class:'b',onclick:closeModal},'✕ Cerrar')),
     h('div',{style:'display:flex;flex-direction:column;gap:10px;margin-top:12px'},
       h('label',{},'Nombre: ',nameInput),
       h('label',{},'Teléfono: ',phoneInput),
       h('div',{class:'row'},h('label',{},'Etiqueta: ',labelSel),h('label',{style:'flex:1'},'Dirección: ',addrInput)),
       S.me.role==='ADMIN'?h('label',{},'Tipo de precio: ',typeSel):null,
       h('div',{class:'row',style:'justify-content:flex-end;margin-top:10px'},
-        h('button',{class:'b',onclick:()=>modal.remove()},'Cancelar'),
+        h('button',{class:'b',onclick:closeModal},'Cancelar'),
         saveBtn
       )
     )
   );
 
-  document.body.append(modal);
+  overlay.append(modal);
+  document.body.append(overlay);
 }
 
 /* ---------- Ventas ---------- */

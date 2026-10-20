@@ -159,5 +159,38 @@ public class OrderWriter {
                         + " " + (rs.getString(3) == null ? "?" : rs.getString(3))).list();
     }
 
+    public String customerFavorites(long orderId) {
+        Long customerId = jdbc.sql("SELECT customer_id FROM orders WHERE id = :id")
+                .param("id", orderId)
+                .query(Long.class).optional().orElse(null);
+        if (customerId == null) return null;
+        List<String> favs = jdbc.sql("""
+                SELECT product_name FROM (
+                    SELECT si.product_name, count(*) as cnt FROM sale_item si
+                    JOIN sale s ON si.sale_id = s.id
+                    WHERE s.customer_id = :cid
+                    GROUP BY si.product_name
+                    UNION ALL
+                    SELECT p.name, count(*) as cnt FROM order_item oi
+                    JOIN orders o ON oi.order_id = o.id
+                    JOIN product p ON oi.product_id = p.id
+                    WHERE o.customer_id = :cid AND oi.product_id IS NOT NULL
+                    GROUP BY p.name
+                ) h
+                GROUP BY product_name
+                ORDER BY sum(cnt) DESC
+                LIMIT 6
+                """).param("cid", customerId)
+                .query(String.class).list();
+        if (favs.isEmpty()) return null;
+        return "Productos frecuentes que suele comprar este cliente: " + String.join(", ", favs) + ".";
+    }
+
+    public boolean hasPriorMessages(long orderId) {
+        Long count = jdbc.sql("SELECT count(*) FROM conversation_message WHERE order_id = :id")
+                .param("id", orderId).query(Long.class).optional().orElse(0L);
+        return count > 1;
+    }
+
     private static String clip(String s) { return s.length() <= 500 ? s : s.substring(0, 500); }
 }

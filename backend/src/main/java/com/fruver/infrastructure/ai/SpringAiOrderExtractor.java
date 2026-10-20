@@ -33,11 +33,15 @@ public class SpringAiOrderExtractor implements OrderExtractor {
                             <turnos_previos>{turnos}</turnos_previos>
                             <pedido_actual>{actual}</pedido_actual>
                             <catalogo_candidato>{catalogo}</catalogo_candidato>
+                            <zonas_domicilio>{zonas}</zonas_domicilio>
+                            <historial_cliente>{historial}</historial_cliente>
                             <mensaje_cliente>{mensaje}</mensaje_cliente>
                             """)
                             .param("turnos", join(request.recentTurns()))
                             .param("actual", join(request.currentItems()))
                             .param("catalogo", join(request.catalogCandidates()))
+                            .param("zonas", request.deliveryZones() == null ? "(No especificado)" : request.deliveryZones())
+                            .param("historial", request.customerHistory() == null ? "(Sin historial previo registrado)" : request.customerHistory())
                             .param("mensaje", request.message() == null ? "" : request.message()))
                     .call()
                     .entity(AIOrderResponse.class);

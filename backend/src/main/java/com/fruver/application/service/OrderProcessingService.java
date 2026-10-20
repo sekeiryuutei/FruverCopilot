@@ -88,11 +88,12 @@ public class OrderProcessingService {
 
         // 1. Si es solo un saludo sin productos previos en el pedido:
         if (!r.reply() && isGreetingOnly(text)) {
-            String greeting = "¡Hola! \uD83D\uDC4B Bienvenido a FruverCopilot \uD83E\uDD51\uD83C\uDF45 "
-                    + "¿En qué te podemos colaborar hoy? Puedes enviarnos tu lista de mercado (por texto o nota de voz) "
-                    + "o consultarnos precios y disponibilidad de productos.";
+            boolean hasHistory = writer.hasPriorMessages(r.orderId());
+            String greeting = hasHistory
+                    ? "Buenas, ¿en qué te podemos colaborar hoy? Puedes dejarnos tu lista de mercado o preguntarnos lo que necesites."
+                    : "¡Hola! Buenas 👋 ¿En qué te colaboramos hoy? Puedes enviarnos tu lista de mercado (por texto o nota de voz) o preguntarnos precios y lo que necesites.";
             conversation.send(r.orderId(), greeting, ConversationService.Kind.INFO, "ia");
-            writer.markInquiryHandled(r.orderId(), "Saludo inicial recibido y respondido.");
+            writer.markInquiryHandled(r.orderId(), "Saludo recibido y respondido.");
             return;
         }
 
@@ -120,7 +121,8 @@ public class OrderProcessingService {
                 writer.recentTurns(r.orderId(), r.messageId()),
                 r.reply() ? writer.currentItems(r.orderId()) : java.util.List.of(),
                 catalog.candidates(text),
-                zones.formatForPrompt());
+                zones.formatForPrompt(),
+                writer.customerFavorites(r.orderId()));
 
         long t0 = System.nanoTime();
         AIOrderResponse ai;
@@ -190,7 +192,7 @@ public class OrderProcessingService {
                 var row = orders.find(orderId).orElse(null);
                 if (row != null) {
                     if (row.address() == null || row.address().isBlank()) {
-                        String askAddr = "¡Hola! \uD83D\uDC4B Ya tenemos lista tu orden. Para coordinar el despacho, ¿a qué dirección te la llevamos? 🛵";
+                        String askAddr = "¿Es para domicilio o recoges en el punto físico / tienda? Si es domicilio, por favor indícanos la dirección exacta (calle/carrera, número, barrio y si es casa o apto).";
                         conversation.send(orderId, askAddr, ConversationService.Kind.ASK, "ia");
                         return;
                     }
@@ -208,8 +210,8 @@ public class OrderProcessingService {
                     .anyMatch(m -> "OUTBOUND".equals(m.direction()));
             if (!hasPriorOutbound) {
                 String ack = isAudio
-                        ? "¡Hola! \uD83D\uDC4B Hemos recibido tu nota de voz y la estamos revisando. En un momento te confirmamos."
-                        : "¡Hola! \uD83D\uDC4B Gracias por comunicarte con FruverCopilot. Hemos recibido tu pedido y lo estamos revisando. En un momento te confirmamos.";
+                        ? "Hemos recibido tu nota de voz y la estamos revisando. En un momento te confirmamos."
+                        : "Hemos recibido tu pedido y lo estamos revisando. En un momento te confirmamos.";
                 conversation.send(orderId, ack, ConversationService.Kind.INFO, "ia");
             }
         } catch (RuntimeException e) {
@@ -219,8 +221,7 @@ public class OrderProcessingService {
 
     private String buildOrderReceivedAndConfirmedMessage(Quote quote, String address) {
         if (quote == null || !quote.complete()) return null;
-        StringBuilder sb = new StringBuilder("¡Hola! \uD83D\uDC4B Gracias por comunicarte con FruverCopilot. ");
-        sb.append("Hemos recibido tu pedido y lo estamos preparando:\n\n");
+        StringBuilder sb = new StringBuilder("¡Listo! Hemos registrado tu pedido y lo estamos preparando:\n\n");
         for (var l : quote.lines()) {
             sb.append("• ").append(Money.qty(l.quantity())).append(' ')
               .append(ConfirmationMessageBuilder.unitWord(l.unit(), l.quantity()))
@@ -228,7 +229,7 @@ public class OrderProcessingService {
         }
         sb.append("\nTotal estimado: ").append(Money.format(quote.total()));
         if (address != null && !address.isBlank()) {
-            sb.append("\n📍 Dirección de entrega: ").append(address);
+            sb.append("\n📍 Entrega: ").append(address);
         }
         sb.append("\nEn un momento te confirmamos el despacho \uD83D\uDE0A");
         return sb.toString();
