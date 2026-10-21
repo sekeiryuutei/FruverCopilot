@@ -14,14 +14,20 @@ public record InterpretedOrder(
         String customerMessage,
         String note,
         String address,
-        String deliveryTime) {
+        String deliveryTime,
+        String customerName,
+        String paymentInfo) {
+
+    public InterpretedOrder(List<Item> items, ReviewStatus review, ConversationAction action, String customerMessage, String note, String address, String deliveryTime) {
+        this(items, review, action, customerMessage, note, address, deliveryTime, null, null);
+    }
 
     public InterpretedOrder(List<Item> items, ReviewStatus review, ConversationAction action, String customerMessage, String note, String address) {
-        this(items, review, action, customerMessage, note, address, null);
+        this(items, review, action, customerMessage, note, address, null, null, null);
     }
 
     public InterpretedOrder(List<Item> items, ReviewStatus review, ConversationAction action, String customerMessage, String note) {
-        this(items, review, action, customerMessage, note, null, null);
+        this(items, review, action, customerMessage, note, null, null, null, null);
     }
 
     public record Item(

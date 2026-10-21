@@ -20,6 +20,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
+import com.fruver.infrastructure.persistence.Rows.OrderRow;
 
 /**
  * Pipeline asincrono: audio -> STT -> contexto -> LLM -> validacion -> persistencia -> acciones.
@@ -117,6 +119,33 @@ public class OrderProcessingService {
             return;
         }
 
+        // Extraer nombre y método de pago (con cambio si es efectivo) de forma determinística
+        var currentRow = orders.find(r.orderId()).orElse(null);
+        String lastOutbound = conversation.messages(r.orderId()).stream()
+                .filter(m -> "OUTBOUND".equals(m.direction()))
+                .reduce((first, second) -> second)
+                .map(ConversationService.MessageView::content)
+                .orElse(null);
+
+        String extractedName = extractCustomerName(text, lastOutbound);
+        if (extractedName != null) {
+            writer.updateCustomerName(r.orderId(), extractedName);
+        }
+
+        Quote currentQuote = null;
+        if (currentRow != null) {
+            var currentItems = orders.items(r.orderId());
+            if (!currentItems.isEmpty()) {
+                currentQuote = quotes.quote(currentItems, PriceType.forCustomer(CustomerType.valueOf(currentRow.customerType())));
+            }
+        }
+        BigDecimal currentTotal = currentQuote != null ? currentQuote.total() : null;
+
+        PaymentInfo extractedPayment = extractPaymentMethod(text, currentTotal);
+        if (extractedPayment != null) {
+            writer.updatePaymentNote(r.orderId(), extractedPayment.note());
+        }
+
         ExtractionRequest req = new ExtractionRequest(text,
                 writer.recentTurns(r.orderId(), r.messageId()),
                 r.reply() ? writer.currentItems(r.orderId()) : java.util.List.of(),
@@ -180,41 +209,58 @@ public class OrderProcessingService {
             return;
         }
         try {
-            // 1. Si la IA genero una respuesta o pregunta para el cliente (customerMessage), enviala de inmediato
+            var row = orders.find(orderId).orElse(null);
+            if (row == null) return;
+
+            var orderItems = orders.items(orderId);
+            Quote quote = null;
+            if (!orderItems.isEmpty()) {
+                quote = quotes.quote(orderItems, PriceType.forCustomer(CustomerType.valueOf(row.customerType())));
+            }
+
+            // 1. Si el cliente preguntó por precios/costos de los productos ("3 libras de cebolla larga, que cuestan?"):
+            // LA APP hace los cálculos de cotización exactos con el catálogo en Postgres:
+            if (asksPrice(text) && quote != null && quote.complete() && !quote.lines().isEmpty()) {
+                String priceMsg = buildPriceAnswerAndNextStep(quote, row);
+                conversation.send(orderId, priceMsg, ConversationService.Kind.ASK, "ia");
+                return;
+            }
+
+            // 2. Si el pedido ya tiene productos claros (GREEN):
+            // IMPORTANTE: si es AUDIO, NO auto-confirmar sin revision humana del operario
+            if (io.review() == ReviewStatus.GREEN && props.conversation().autoConfirmClearOrders() && !isAudio) {
+                boolean wasAlreadyConfirmed = "CONFIRMED".equals(row.conversationStatus());
+                if (wasAlreadyConfirmed) {
+                    if (isPoliteAcknowledgment(text)) {
+                        conversation.send(orderId, "Con mucho gusto, ya estamos en ello 😊", ConversationService.Kind.INFO, "ia");
+                        return;
+                    }
+                    // Si ya estaba confirmado y no hubo cambio de productos o solo confirmó recepción, no repetir factura completa
+                    return;
+                }
+
+                String missingQuestion = getNextMissingRequirementQuestion(row);
+                if (missingQuestion != null) {
+                    conversation.send(orderId, missingQuestion, ConversationService.Kind.ASK, "ia");
+                    return;
+                }
+
+                Quote q = quotes.quote(orders.items(orderId), PriceType.forCustomer(CustomerType.valueOf(row.customerType())));
+                String msg = buildOrderReceivedAndConfirmedMessage(q, row.address(), row.customerName(), row.notes());
+                if (msg != null) {
+                    conversation.send(orderId, msg, ConversationService.Kind.CONFIRM, "ia");
+                    writer.markConfirmed(orderId);
+                    return;
+                }
+            }
+
+            // 3. Si la IA genero una respuesta o pregunta para el cliente (customerMessage), enviala
             if (io.customerMessage() != null && !io.customerMessage().isBlank() && io.action() == ConversationAction.ASK_CUSTOMER) {
                 conversation.send(orderId, io.customerMessage(), ConversationService.Kind.ASK, "ia");
                 return;
             }
 
-            // 2. Es un pedido con productos claros (GREEN)
-            // IMPORTANTE: si es AUDIO, NO auto-confirmar sin revision humana del operario
-            if (io.review() == ReviewStatus.GREEN && props.conversation().autoConfirmClearOrders() && !isAudio) {
-                var row = orders.find(orderId).orElse(null);
-                if (row != null) {
-                    if (row.address() == null || row.address().isBlank()) {
-                        String askAddr = "¿Es para domicilio o recoges en el punto físico / tienda? Si es domicilio, por favor indícanos la dirección exacta (calle/carrera, número, barrio y si es casa o apto).";
-                        conversation.send(orderId, askAddr, ConversationService.Kind.ASK, "ia");
-                        return;
-                    }
-                    boolean wasAlreadyConfirmed = "CONFIRMED".equals(row.conversationStatus());
-                    if (wasAlreadyConfirmed) {
-                        if (isPoliteAcknowledgment(text)) {
-                            conversation.send(orderId, "Con mucho gusto, ya estamos en ello 😊", ConversationService.Kind.INFO, "ia");
-                            return;
-                        }
-                        // Si ya estaba confirmado y no hubo cambio de productos o solo confirmó recepción, no repetir factura completa
-                        return;
-                    }
-                    Quote q = quotes.quote(orders.items(orderId), PriceType.forCustomer(CustomerType.valueOf(row.customerType())));
-                    String msg = buildOrderReceivedAndConfirmedMessage(q, row.address());
-                    if (msg != null) {
-                        conversation.send(orderId, msg, ConversationService.Kind.CONFIRM, "ia");
-                        return;
-                    }
-                }
-            }
-
-            // 3. Si no esta confirmado en GREEN o requiere revision: aviso si es el primer contacto del pedido
+            // 4. Si no esta confirmado en GREEN o requiere revision: aviso si es el primer contacto del pedido
             boolean hasPriorOutbound = conversation.messages(orderId).stream()
                     .anyMatch(m -> "OUTBOUND".equals(m.direction()));
             if (!hasPriorOutbound) {
@@ -229,6 +275,10 @@ public class OrderProcessingService {
     }
 
     private String buildOrderReceivedAndConfirmedMessage(Quote quote, String address) {
+        return buildOrderReceivedAndConfirmedMessage(quote, address, null, null);
+    }
+
+    private String buildOrderReceivedAndConfirmedMessage(Quote quote, String address, String customerName, String notes) {
         if (quote == null || !quote.complete()) return null;
         StringBuilder sb = new StringBuilder("¡Listo! Hemos registrado tu pedido y lo estamos preparando:\n\n");
         for (var l : quote.lines()) {
@@ -237,14 +287,270 @@ public class OrderProcessingService {
               .append(" de ").append(l.productName()).append('\n');
         }
         sb.append("\nTotal estimado: ").append(Money.format(quote.total()));
+        if (customerName != null && !customerName.isBlank()) {
+            sb.append("\n👤 Cliente: ").append(customerName);
+        }
         if (address != null && !address.isBlank()) {
-            boolean isPickup = address.toLowerCase().contains("recoge")
-                    || address.toLowerCase().contains("tienda")
-                    || address.toLowerCase().contains("punto");
+            boolean isPickup = isPickupAddress(address);
             sb.append("\n📍 Entrega: ").append(isPickup ? "Recoges en tienda / Punto físico" : address);
         }
-        sb.append("\nEn un momento te confirmamos el despacho \uD83D\uDE0A");
+        if (notes != null && !notes.isBlank()) {
+            for (String part : notes.split("\\|")) {
+                String p = part.trim();
+                if (p.startsWith("Pago:")) {
+                    sb.append("\n💵 ").append(p);
+                } else if (p.startsWith("Horario:")) {
+                    sb.append("\n⏰ ").append(p);
+                }
+            }
+        }
+        sb.append("\n\nEn un momento te confirmamos el despacho 😊");
         return sb.toString();
+    }
+
+    private String buildPriceAnswerAndNextStep(Quote q, OrderRow row) {
+        StringBuilder sb = new StringBuilder();
+        if (q.lines().size() == 1) {
+            var l = q.lines().get(0);
+            sb.append("Las ").append(Money.qty(l.quantity())).append(' ')
+              .append(ConfirmationMessageBuilder.unitWord(l.unit(), l.quantity()))
+              .append(" de ").append(l.productName()).append(" te salen en ")
+              .append(Money.format(l.subtotal()))
+              .append(" (").append(Money.format(l.appliedPrice())).append(" / ")
+              .append(ConfirmationMessageBuilder.unitWord(l.unit(), BigDecimal.ONE)).append(").");
+        } else {
+            sb.append("El valor de tus productos es:\n");
+            for (var l : q.lines()) {
+                sb.append("• ").append(Money.qty(l.quantity())).append(' ')
+                  .append(ConfirmationMessageBuilder.unitWord(l.unit(), l.quantity()))
+                  .append(" de ").append(l.productName()).append(": ")
+                  .append(Money.format(l.subtotal())).append("\n");
+            }
+            sb.append("Total: ").append(Money.format(q.total())).append(".\n");
+        }
+
+        if (row.address() == null || row.address().isBlank()) {
+            sb.append(" ¿Deseas algo más o es para domicilio o recoges en punto físico / tienda?");
+        } else {
+            String next = getNextMissingRequirementQuestion(row);
+            if (next != null) {
+                sb.append("\n\n").append(next);
+            }
+        }
+        return sb.toString();
+    }
+
+    public static boolean isPickupAddress(String address) {
+        if (address == null) return false;
+        String a = address.toLowerCase(Locale.ROOT);
+        return a.contains("recoge") || a.contains("tienda") || a.contains("punto")
+                || a.contains("local") || a.contains("físico") || a.contains("fisico");
+    }
+
+    public static boolean isCleanConfirmedName(String name) {
+        if (name == null || name.isBlank()) return false;
+        String s = name.trim();
+        if (s.matches("^\\+?\\d+$")) return false;
+        for (int i = 0; i < s.length(); ) {
+            int cp = s.codePointAt(i);
+            int type = Character.getType(cp);
+            if (type == Character.SURROGATE || type == Character.OTHER_SYMBOL) {
+                return false;
+            }
+            i += Character.charCount(cp);
+        }
+        return s.matches("^[A-Za-zÁ-ÿ\\s.'-]+$") && s.length() >= 2;
+    }
+
+    public static boolean hasPaymentInfo(String notes) {
+        if (notes == null || notes.isBlank()) return false;
+        String n = notes.toLowerCase(Locale.ROOT);
+        return n.contains("pago:") || n.contains("transferencia") || n.contains("llave")
+                || n.contains("efectivo") || n.contains("nequi") || n.contains("daviplata");
+    }
+
+    public static boolean needsCashBillClarification(String notes) {
+        if (notes == null) return false;
+        String n = notes.toLowerCase(Locale.ROOT);
+        return n.contains("pago: efectivo") && !n.contains("billete") && !n.contains("paga con") && !n.contains("exacto");
+    }
+
+    public String getNextMissingRequirementQuestion(OrderRow row) {
+        if (row == null) return null;
+
+        // 1. ¿Tiene dirección o método de entrega definido?
+        if (row.address() == null || row.address().isBlank()) {
+            return "¿Es para domicilio o recoges en el punto físico / tienda? Si es domicilio, por favor indícanos la dirección exacta (calle/carrera, número, barrio y si es casa o apto).";
+        }
+
+        boolean isPickup = isPickupAddress(row.address());
+        boolean hasName = isCleanConfirmedName(row.customerName());
+
+        // 2. Si es para recoger en tienda:
+        if (isPickup) {
+            if (!hasName) {
+                return "¡Listo! Lo prepararemos para recoger en la tienda. ¿A nombre de quién dejamos registrado el pedido?";
+            }
+            return null; // Todo completo para recoger en tienda
+        }
+
+        // 3. Si es domicilio:
+        boolean hasPayment = hasPaymentInfo(row.notes());
+        boolean needsBill = needsCashBillClarification(row.notes());
+
+        if (!hasName && !hasPayment) {
+            return "¡Listo! Ya registramos tu dirección en " + row.address() + ".\n\n"
+                    + "Para programar tu despacho:\n"
+                    + "1. ¿A *nombre de quién* dejamos el pedido?\n"
+                    + "2. ¿Cómo vas a realizar el pago? (*Transferencia / Llave* o *Efectivo*). Si es en efectivo, ¿con qué billete cancelas para enviarte el cambio exacto?";
+        }
+
+        if (!hasName) {
+            return "¿A nombre de quién dejamos registrado el pedido?";
+        }
+
+        if (!hasPayment) {
+            return "¿Cómo vas a realizar el pago? (*Transferencia / Llave* o *Efectivo*). Si es en efectivo, ¿con qué billete cancelas para enviarte el cambio exacto?";
+        }
+
+        if (needsBill) {
+            return "¿Con qué billete cancelas en efectivo? (Por ejemplo: billete de $20.000, $50.000, $100.000 o valor exacto) para que el repartidor lleve el cambio.";
+        }
+
+        return null; // Todo completo para domicilio!
+    }
+
+    public static boolean asksPrice(String text) {
+        if (text == null || text.isBlank()) return false;
+        String t = text.toLowerCase(Locale.ROOT);
+        return t.contains("cuesta") || t.contains("cuestan") || t.contains("vale") || t.contains("valen")
+                || t.contains("precio") || t.contains("precios") || t.contains("cuanto") || t.contains("cuánto")
+                || t.contains("a como") || t.contains("a cómo") || t.contains("valor") || t.contains("cotizar")
+                || t.contains("total") || t.contains("cuenta");
+    }
+
+    public static String extractCustomerName(String text, String botLastQuestion) {
+        if (text == null || text.isBlank()) return null;
+        String t = text.trim();
+
+        var m = Pattern.compile("(?i)(?:a\\s+nombre\\s+de|nombre:?|para:?|soy|me\\s+llamo|de\\s+parte\\s+de)\\s+([A-Za-zÁ-ÿ\\s]{2,40}?)(\\s*,|\\s*\\.|\\s+(?:y|pago|calle|carrera|cra|cll|barrio|tel|en\\s+efectivo|por\\s+transferencia)|$)")
+                .matcher(t);
+        if (m.find()) {
+            String candidate = m.group(1).trim();
+            if (isValidName(candidate)) {
+                return capitalizeName(candidate);
+            }
+        }
+
+        if (botLastQuestion != null && botLastQuestion.toLowerCase(Locale.ROOT).contains("nombre de quién")) {
+            String[] words = t.split("\\s+");
+            if (words.length >= 1 && words.length <= 4) {
+                String candidate = t.replaceAll("[,.]", "").trim();
+                if (isValidName(candidate)) {
+                    return capitalizeName(candidate);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isValidName(String s) {
+        if (s == null || s.isBlank() || s.length() < 2 || s.length() > 60) return false;
+        String lower = s.toLowerCase(Locale.ROOT);
+        List<String> stopWords = List.of("domicilio", "tienda", "punto", "fisico", "físico", "efectivo",
+                "transferencia", "llave", "nequi", "daviplata", "cebolla", "tomate", "papa", "kilos",
+                "libras", "hola", "buenas", "si", "sí", "no", "gracias", "billete", "por favor");
+        for (String sw : stopWords) {
+            if (lower.equals(sw) || lower.startsWith(sw + " ") || lower.endsWith(" " + sw)) {
+                return false;
+            }
+        }
+        return s.matches("^[A-Za-zÁ-ÿ\\s]+$");
+    }
+
+    private static String capitalizeName(String name) {
+        String[] parts = name.trim().split("\\s+");
+        StringBuilder sb = new StringBuilder();
+        for (String p : parts) {
+            if (p.isBlank()) continue;
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(Character.toUpperCase(p.charAt(0)));
+            if (p.length() > 1) {
+                sb.append(p.substring(1).toLowerCase(Locale.ROOT));
+            }
+        }
+        return sb.toString();
+    }
+
+    public record PaymentInfo(String note, BigDecimal billAmount, boolean isCash, boolean isTransfer) {}
+
+    public static PaymentInfo extractPaymentMethod(String text, BigDecimal orderTotal) {
+        if (text == null || text.isBlank()) return null;
+        String t = text.toLowerCase(Locale.ROOT);
+
+        boolean transfer = t.contains("transferencia") || t.contains("llave") || t.contains("nequi")
+                || t.contains("daviplata") || t.contains("bancolombia") || t.contains("transfiya")
+                || t.contains("bre-b") || t.contains("breb") || t.contains("transferir");
+
+        if (transfer) {
+            String detail = "Pago: Transferencia / Llave";
+            if (t.contains("nequi")) detail = "Pago: Transferencia (Nequi)";
+            else if (t.contains("daviplata")) detail = "Pago: Transferencia (Daviplata)";
+            else if (t.contains("bancolombia")) detail = "Pago: Transferencia (Bancolombia)";
+            else if (t.contains("llave")) detail = "Pago: Transferencia / Llave (Bre-B)";
+            return new PaymentInfo(detail, null, false, true);
+        }
+
+        boolean cash = t.contains("efectivo") || t.contains("plata") || t.contains("billete")
+                || t.contains("cambio") || t.contains("devuelta") || t.contains("vueltas")
+                || t.contains("sencillo") || t.contains("just") || t.contains("exact");
+
+        boolean billMentioned = t.matches(".*\\b(con|billete\\s*de|de|pago\\s*con)\\s*(\\d+|cien|cincuenta|veinte|diez)\\b.*");
+
+        if (cash || billMentioned) {
+            if (t.contains("exact") || t.contains("just") || t.contains("sencillo") || t.contains("sin cambio")) {
+                return new PaymentInfo("Pago: Efectivo (valor exacto, sin cambio)", null, true, false);
+            }
+
+            BigDecimal bill = null;
+            if (t.matches(".*\\b(100\\s*mil|100000|100\\.000|cien\\s*mil|de\\s*cien)\\b.*")) {
+                bill = new BigDecimal("100000");
+            } else if (t.matches(".*\\b(50\\s*mil|50000|50\\.000|cincuenta\\s*mil|de\\s*cincuenta|con\\s*50)\\b.*")) {
+                bill = new BigDecimal("50000");
+            } else if (t.matches(".*\\b(20\\s*mil|20000|20\\.000|veinte\\s*mil|de\\s*veinte|con\\s*20)\\b.*")) {
+                bill = new BigDecimal("20000");
+            } else if (t.matches(".*\\b(10\\s*mil|10000|10\\.000|diez\\s*mil|de\\s*diez|con\\s*10)\\b.*")) {
+                bill = new BigDecimal("10000");
+            } else {
+                var m = Pattern.compile("\\b(\\d{1,3}(?:\\.\\d{3})*|\\d+)\\s*mil\\b").matcher(t);
+                if (m.find()) {
+                    try {
+                        String num = m.group(1).replace(".", "");
+                        long val = Long.parseLong(num) * 1000;
+                        bill = BigDecimal.valueOf(val);
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+
+            if (bill != null) {
+                String note;
+                if (orderTotal != null && orderTotal.compareTo(BigDecimal.ZERO) > 0) {
+                    BigDecimal change = bill.subtract(orderTotal);
+                    if (change.compareTo(BigDecimal.ZERO) >= 0) {
+                        note = "Pago: Efectivo (paga con " + Money.format(bill) + " - cambio: " + Money.format(change) + ")";
+                    } else {
+                        note = "Pago: Efectivo (paga con " + Money.format(bill) + ")";
+                    }
+                } else {
+                    note = "Pago: Efectivo (paga con billete de " + Money.format(bill) + ")";
+                }
+                return new PaymentInfo(note, bill, true, false);
+            }
+
+            return new PaymentInfo("Pago: Efectivo", null, true, false);
+        }
+
+        return null;
     }
 
     public static boolean isPoliteAcknowledgment(String text) {

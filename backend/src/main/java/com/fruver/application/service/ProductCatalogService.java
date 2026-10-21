@@ -62,10 +62,14 @@ public class ProductCatalogService implements ProductLookup {
     /** Nombres reales del catalogo relacionados con el mensaje: contexto de solo lectura para el LLM. */
     public List<String> candidates(String text) {
         // En una tienda de fruver el catálogo activo suele tener < 150 productos.
-        // Los enviamos todos con su unidad de venta para que la IA conozca TODO el inventario disponible
-        // y nunca diga que no hay algo que sí existe en la tienda.
-        List<String> all = jdbc.sql("SELECT concat(name, ' [', unit, ']') FROM product WHERE active ORDER BY name")
-                .query(String.class).list();
+        // Los enviamos todos con su unidad de venta y precio oficial RETAIL para que la IA conozca TODO el inventario disponible
+        // y nunca invente precios ni diga que no hay algo que sí existe en la tienda.
+        List<String> all = jdbc.sql("""
+                SELECT concat(p.name, ' [', p.unit, '] ($', COALESCE(pp.amount::text, '0'), '/', p.unit, ')')
+                FROM product p
+                LEFT JOIN product_price pp ON p.id = pp.product_id AND pp.price_type = 'RETAIL'
+                WHERE p.active ORDER BY p.name
+                """).query(String.class).list();
         if (all.size() <= 150) {
             return all;
         }
@@ -73,16 +77,21 @@ public class ProductCatalogService implements ProductLookup {
         if (tokens.isEmpty()) {
             return all.stream().limit(50).toList();
         }
-        StringBuilder sql = new StringBuilder("SELECT concat(name, ' [', unit, ']') FROM product WHERE active AND (");
+        StringBuilder sql = new StringBuilder("""
+                SELECT concat(p.name, ' [', p.unit, '] ($', COALESCE(pp.amount::text, '0'), '/', p.unit, ')')
+                FROM product p
+                LEFT JOIN product_price pp ON p.id = pp.product_id AND pp.price_type = 'RETAIL'
+                WHERE p.active AND (
+                """);
         Map<String, Object> params = new HashMap<>();
         for (int i = 0; i < tokens.size(); i++) {
             if (i > 0) sql.append(" OR ");
-            sql.append("unaccent(lower(name)) LIKE :t").append(i)
-               .append(" OR similarity(unaccent(lower(name)), :s").append(i).append(") > 0.45");
+            sql.append("unaccent(lower(p.name)) LIKE :t").append(i)
+               .append(" OR similarity(unaccent(lower(p.name)), :s").append(i).append(") > 0.45");
             params.put("t" + i, "%" + tokens.get(i) + "%");
             params.put("s" + i, tokens.get(i));
         }
-        sql.append(") ORDER BY name LIMIT 50");
+        sql.append(") ORDER BY p.name LIMIT 50");
         List<String> matches = jdbc.sql(sql.toString()).params(params).query(String.class).list();
         return matches.isEmpty() ? all.stream().limit(50).toList() : matches;
     }

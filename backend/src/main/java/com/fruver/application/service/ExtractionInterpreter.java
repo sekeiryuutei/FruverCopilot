@@ -73,6 +73,8 @@ public class ExtractionInterpreter {
         String aiMessage = sanitizeReply(ai == null ? null : ai.customerMessage());
         String address = ai == null ? null : blankToNull(clip(ai.direccion(), 300));
         String time = ai == null ? null : blankToNull(clip(ai.horarioEntrega(), 100));
+        String customerName = ai == null ? null : blankToNull(clip(ai.nombreCliente(), 120));
+        String paymentInfo = ai == null ? null : blankToNull(clip(ai.metodoPago(), 300));
 
         ConversationAction action;
         String message = null;
@@ -97,7 +99,7 @@ public class ExtractionInterpreter {
             action = ConversationAction.ASK_CUSTOMER;
             message = aiMessage != null ? aiMessage : template(items);
         }
-        return new InterpretedOrder(items, review, action, message, reason, address, time);
+        return new InterpretedOrder(items, review, action, message, reason, address, time, customerName, paymentInfo);
     }
 
     /** Valor crudo de la IA solo para auditoria/comparacion: si no cabe en NUMERIC(10,3) se descarta. */

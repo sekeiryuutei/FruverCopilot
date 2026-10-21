@@ -68,5 +68,123 @@ class OrderProcessingInquiryTest {
         assertFalse(service.isDeliveryTimeInquiry("Buenas tardes, quiero 3 libras de papa"));
         assertFalse(service.isDeliveryTimeInquiry(null));
     }
+
+    @Test
+    void detectsAsksPrice() {
+        assertTrue(OrderProcessingService.asksPrice("3 libras de cebolla larga, que cuestan?"));
+        assertTrue(OrderProcessingService.asksPrice("¿Cuánto cuesta la libra de tomate?"));
+        assertTrue(OrderProcessingService.asksPrice("¿Cuánto vale?"));
+        assertTrue(OrderProcessingService.asksPrice("a como el platano"));
+        assertTrue(OrderProcessingService.asksPrice("dame el total porfa"));
+        assertFalse(OrderProcessingService.asksPrice("Calle 7 norte # 2-30"));
+        assertFalse(OrderProcessingService.asksPrice(null));
+    }
+
+    @Test
+    void extractsCustomerName() {
+        assertEquals("Briyed Molina", OrderProcessingService.extractCustomerName("A nombre de Briyed Molina, pago con 20 mil", null));
+        assertEquals("Carlos Gomez", OrderProcessingService.extractCustomerName("nombre: Carlos Gomez", null));
+        assertEquals("Victor Burbano", OrderProcessingService.extractCustomerName("Soy Victor Burbano y vivo en calle 5", null));
+        assertEquals("Pedro Perez", OrderProcessingService.extractCustomerName("Pedro Perez", "¿A nombre de quién dejamos registrado el pedido?"));
+        assertNull(OrderProcessingService.extractCustomerName("domicilio a calle 7", "¿A nombre de quién dejamos registrado el pedido?"));
+        assertNull(OrderProcessingService.extractCustomerName(null, null));
+    }
+
+    @Test
+    void extractsPaymentMethodAndCalculatesChange() {
+        var p1 = OrderProcessingService.extractPaymentMethod("pago en efectivo con 50mil", java.math.BigDecimal.valueOf(9000));
+        assertNotNull(p1);
+        assertTrue(p1.isCash());
+        assertEquals("Pago: Efectivo (paga con $50.000 - cambio: $41.000)", p1.note());
+
+        var p2 = OrderProcessingService.extractPaymentMethod("con 20 mil en efectivo", java.math.BigDecimal.valueOf(9000));
+        assertNotNull(p2);
+        assertTrue(p2.isCash());
+        assertEquals("Pago: Efectivo (paga con $20.000 - cambio: $11.000)", p2.note());
+
+        var p3 = OrderProcessingService.extractPaymentMethod("pago por transferencia", java.math.BigDecimal.valueOf(9000));
+        assertNotNull(p3);
+        assertTrue(p3.isTransfer());
+        assertEquals("Pago: Transferencia / Llave", p3.note());
+
+        var p4 = OrderProcessingService.extractPaymentMethod("con Nequi", java.math.BigDecimal.valueOf(9000));
+        assertNotNull(p4);
+        assertTrue(p4.isTransfer());
+        assertEquals("Pago: Transferencia (Nequi)", p4.note());
+
+        var p5 = OrderProcessingService.extractPaymentMethod("plata exacta", java.math.BigDecimal.valueOf(9000));
+        assertNotNull(p5);
+        assertTrue(p5.isCash());
+        assertEquals("Pago: Efectivo (valor exacto, sin cambio)", p5.note());
+    }
+
+    @Test
+    void verifiesMissingRequirementFlow() {
+        // 1. Sin dirección
+        var rowNoAddr = new com.fruver.infrastructure.persistence.Rows.OrderRow(
+                1L, 1L, null, "3001234567", null, null, "TEXT", "REVIEW", "READY_FOR_REVIEW",
+                "GREEN", "OK", null, null, false, 1, null, null, null, "RETAIL", false, null, null, null, null, null, null
+        );
+        String q1 = service.getNextMissingRequirementQuestion(rowNoAddr);
+        assertNotNull(q1);
+        assertTrue(q1.contains("domicilio o recoges"));
+
+        // 2. Recoger en tienda pero sin nombre
+        var rowPickupNoName = new com.fruver.infrastructure.persistence.Rows.OrderRow(
+                1L, 1L, null, "3001234567", "Recoges en tienda / Punto físico", null, "TEXT", "REVIEW", "READY_FOR_REVIEW",
+                "GREEN", "OK", null, null, false, 1, null, null, null, "RETAIL", false, null, null, null, null, null, null
+        );
+        String q2 = service.getNextMissingRequirementQuestion(rowPickupNoName);
+        assertNotNull(q2);
+        assertTrue(q2.contains("nombre de quién"));
+
+        // 3. Recoger en tienda con nombre -> Listo para confirmar (null)
+        var rowPickupWithName = new com.fruver.infrastructure.persistence.Rows.OrderRow(
+                1L, 1L, "Briyed Molina", "3001234567", "Recoges en tienda / Punto físico", null, "TEXT", "REVIEW", "READY_FOR_REVIEW",
+                "GREEN", "OK", null, null, false, 1, null, null, null, "RETAIL", false, null, null, null, null, null, null
+        );
+        assertNull(service.getNextMissingRequirementQuestion(rowPickupWithName));
+
+        // 4. Domicilio pero sin nombre ni pago
+        var rowDeliveryNoNameNoPay = new com.fruver.infrastructure.persistence.Rows.OrderRow(
+                1L, 1L, null, "3001234567", "Calle 7 norte # 2-30", null, "TEXT", "REVIEW", "READY_FOR_REVIEW",
+                "GREEN", "OK", null, null, false, 1, null, null, null, "RETAIL", false, null, null, null, null, null, null
+        );
+        String q4 = service.getNextMissingRequirementQuestion(rowDeliveryNoNameNoPay);
+        assertNotNull(q4);
+        assertTrue(q4.contains("nombre de quién") && q4.contains("billete"));
+
+        // 5. Domicilio con nombre pero sin pago
+        var rowDeliveryWithNameNoPay = new com.fruver.infrastructure.persistence.Rows.OrderRow(
+                1L, 1L, "Briyed Molina", "3001234567", "Calle 7 norte # 2-30", null, "TEXT", "REVIEW", "READY_FOR_REVIEW",
+                "GREEN", "OK", null, null, false, 1, null, null, null, "RETAIL", false, null, null, null, null, null, null
+        );
+        String q5 = service.getNextMissingRequirementQuestion(rowDeliveryWithNameNoPay);
+        assertNotNull(q5);
+        assertTrue(q5.contains("Cómo vas a realizar el pago"));
+
+        // 6. Domicilio con nombre y pago en efectivo pero sin especificar billete
+        var rowDeliveryCashNoBill = new com.fruver.infrastructure.persistence.Rows.OrderRow(
+                1L, 1L, "Briyed Molina", "3001234567", "Calle 7 norte # 2-30", "Pago: Efectivo", "TEXT", "REVIEW", "READY_FOR_REVIEW",
+                "GREEN", "OK", null, null, false, 1, null, null, null, "RETAIL", false, null, null, null, null, null, null
+        );
+        String q6 = service.getNextMissingRequirementQuestion(rowDeliveryCashNoBill);
+        assertNotNull(q6);
+        assertTrue(q6.contains("Con qué billete cancelas"));
+
+        // 7. Domicilio con todo completo (Transferencia) -> Listo para confirmar (null)
+        var rowDeliveryCompleteTransfer = new com.fruver.infrastructure.persistence.Rows.OrderRow(
+                1L, 1L, "Briyed Molina", "3001234567", "Calle 7 norte # 2-30", "Pago: Transferencia (Nequi)", "TEXT", "REVIEW", "READY_FOR_REVIEW",
+                "GREEN", "OK", null, null, false, 1, null, null, null, "RETAIL", false, null, null, null, null, null, null
+        );
+        assertNull(service.getNextMissingRequirementQuestion(rowDeliveryCompleteTransfer));
+
+        // 8. Domicilio con todo completo (Efectivo con cambio) -> Listo para confirmar (null)
+        var rowDeliveryCompleteCash = new com.fruver.infrastructure.persistence.Rows.OrderRow(
+                1L, 1L, "Briyed Molina", "3001234567", "Calle 7 norte # 2-30", "Pago: Efectivo (paga con $50.000 - cambio: $41.000)", "TEXT", "REVIEW", "READY_FOR_REVIEW",
+                "GREEN", "OK", null, null, false, 1, null, null, null, "RETAIL", false, null, null, null, null, null, null
+        );
+        assertNull(service.getNextMissingRequirementQuestion(rowDeliveryCompleteCash));
+    }
 }
 

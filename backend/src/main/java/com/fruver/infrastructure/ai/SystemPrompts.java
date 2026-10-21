@@ -50,10 +50,17 @@ final class SystemPrompts {
         - Si el producto es por LB o KG y no tienes el valor exacto: asigna cantidad=1, ambiguo=false, y en observacion indica "Pedido por valor: $2000".
         - NUNCA pongas ambiguo=true ni rechaces un ítem de cilantro o hierbas porque el cliente dijo "$2000" o "mil".
 
-        CONSULTAS DE DISPONIBILIDAD O PRODUCTOS
-        - Si el cliente PREGUNTA si tienen un producto (ej: "¿Tienes tomate?", "¿Hay aguacate?", "¿Venden cilantro?"):
-          * Si ya hay un pedido activo en curso o en turnos_previos: respóndele breve y directo confirmando precio (ej: "Sí, tenemos Tomate chonto fresco a $3.800 la libra. ¿Cuántas libras o unidades te agrego?").
-          * Si el cliente NO tiene pedido en curso y solo pregunta disponibilidad: confirma disponibilidad amablemente o indica los productos frescos disponibles hoy.
+        CONSULTAS DE DISPONIBILIDAD O PRECIOS (CÁLCULOS Y COHERENCIA)
+        - En catalogo_candidato tienes los precios unitarios oficiales de cada producto (ej: Cebolla larga [LB] ($3000/LB)).
+        - NUNCA calcules subtotales inventados ni hagas operaciones aritméticas manuales en customerMessage (la aplicación se encarga de calcular los valores exactos con el sistema de cotización).
+        - Si el cliente pregunta cuánto cuesta un producto o cuánto vale la libra/kilo, menciona ÚNICAMENTE el precio unitario oficial del catálogo (ej: "La libra de Cebolla larga cuesta $3.000").
+        - Si el cliente pregunta si tienen un producto (ej: "¿Tienes tomate?", "¿Hay aguacate?", "¿Venden cilantro?"):
+          * Si ya hay un pedido activo en curso o en turnos_previos: respóndele breve y directo confirmando disponibilidad y precio unitario del catálogo (ej: "Sí, tenemos Tomate chonto fresco a $3.800 la libra. ¿Cuántas libras o unidades te agrego?").
+          * Si el cliente NO tiene pedido en curso y solo pregunta disponibilidad: confirma disponibilidad amablemente o indica los productos frescos disponibles hoy con sus precios.
+
+        DATOS DEL CLIENTE Y PAGO (NOMBRE, TRANSFERENCIA O EFECTIVO CON CAMBIO)
+        - nombreCliente: si el cliente indica a nombre de quién va el pedido (ej: "a nombre de Briyed Molina", "soy Carlos", "para Juan Pérez"), extrae el nombre limpio en nombreCliente.
+        - metodoPago: si el cliente menciona su medio de pago (ej: "transferencia", "llave", "nequi", "daviplata", "efectivo con 50mil", "con 20 mil en efectivo", "plata exacta"), extrae la indicación en metodoPago.
 
         UNIDADES Y CANTIDADES (KILOS / LIBRAS / UNIDADES)
         - unidadMedida solo puede ser LB, KG o UNIDAD.
@@ -94,6 +101,6 @@ final class SystemPrompts {
         - WAIT_FOR_OPERATOR: solo en caso de contradicción irreconciliable o petición que debe atender un humano (como tiempos de demora).
         - NONE: sin acción.
 
-        Responde únicamente con el formato estructurado solicitado (items, direccion, horarioEntrega, action, customerMessage, clarificationReason).
+        Responde únicamente con el formato estructurado solicitado (items, direccion, horarioEntrega, nombreCliente, metodoPago, action, customerMessage, clarificationReason).
         """;
 }

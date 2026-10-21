@@ -89,6 +89,14 @@ public class OrderWriter {
                     """).param("n", note).param("id", orderId).update();
         }
 
+        if (io.customerName() != null && !io.customerName().isBlank()) {
+            updateCustomerName(orderId, io.customerName().strip());
+        }
+
+        if (io.paymentInfo() != null && !io.paymentInfo().isBlank()) {
+            updatePaymentNote(orderId, io.paymentInfo().strip());
+        }
+
         if (!io.items().isEmpty()) {
             jdbc.sql("DELETE FROM order_item WHERE order_id = :o").param("o", orderId).update();
             int line = 0;
@@ -106,6 +114,46 @@ public class OrderWriter {
         audit.log("ia", "AI_EXTRACTED", orderId, null, Map.of("review", io.review().name(),
                 "action", io.action().name(), "items", io.items().size()));
         return true;
+    }
+
+    @Transactional
+    public void markConfirmed(long orderId) {
+        jdbc.sql("""
+                UPDATE orders SET conversation_status = 'CONFIRMED', extracted_at = now(), version = version + 1
+                WHERE id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW')
+                """).param("id", orderId).update();
+    }
+
+    @Transactional
+    public void updateCustomerName(long orderId, String name) {
+        if (name == null || name.isBlank()) return;
+        String clean = name.strip();
+        jdbc.sql("UPDATE orders SET customer_name = :n WHERE id = :id")
+                .param("n", clean).param("id", orderId).update();
+        jdbc.sql("UPDATE customer SET name = :n WHERE id = (SELECT customer_id FROM orders WHERE id = :id)")
+                .param("n", clean).param("id", orderId).update();
+    }
+
+    @Transactional
+    public void updatePaymentNote(long orderId, String paymentNote) {
+        if (paymentNote == null || paymentNote.isBlank()) return;
+        String clean = paymentNote.strip();
+        String currentNotes = jdbc.sql("SELECT notes FROM orders WHERE id = :id").param("id", orderId).query(String.class).optional().orElse(null);
+        String updated;
+        if (currentNotes == null || currentNotes.isBlank()) {
+            updated = clean;
+        } else {
+            java.util.List<String> parts = new java.util.ArrayList<>();
+            for (String p : currentNotes.split("\\|")) {
+                String s = p.trim();
+                if (!s.toLowerCase(java.util.Locale.ROOT).startsWith("pago:")) {
+                    parts.add(s);
+                }
+            }
+            parts.add(clean);
+            updated = String.join(" | ", parts);
+        }
+        jdbc.sql("UPDATE orders SET notes = :n WHERE id = :id").param("n", updated).param("id", orderId).update();
     }
 
     @Transactional
