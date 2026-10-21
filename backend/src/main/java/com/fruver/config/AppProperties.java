@@ -36,8 +36,46 @@ public record AppProperties(
 
     public record Conversation(boolean aiAutoReply, boolean autoConfirmClearOrders) {}
 
-    public record Printing(boolean enabled, String type, String host, int port, int columns,
-                           int maxAttempts, long pollMs, String shopName) {}
+    public record Printing(
+            boolean enabled,
+            String type,
+            String host,
+            int port,
+            int columns,
+            int maxAttempts,
+            long pollMs,
+            String shopName,
+            String officeHost,
+            int officePort,
+            String homeHost,
+            int homePort,
+            boolean autoPrintWholesale) {
+
+        public Printing {
+            if (shopName == null || shopName.isBlank()) shopName = "FRUVER EL OASIS";
+            if (officeHost == null || officeHost.isBlank()) officeHost = (host != null && !host.isBlank()) ? host : "127.0.0.1";
+            if (officePort <= 0) officePort = (port > 0) ? port : 9100;
+            if (homeHost == null || homeHost.isBlank()) homeHost = (host != null && !host.isBlank()) ? host : "127.0.0.1";
+            if (homePort <= 0) homePort = (port > 0) ? port : 9100;
+        }
+
+        public String currentTargetPrinter(String timezone) {
+            java.time.ZoneId zone = (timezone != null && !timezone.isBlank()) ? java.time.ZoneId.of(timezone) : java.time.ZoneId.of("America/Bogota");
+            int hour = java.time.LocalTime.now(zone).getHour();
+            // 4 am a 7 pm (04:00 a 18:59) en la oficina / fruver. El resto (19:00 a 03:59) en la casa
+            return (hour >= 4 && hour < 19) ? "OFICINA" : "CASA";
+        }
+
+        public String hostFor(String location) {
+            if ("CASA".equalsIgnoreCase(location)) return homeHost();
+            return officeHost();
+        }
+
+        public int portFor(String location) {
+            if ("CASA".equalsIgnoreCase(location)) return homePort();
+            return officePort();
+        }
+    }
 
     public record Audio(String storageType, String storagePath) {}
 

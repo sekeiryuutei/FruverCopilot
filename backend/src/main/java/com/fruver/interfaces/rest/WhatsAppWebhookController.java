@@ -97,6 +97,14 @@ public class WhatsAppWebhookController {
             }
             case "audio" -> ingest.ingestAudioRef(from, name, id, m.path("audio").path("id").asText(),
                     m.path("audio").path("mime_type").asText("audio/ogg"));
+            case "image" -> {
+                String mediaId = m.path("image").path("id").asText(null);
+                String mime = m.path("image").path("mime_type").asText("image/jpeg");
+                String caption = m.path("image").path("caption").asText(null);
+                if (mediaId != null && !mediaId.isBlank()) {
+                    ingest.ingestImageRef(from, name, id, mediaId, mime, caption);
+                }
+            }
             default -> ingest.ingestText(from, name, id, "[Mensaje de tipo " + type + " no soportado]"); // visible para el empleado
         }
     }

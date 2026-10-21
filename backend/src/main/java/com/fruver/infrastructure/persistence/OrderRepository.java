@@ -19,9 +19,13 @@ public class OrderRepository {
                    o.corrected, o.version, o.received_at, o.extracted_at, o.approved_at,
                    COALESCE(c.customer_type, 'RETAIL') AS customer_type,
                    EXISTS (SELECT 1 FROM audio a WHERE a.order_id = o.id) AS has_audio,
+                   EXISTS (SELECT 1 FROM media_image mi WHERE mi.order_id = o.id) AS has_image,
                    s.id AS sale_id, s.print_status AS print_status,
                    o.dispatched_at, o.dispatched_by,
-                   o.delivery_person_id, o.delivery_person_name
+                   o.delivery_person_id, o.delivery_person_name,
+                   COALESCE(o.requires_verification, FALSE) AS requires_verification,
+                   o.verification_reason,
+                   s.target_printer, s.printed_printer
             FROM orders o
             LEFT JOIN customer c ON c.id = o.customer_id
             LEFT JOIN sale s ON s.order_id = o.id

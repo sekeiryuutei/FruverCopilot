@@ -15,14 +15,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Worker de impresion (patron outbox sobre print_job). Reclama trabajos con FOR UPDATE SKIP LOCKED,
- * imprime FUERA de cualquier transaccion y luego registra el resultado. Reintenta con espera creciente.
+ * imprime enrutando a OFICINA (04:00 - 19:00) o CASA (19:00 - 04:00), y registra que impresora ejecuto.
  */
 @Service
 public class PrintService {
 
     private static final Logger log = LoggerFactory.getLogger(PrintService.class);
 
-    record Job(long id, long saleId, int attempts, boolean reprint) {}
+    record Job(long id, long saleId, int attempts, boolean reprint, String targetPrinter) {}
 
     private final JdbcClient jdbc;
     private final TicketService tickets;
@@ -61,13 +61,15 @@ public class PrintService {
         Optional<Job> claimed = claim();
         if (claimed.isEmpty()) return false;
         Job job = claimed.get();
+        String location = job.targetPrinter() != null ? job.targetPrinter() : props.printing().currentTargetPrinter(props.timezone());
         try {
             byte[] payload = EscPosEncoder.encode(TicketFormatter.format(tickets.build(job.saleId(), job.reprint()), props.printing().columns()));
-            printer.print(payload);
+            printer.print(payload, location);
             tx.executeWithoutResult(s -> {
-                jdbc.sql("UPDATE print_job SET status = 'DONE', last_error = NULL, updated_at = now() WHERE id = :id").param("id", job.id()).update();
-                jdbc.sql("UPDATE sale SET print_status = 'PRINTED', print_error = NULL, printed_at = COALESCE(printed_at, now()) WHERE id = :s")
-                        .param("s", job.saleId()).update();
+                jdbc.sql("UPDATE print_job SET status = 'DONE', last_error = NULL, printed_printer = :p, updated_at = now() WHERE id = :id")
+                        .param("id", job.id()).param("p", location).update();
+                jdbc.sql("UPDATE sale SET print_status = 'PRINTED', print_error = NULL, printed_printer = :p, printed_at = COALESCE(printed_at, now()) WHERE id = :s")
+                        .param("s", job.saleId()).param("p", location).update();
             });
             metrics.print("ok");
         } catch (RuntimeException e) {
@@ -77,15 +79,40 @@ public class PrintService {
         return true;
     }
 
+    /** Reintenta de inmediato todos los pedidos con fallo de impresion o pendientes por papel/red */
+    public int reprintAllPending() {
+        String target = props.printing().currentTargetPrinter(props.timezone());
+        int updated = jdbc.sql("""
+                UPDATE print_job SET status = 'PENDING', attempts = 0, last_error = NULL,
+                       target_printer = :tp, next_attempt_at = now(), updated_at = now()
+                WHERE status IN ('FAILED', 'PRINTING')
+                   OR (status = 'PENDING' AND last_error IS NOT NULL)
+                """).param("tp", target).update();
+
+        // Si hay ventas marcadas con PRINT_FAILED sin print_job pendiente, re-encolarlas
+        jdbc.sql("""
+                INSERT INTO print_job(sale_id, reprint, target_printer)
+                SELECT s.id, TRUE, :tp FROM sale s
+                WHERE s.print_status = 'PRINT_FAILED'
+                  AND NOT EXISTS (SELECT 1 FROM print_job pj WHERE pj.sale_id = s.id AND pj.status IN ('PENDING', 'PRINTING'))
+                """).param("tp", target).update();
+
+        tick();
+        return updated;
+    }
+
     private Optional<Job> claim() {
+        String currentTarget = props.printing().currentTargetPrinter(props.timezone());
         return jdbc.sql("""
-                UPDATE print_job SET status = 'PRINTING', attempts = attempts + 1, updated_at = now()
+                UPDATE print_job SET status = 'PRINTING', attempts = attempts + 1, updated_at = now(),
+                       target_printer = COALESCE(target_printer, :tp)
                 WHERE id = (SELECT id FROM print_job
                             WHERE (status = 'PENDING' AND next_attempt_at <= now())
                                OR (status = 'PRINTING' AND updated_at < now() - interval '2 minutes')
                             ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1)
-                RETURNING id, sale_id, attempts, reprint
-                """).query((rs, n) -> new Job(rs.getLong(1), rs.getLong(2), rs.getInt(3), rs.getBoolean(4))).optional();
+                RETURNING id, sale_id, attempts, reprint, target_printer
+                """).param("tp", currentTarget)
+                .query((rs, n) -> new Job(rs.getLong(1), rs.getLong(2), rs.getInt(3), rs.getBoolean(4), rs.getString(5))).optional();
     }
 
     private void fail(Job job, RuntimeException e) {

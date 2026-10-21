@@ -46,6 +46,9 @@ const ctx={document:doc,console,setTimeout,clearTimeout,setInterval:()=>0,scroll
   EventSource:class{addEventListener(){}},
   fetch:async(url,o={})=>{calls.push({url,method:o.method||'GET',body:o.body?JSON.parse(o.body):null});let data=null;
     if(url==='/api/me')data={username:'admin',role:'ADMIN'};else if(url.startsWith('/api/products')&&(o.method||'GET')==='GET')data=products;
+    else if(url==='/api/printer/status')data={activePrinter:'OFICINA',schedule:'04:00 - 19:00 OFICINA',failedCount:0,pendingCount:0};
+    else if(url==='/api/sales/reprint-all-pending')data={status:'enqueued',count:2};
+    else if(url.includes('/reprint'))data={status:'PRINT_PENDING',saleId:501,orderId:10008};
     else if(url==='/api/orders')data=serverOrders;else if(o.method==='PUT'&&url.startsWith('/api/orders/')){puts.push(JSON.parse(o.body));data=mkOrder(10005,2)}
     return{status:200,ok:true,json:async()=>data}}};
 vm.createContext(ctx);
@@ -163,5 +166,37 @@ const rows=c=>c.querySelector('tbody').kids;const btn=(c,t)=>c.querySelectorAll(
   let threw=false;try{ev("payloadItems")([it('Papa criolla',1,2,'LB',2500),it('Papa criolla',1,3,'LB',null)])}catch(e){threw=e.code==='LOCAL'}
   ok('precios manuales distintos en repetidas: se rechaza',threw);
   ok('mismo producto en otra unidad NO se une (lo bloquea el servidor)',ev("payloadItems")([it('Papa',1,2,'LB'),it('Papa',1,2,'KG')]).length===2);
+
+  // ---- Pruebas de flujo Mayorista / Fruver El Oasis
+  serverOrders=[{
+    id:10008,version:1,status:'APPROVED',conversationStatus:'CONFIRMED',reviewStatus:'GREEN',inputType:'IMAGE',aiStatus:'OK',
+    customer:{id:2,name:'Restaurante El Sol',phoneMasked:'****1234',type:'WHOLESALE'},address:'Calle 10 # 5-20',notes:'',
+    receivedAt:new Date().toISOString(),messageText:'Foto lista mayorista',hasAudio:false,hasImage:true,total:null,
+    saleId:501,printStatus:'PRINTED',printedPrinter:'OFICINA',targetPrinter:'OFICINA',requiresVerification:false,
+    items:[{id:201,productId:1,productName:'Papa criolla',quantity:50,unit:'LB'}]
+  },{
+    id:10009,version:1,status:'APPROVED',conversationStatus:'CONFIRMED',reviewStatus:'YELLOW',inputType:'AUDIO',aiStatus:'OK',
+    customer:{id:3,name:'Casino Norte',phoneMasked:'****5678',type:'WHOLESALE'},address:'Carrera 15',notes:'',
+    receivedAt:new Date().toISOString(),messageText:'audio con ruido',hasAudio:true,hasImage:false,total:null,
+    saleId:502,printStatus:'PRINT_FAILED',printedPrinter:null,targetPrinter:'CASA',requiresVerification:true,verificationReason:'Audio poco claro',
+    items:[{id:202,productId:3,productName:'Tomate chonto',quantity:20,unit:'LB'}]
+  }];
+  ev("S.tab='ops'");ev('S.draft={}');await ev('loadOrders()');
+  const card8=cardOf(10008),card9=cardOf(10009);
+  ok('Pedido 10008 aprobado se dibuja en tablero',!!card8);
+  ok('Pedido 10008 muestra badge de FOTO',card8&&card8.textContent.includes('FOTO'));
+  ok('Pedido 10008 muestra impreso en OFICINA',card8&&card8.textContent.includes('IMPRESO EN OFICINA'));
+  ok('Pedido 10008 muestra botón Ver Foto de Lista',card8&&card8.querySelectorAll('button').some(b=>b.textContent.includes('Ver Foto')));
+  ok('Pedido 10009 muestra DUDOSO / REVISAR',card9&&card9.textContent.includes('DUDOSO')&&card9.textContent.includes('Audio poco claro'));
+  ok('Pedido 10009 muestra FALLÓ IMPRESIÓN (CASA)',card9&&card9.textContent.includes('FALLÓ IMPRESIÓN (CASA)'));
+  ok('Pedido 10009 tiene botón REINTENTAR IMPRESIÓN',card9&&card9.querySelectorAll('button').some(b=>b.textContent.includes('REINTENTAR IMPRESIÓN')));
+
+  // Banner de alerta cuando hay fallos de impresión
+  ev("S.printerStatus={activePrinter:'OFICINA',failedCount:2,pendingCount:1}");
+  await ev('loadOrders()');
+  const alertEl=main.children.find(c=>c.dataset&&c.dataset.id==='printer-alert');
+  ok('Banner de alerta visible cuando hay pedidos sin imprimir',!!alertEl);
+  ok('Banner tiene botón IMPRIMIR TODOS PENDIENTES',alertEl&&alertEl.querySelectorAll('button').some(b=>b.textContent==='🖨️ IMPRIMIR TODOS PENDIENTES'));
+
   console.log(fails?`\nFALLAS: ${fails}`:'\nTODO OK');process.exit(fails?1:0)
 })();

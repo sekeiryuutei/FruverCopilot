@@ -44,9 +44,11 @@ public class OrderController {
     private final AppMetrics metrics;
     private final JdbcClient jdbc;
     private final com.fruver.application.port.AudioStorageService storage;
+    private final MessageIngestService ingest;
 
     public OrderController(OrderViewService views, OrderEditService edits, SaleService sales, ConversationService conversation,
-                           SseHub hub, AppMetrics metrics, JdbcClient jdbc, com.fruver.application.port.AudioStorageService storage) {
+                           SseHub hub, AppMetrics metrics, JdbcClient jdbc, com.fruver.application.port.AudioStorageService storage,
+                           MessageIngestService ingest) {
         this.views = views;
         this.edits = edits;
         this.sales = sales;
@@ -55,6 +57,7 @@ public class OrderController {
         this.metrics = metrics;
         this.jdbc = jdbc;
         this.storage = storage;
+        this.ingest = ingest;
     }
 
     @GetMapping
@@ -139,5 +142,39 @@ public class OrderController {
                 .header("Content-Disposition", "inline; filename=\"pedido-" + id + ".ogg\"")
                 .contentType(MediaType.parseMediaType(mime))
                 .body(new ByteArrayResource(storage.load(row[0])));
+    }
+
+    @GetMapping("/{id}/image")
+    public ResponseEntity<ByteArrayResource> image(@PathVariable long id) {
+        var row = jdbc.sql("SELECT storage_key, mime_type FROM media_image WHERE order_id = :o ORDER BY id DESC LIMIT 1")
+                .param("o", id).query((rs, n) -> new String[]{rs.getString(1), rs.getString(2)}).optional()
+                .orElseThrow(() -> new ApiException(404, "IMAGE_NOT_FOUND", "El pedido no tiene imagen adjunta"));
+        if (row[0] == null) throw new ApiException(404, "IMAGE_NOT_FOUND", "La imagen aún no está disponible");
+        String raw = row[1] == null ? "image/jpeg" : row[1].split(";")[0].trim().toLowerCase();
+        String mime = switch (raw) {
+            case "image/jpeg", "image/jpg", "image/png", "image/webp" -> raw;
+            default -> "image/jpeg";
+        };
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Security-Policy", "default-src 'none'")
+                .header("Content-Disposition", "inline; filename=\"pedido-" + id + ".jpg\"")
+                .contentType(MediaType.parseMediaType(mime))
+                .body(new ByteArrayResource(storage.load(row[0])));
+    }
+
+    @PostMapping("/upload-photo")
+    public java.util.Map<String, Object> uploadPhoto(
+            @RequestParam(required = false) String phone,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String caption,
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) throws java.io.IOException {
+        if (file.getSize() > 20 * 1024 * 1024) throw new ApiException(413, "FILE_TOO_LARGE", "Imagen demasiado grande (máx 20MB)");
+        String p = (phone != null && !phone.isBlank()) ? phone.strip() : "573000000000";
+        String n = (name != null && !name.isBlank()) ? name.strip() : "Cliente Foto";
+        String mime = file.getContentType() != null ? file.getContentType() : "image/jpeg";
+        String extId = "photo-" + java.util.UUID.randomUUID();
+        ingest.ingestImageBytes(p, n, extId, file.getBytes(), mime, caption);
+        return java.util.Map.of("status", "accepted", "phone", p);
     }
 }

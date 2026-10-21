@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>FruverCopilot</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E🥑%3C/text%3E%3C/svg%3E">
+<meta name="theme-color" content="#14361f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="El Oasis">
+<title>Fruver El Oasis · Control Mayorista</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E🌴%3C/text%3E%3C/svg%3E">
 <style>
 :root{--bg:#f4f6f4;--card:#fff;--ink:#14231a;--mut:#607066;--line:#dbe3dd;--g:#1f9d55;--y:#d99a00;--r:#d33;--brand:#14361f}
 @media (prefers-color-scheme:dark){:root{--bg:#0e1712;--card:#16261d;--ink:#e9f2ec;--mut:#93a89b;--line:#274233;--brand:#0a1f12}}
@@ -51,7 +52,7 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
   .modal-card{height:100vh;max-height:100vh;border-radius:0;border:none;padding:12px}
 }
 </style></head><body>
-<header><b>🥑 FruverCopilot</b><nav id="nav"></nav><span class="cnt" id="cnt"></span><button class="b" style="padding:5px 10px" id="logout">Salir</button></header>
+<header><div style="display:flex;align-items:center;gap:8px"><b style="font-size:18px;letter-spacing:-0.3px">🌴 Fruver El Oasis</b><span id="printerBadge" class="pill" style="font-size:11.5px;background:#1e3a5f;color:#93c5fd;font-weight:600;padding:3px 9px;border-radius:6px;cursor:pointer" title="Impresora activa según horario">🖨️ OFICINA</span></div><nav id="nav"></nav><span class="cnt" id="cnt"></span><button class="b" style="padding:5px 10px" id="logout">Salir</button></header>
 <main id="main"></main><div id="toast"></div><datalist id="dl"></datalist>
 <script>
 const $=s=>document.querySelector(s);
@@ -75,6 +76,7 @@ const round3=n=>Math.round(n*1000)/1000;
 /** Firma barata de un pedido: si no cambia, su tarjeta NO se vuelve a dibujar (sin parpadeo). */
 function orderSig(o){return JSON.stringify([o.version,o.status,o.reviewStatus,o.conversationStatus,o.aiStatus,o.printStatus,o.saleId,o.total,
   o.suggestedReply,o.confirmationDraft,o.messageText,o.customer?.name,o.customer?.type,o.address,o.notes,o.deliveryPersonId||null,o.deliveryPersonName||null,o.dispatchedAt||null,o.messageCount||0,o.pendingDispatchOrderId||null,
+  o.hasImage||false,o.requiresVerification||false,o.verificationReason||null,o.printedPrinter||null,o.targetPrinter||null,
   (o.items||[]).map(i=>[i.id,i.productId,i.quantity,i.unit,i.manualPrice,i.problem])])}
 /** Otra línea del pedido con el mismo producto y la misma unidad (el precio es por unidad del producto). */
 function findTwin(items,it){return items.find(x=>x!==it&&x.productId&&x.productId===it.productId&&x.unit===it.unit)}
@@ -121,8 +123,110 @@ function buildDraft(o){return S.draft[o.id]||{version:o.version,customerName:o.c
 function priceFor(o,it){const p=S.products.find(x=>x.id===it.productId);if(it.manualPrice!=null)return it.manualPrice;return p?(p.prices[o.customer.type]??null):null}
 function totalOf(o,d){return d.items.reduce((s,it)=>{if(it.qtyError||it.priceError)return s;const p=priceFor(o,it);return s+(p!=null&&it.quantity>0?Math.round(it.quantity*p):0)},0)}
 
+async function updatePrinterStatus(){
+  try{
+    const st=await api('/api/printer/status');
+    S.printerStatus=st;
+    const pb=$('#printerBadge');
+    if(pb){
+      const loc=st.activePrinter==='OFICINA'?'🏢 OFICINA (4am-7pm)':'🏠 CASA (7pm-4am)';
+      if(st.failedCount>0){
+        pb.textContent=`🖨️ ${loc} · 🔴 ${st.failedCount} SIN IMPRIMIR`;
+        pb.style.background='#b91c1c';pb.style.color='#fff';
+      } else {
+        pb.textContent=`🖨️ ${loc}`;
+        pb.style.background='#1e3a5f';pb.style.color='#93c5fd';
+      }
+    }
+  }catch(e){}
+}
+
+async function reprintAllPending(){
+  try{
+    toast('Reimprimiendo comandas pendientes... ⏳');
+    const r=await api('/api/sales/reprint-all-pending',{method:'POST'});
+    toast(`✓ Se enviaron ${r.count} comanda(s) a reimprimir en ${S.printerStatus?.activePrinter||'impresora activa'}`);
+    await updatePrinterStatus();
+    await loadOrders();
+  }catch(e){toast('Error al reimprimir: '+e.message)}
+}
+
+function triggerCameraUpload(){
+  let fi=document.querySelector('#cameraUploadInput');
+  if(!fi){
+    fi=h('input',{id:'cameraUploadInput',type:'file',accept:'image/*',capture:'environment',style:'display:none'});
+    document.body.append(fi);
+    fi.addEventListener('change',async()=>{
+      const file=fi.files?.[0];
+      if(!file)return;
+      const custName=prompt('Nombre del cliente o negocio para esta lista (opcional):','');
+      if(custName===null){fi.value='';return}
+      const fd=new FormData();
+      fd.append('file',file);
+      if(custName.trim())fd.append('name',custName.trim());
+      toast('Subiendo foto y leyendo lista con IA... ⏳');
+      try{
+        const res=await fetch('/api/orders/upload-photo',{
+          method:'POST',
+          headers:{'X-XSRF-TOKEN':csrf()},
+          body:fd
+        });
+        if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'Error al procesar foto')}
+        toast('✓ ¡Foto recibida! Extrayendo comanda e imprimiendo...');
+        fi.value='';
+        setTimeout(async()=>{
+          await updatePrinterStatus();
+          await loadOrders();
+        },1200);
+      }catch(e){toast('Error: '+e.message);fi.value=''}
+    });
+  }
+  fi.click();
+}
+
+function showImageModal(orderId){
+  const overlay=h('div',{class:'modal-overlay',onclick:e=>{if(e.target===overlay)overlay.remove()}});
+  let deg=0;
+  const img=h('img',{src:`/api/orders/${orderId}/image?_t=${Date.now()}`,alt:'Foto del pedido',style:'max-width:100%;max-height:75vh;object-fit:contain;border-radius:8px;transition:transform .2s'});
+  const rotBtn=h('button',{class:'b',style:'font-size:14px;padding:8px 14px',onclick:()=>{deg=(deg+90)%360;img.style.transform=`rotate(${deg}deg)`}},'🔄 Girar');
+  const closeBtn=h('button',{class:'b main',style:'font-size:14px;padding:8px 16px',onclick:()=>overlay.remove()},'✕ Cerrar');
+  const m=h('div',{class:'modal-card',style:'max-width:750px;text-align:center'},
+    h('div',{class:'top'},h('b',{style:'font-size:16px'},'📷 Foto de Lista - Pedido #'+orderId),h('span',{class:'sp'}),rotBtn,closeBtn),
+    h('div',{style:'overflow:auto;padding:10px;background:#111;border-radius:8px;min-height:200px;display:flex;align-items:center;justify-content:center'},img)
+  );
+  overlay.append(m);
+  document.body.append(overlay);
+}
+
+function showTicketModal(t){
+  const overlay=h('div',{class:'modal-overlay',onclick:e=>{if(e.target===overlay)overlay.remove()}});
+  const pre=h('pre',{style:'background:var(--bg);color:var(--ink);padding:14px;border-radius:8px;white-space:pre-wrap;font-family:monospace;font-size:13px;overflow-x:auto;line-height:1.3'},t.text);
+  const reprintBtn=h('button',{class:'b main',style:'font-size:15px;padding:10px 18px',onclick:async()=>{
+    try{
+      await api(`/api/orders/${t.orderId}/reprint`,{method:'POST'});
+      toast(`✓ Pedido #${t.orderId} enviado a reimprimir en ${S.printerStatus?.activePrinter||'impresora activa'}`);
+      overlay.remove();
+      await updatePrinterStatus();
+      await loadOrders();
+    }catch(e){toast(e.message)}
+  }},'🖨️ Mandar a Impresora');
+  const m=h('div',{class:'modal-card',style:'max-width:480px'},
+    h('div',{class:'top'},h('b',{style:'font-size:16px'},'Factura / Comanda Pedido #'+t.orderId),h('span',{class:'sp'}),h('button',{class:'b',onclick:()=>overlay.remove()},'✕ Cerrar')),
+    pre,
+    h('div',{class:'row',style:'justify-content:space-between'},
+      h('button',{class:'b',onclick:()=>window.print()},'🖨️ Imprimir Navegador'),
+      reprintBtn
+    )
+  );
+  overlay.append(m);
+  document.body.append(overlay);
+}
+
+async function showTicket(saleId){try{const t=await api(`/api/sales/${saleId}/ticket`);showTicketModal(t)}catch(e){toast(e.message)}}
+async function showTicketByOrder(orderId){try{const t=await api(`/api/orders/${orderId}/ticket`);showTicketModal(t)}catch(e){toast(e.message)}}
+
 const emptyMsg=h('p',{class:'mut'},'Sin pedidos pendientes. Cuando llegue uno aparece aquí solo.');
-const doneTitle=h('h3',{},'Aprobados hoy');
+const doneTitle=h('h3',{},'Facturados hoy (Comandas)');
 /** Reconciliación con llave: solo se crean/reemplazan las tarjetas que cambiaron; las demás no se tocan. */
 function renderOps(){
   const rank={RED:0,YELLOW:1,GREEN:2};
@@ -134,17 +238,60 @@ function renderOps(){
   for(const id of Object.keys(S.draft))if(!S.orders.some(o=>String(o.id)===id))delete S.draft[id]; // borradores de pedidos que ya no existen
   const m=$('#main');
   const existing=new Map([...m.children].filter(n=>n.classList.contains('card')).map(n=>[n.dataset.id,n]));
-  const opsBar = existing.get('toolbar') || h('div',{class:'card',dataset:{id:'toolbar'},style:'display:flex;justify-content:space-between;align-items:center;padding:10px 14px;margin-bottom:12px;border-left:5px solid var(--g);flex-wrap:wrap;gap:8px'},
-    h('div',{},h('b',{style:'font-size:16px'},'Tablero de Operación'),h('span',{class:'mut',style:'margin-left:10px'},`Activos: ${active.length} · Finalizados hoy: ${done.length}`)),
-    h('div',{style:'display:flex;gap:8px;align-items:center'},
-      h('button',{class:'b',style:'font-size:13px;padding:8px 14px;border:1px solid var(--g);color:var(--g)',onclick:()=>openManualOrderModal(true)},'⚡ Venta Rápida (Local)'),
-      h('button',{class:'b main',style:'font-size:14px;padding:8px 16px',onclick:()=>openManualOrderModal(false)},'➕ Nuevo Pedido (Llamada / Tienda)')
+
+  const failedCount = S.printerStatus?.failedCount || S.orders.filter(o=>o.printStatus==='PRINT_FAILED').length;
+  const alertBanner = failedCount > 0 ? (existing.get('printer-alert') || h('div',{class:'card',dataset:{id:'printer-alert'},style:'background:#500724;border:2px solid #f43f5e;color:#fff;padding:14px;margin-bottom:12px;border-left:8px solid #f43f5e'},
+    h('div',{style:'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px'},
+      h('div',{},
+        h('b',{class:'alert-title',style:'font-size:16.5px;color:#fda4af'},`⚠️ ¡ATENCIÓN! Hay ${failedCount} pedido(s) sin imprimir`),
+        h('div',{style:'font-size:13px;opacity:0.9;margin-top:2px'},`La impresora en ${S.printerStatus?.activePrinter||'OFICINA'} falló por falta de papel, desconexión o red.`)
+      ),
+      h('button',{class:'b main',style:'background:#f43f5e;border-color:#e11d48;font-size:15px;padding:12px 20px;font-weight:800',onclick:reprintAllPending},'🖨️ IMPRIMIR TODOS PENDIENTES')
+    )
+  )) : null;
+  if(alertBanner && existing.get('printer-alert')){
+    const at = alertBanner.querySelector('.alert-title');
+    if(at) at.textContent = `⚠️ ¡ATENCIÓN! Hay ${failedCount} pedido(s) sin imprimir`;
+  }
+
+  const opsBar = existing.get('toolbar') || h('div',{class:'card',dataset:{id:'toolbar'},style:'padding:12px 14px;margin-bottom:12px;border-left:6px solid var(--g);background:var(--card)'},
+    h('div',{style:'display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px'},
+      h('div',{},
+        h('b',{style:'font-size:17px'},'Control Mayorista · Comandas'),
+        h('span',{class:'mut',id:'toolbarStats',style:'margin-left:10px;font-size:13px'},`Activos: ${active.length} · Facturados hoy: ${done.length}`)
+      ),
+      h('div',{style:'display:flex;gap:8px;flex-wrap:wrap;align-items:center'},
+        h('button',{class:'b main',style:'font-size:14.5px;padding:9px 16px;background:#7c3aed;border-color:#6d28d9;font-weight:700',onclick:()=>triggerCameraUpload()},'📷 Subir Foto de Lista'),
+        h('button',{class:'b',style:'font-size:13.5px;padding:9px 14px;border:1px solid var(--g);color:var(--g)',onclick:()=>openManualOrderModal(true)},'⚡ Venta Rápida (Local)'),
+        h('button',{class:'b',style:'font-size:13.5px;padding:9px 14px',onclick:()=>openManualOrderModal(false)},'➕ Nuevo Pedido (Llamada / Tienda)')
+      )
+    ),
+    h('div',{style:'display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap'},
+      h('span',{style:'font-size:13px;font-weight:700;color:var(--mut)'},'🔍 Buscar Factura:'),
+      h('input',{id:'quickReprintId',type:'number',placeholder:'# Pedido',style:'width:120px;height:38px;font-size:15px;font-weight:700;text-align:center'}),
+      h('button',{class:'b',style:'height:38px;font-size:13.5px;font-weight:700;background:#1e3a5f;color:#93c5fd;border-color:#1e3a5f',onclick:async()=>{
+        const idInput=$('#quickReprintId');
+        const val=idInput?.value?.trim();
+        if(!val){toast('Digita el número de pedido');return}
+        try{
+          await api(`/api/orders/${val}/reprint`,{method:'POST'});
+          toast(`✓ Pedido #${val} enviado a reimprimir`);
+          await updatePrinterStatus();
+          await loadOrders();
+        }catch(e){toast('Error al reimprimir: '+e.message)}
+      }},'🖨️ Reimprimir #'),
+      h('button',{class:'b',style:'height:38px;font-size:13.5px',onclick:()=>{
+        const idInput=$('#quickReprintId');
+        const val=idInput?.value?.trim();
+        if(!val){toast('Digita el número de pedido');return}
+        showTicketByOrder(val);
+      }},'🧾 Ver Comanda')
     )
   );
   if(existing.get('toolbar')){
-    const mutEl=opsBar.querySelector('.mut');if(mutEl)mutEl.textContent=`Activos: ${active.length} · Finalizados hoy: ${done.length}`;
+    const mutEl=opsBar.querySelector('#toolbarStats');if(mutEl)mutEl.textContent=`Activos: ${active.length} · Facturados hoy: ${done.length}`;
   }
-  const wanted=[opsBar,...(active.length?[]:[emptyMsg]),...active.map(o=>cardFor(o,existing)),...(done.length?[doneTitle]:[]),...done.map(o=>cardFor(o,existing))];
+  const wanted=[...(alertBanner?[alertBanner]:[]),opsBar,...(active.length?[]:[emptyMsg]),...active.map(o=>cardFor(o,existing)),...(done.length?[doneTitle]:[]),...done.map(o=>cardFor(o,existing))];
   const keep=new Set(wanted);[...m.children].forEach(n=>{if(!keep.has(n))n.remove()});
   let ref=m.firstElementChild;                       // coloca en orden moviendo solo lo necesario
   for(const el of wanted){if(el===ref)ref=ref.nextElementSibling;else m.insertBefore(el,ref)}}
@@ -160,18 +307,29 @@ function flagStale(el,o){const d=S.draft[o.id];if(!d||d.version===o.version||el.
   el.prepend(h('div',{class:'banner stale'},'⚠ Este pedido cambió mientras lo editabas (otro usuario o la IA). ',
     h('button',{class:'b',onclick:()=>{delete S.draft[o.id];loadOrders()}},'Descartar mis cambios y recargar')))}
 function statusPill(o){return o.status==='PROCESSING'||o.status==='RECEIVED'?h('span',{class:'pill gray'},'⏳ PROCESANDO'):h('span',{class:'pill '+(o.reviewStatus||'gray')},{GREEN:'🟢 LISTO',YELLOW:'🟡 REVISAR',RED:'🔴 PROBLEMA'}[o.reviewStatus]||'—')}
-/** Vista previa de factura (demo sin impresora): mismo texto del papel en un modal. */
-async function showTicket(saleId){try{const t=await api(`/api/sales/${saleId}/ticket`);
-  const overlay=h('div',{class:'modal-overlay',onclick:e=>{if(e.target===overlay)overlay.remove()}});
-  const pre=h('pre',{style:'background:var(--bg);padding:12px;border-radius:8px;white-space:pre-wrap;font-family:monospace;overflow-x:auto'},t.text);
-  const m=h('div',{class:'modal-card GREEN',style:'max-width:500px'},
-    h('div',{class:'top'},h('b',{},'Factura pedido #'+t.orderId),h('span',{class:'sp'}),h('button',{class:'b',onclick:()=>overlay.remove()},'Cerrar')),
-    pre,h('div',{class:'row'},h('button',{class:'b main',onclick:()=>window.print()},'Imprimir')));
-  overlay.append(m);
-  document.body.append(overlay)}catch(e){toast(e.message)}}
+
 function doneCard(o){
   const ps=o.printStatus;
   const cardEl=h('div',{class:'card GREEN',dataset:{id:o.id}});
+  const printerLoc = o.printedPrinter || o.targetPrinter || (S.printerStatus?.activePrinter || 'OFICINA');
+  const printPill = ps==='PRINTED'
+    ? h('span',{class:'pill GREEN'},`🖨️ IMPRESO EN ${printerLoc}`)
+    : ps==='PRINT_FAILED'
+      ? h('span',{class:'pill RED',style:'font-weight:800'},`🔴 FALLÓ IMPRESIÓN (${printerLoc})`)
+      : h('span',{class:'pill YELLOW'},`🖨️ EN COLA (${printerLoc})`);
+
+  const inputPill = o.inputType==='IMAGE'
+    ? h('span',{class:'pill',style:'background:#7c3aed;color:#fff'},'📷 FOTO')
+    : o.inputType==='AUDIO'
+      ? h('span',{class:'pill',style:'background:#0284c7;color:#fff'},'🎙️ AUDIO')
+      : o.inputType==='MANUAL'
+        ? h('span',{class:'pill gray'},'🏪 MANUAL')
+        : h('span',{class:'pill gray'},'📝 TEXTO');
+
+  const verifPill = o.requiresVerification
+    ? h('span',{class:'pill YELLOW',style:'font-size:12.5px;padding:3px 9px;font-weight:700'},'⚠️ DUDOSO / REVISAR' + (o.verificationReason ? ': ' + o.verificationReason : ''))
+    : h('span',{class:'pill GREEN'},'✅ FACTURADO');
+
   const convBox=h('div',{class:'conv',dataset:{convFor:o.id},style:S.openConvs.has(o.id)?'margin-top:8px':'display:none'});
   const convBtn=h('button',{class:'b'+(S.openConvs.has(o.id)?' active':''),onclick:()=>{
     if(S.openConvs.has(o.id)){S.openConvs.delete(o.id);convBox.style.display='none';convBtn.classList.remove('active')}
@@ -179,26 +337,67 @@ function doneCard(o){
   }},`💬 Chat (${o.messageCount||0})`);
   if(S.openConvs.has(o.id)) refreshConv(o.id, convBox);
 
+  const itemsSummary = (o.items && o.items.length)
+    ? h('div',{style:'display:flex;flex-wrap:wrap;gap:6px;margin:8px 0'},
+        ...o.items.map(it => h('span',{class:'pill gray',style:'font-size:13px;padding:3px 8px;background:rgba(255,255,255,0.06);color:var(--ink);border:1px solid var(--line)'},
+          `${it.quantity != null ? it.quantity : ''} ${it.unit==='UNIDAD'?'UN':(it.unit||'')} ${it.productName || it.mentioned || ''}`
+        ))
+      )
+    : null;
+
+  const mediaAudioBox = h('div');
+  const tools = h('div',{class:'row',style:'gap:8px;margin-top:8px'});
+
+  if(o.saleId) tools.append(h('button',{class:'b main',style:'font-size:14px;padding:9px 15px',onclick:()=>showTicket(o.saleId)},'🧾 Ver factura'));
+  tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',onclick:async()=>{
+    try{
+      await api(`/api/orders/${o.id}/reprint`,{method:'POST'});
+      toast(`✓ Reimpresión encolada para Pedido #${o.id}`);
+      await updatePrinterStatus();
+      await loadOrders();
+    }catch(e){toast(e.message)}
+  }},ps==='PRINT_FAILED'?'🔴 REINTENTAR IMPRESIÓN':'🖨️ REIMPRIMIR'));
+
+  if(o.hasImage){
+    tools.append(h('button',{class:'b',style:'background:#7c3aed;color:#fff;font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>showImageModal(o.id)},'🖼️ Ver Foto de Lista'));
+  }
+  if(o.hasAudio){
+    tools.append(h('button',{class:'b',style:'background:#0284c7;color:#fff;font-size:13.5px;padding:9px 14px',onclick:()=>{
+      mediaAudioBox.replaceChildren(h('audio',{controls:true,autoplay:true,src:`/api/orders/${o.id}/audio`,style:'height:36px;vertical-align:middle;margin-left:6px'}));
+    }},'▶ Escuchar Audio'));
+    tools.append(mediaAudioBox);
+  }
+
+  if(!o.dispatchedAt&&o.saleId){
+    tools.append(h('button',{class:'b',style:'background:#1e40af;color:#fff;font-size:13.5px;padding:9px 14px',onclick:async()=>{
+      if(!confirm(`¿Marcar Pedido #${o.id} como despachado y avisar al cliente por WhatsApp?`))return;
+      try{await api(`/api/sales/${o.saleId}/dispatch`,{method:'POST'});toast('✓ Pedido marcado como despachado');await loadOrders()}catch(e){toast(e.message)}
+    }},'🚚 Despachar'));
+  }
+  if(o.saleId){
+    tools.append(h('button',{class:'b',style:'font-size:13px;padding:8px 12px',onclick:async()=>{
+      try{await api(`/api/sales/${o.saleId}/send-whatsapp`,{method:'POST'});toast('✓ Factura enviada al cliente por WhatsApp');await loadOrders()}catch(e){toast(e.message)}
+    }},'📱 Factura WhatsApp'));
+  }
+  tools.append(convBtn);
+
   cardEl.append(
-    h('div',{class:'top'},
-      h('b',{},'#'+o.id),
-      h('span',{},o.customer?.name||o.customer?.phoneMasked),
+    h('div',{class:'top',style:'gap:6px'},
+      h('b',{style:'font-size:17px'},'#'+o.id),
+      inputPill,
+      h('span',{style:'font-weight:700'},o.customer?.name||o.customer?.phoneMasked||'Cliente'),
       o.deliveryPersonName ? h('span',{class:'pill',style:'background:rgba(59,130,246,0.15);color:#60a5fa'},'🛵 '+o.deliveryPersonName) : null,
       h('span',{class:'sp'}),
-      h('b',{},cop(o.total)),
-      h('span',{class:'pill '+(ps==='PRINTED'?'GREEN':ps==='PRINT_FAILED'?'RED':'YELLOW')},ps==='PRINTED'?'🖨 IMPRESO':ps==='PRINT_FAILED'?'🔴 NO SE PUDO IMPRIMIR':'🖨 IMPRIMIENDO…'),
+      o.total && o.total > 0 ? h('b',{},cop(o.total)) : null,
+      verifPill,
+      printPill,
       o.dispatchedAt ? h('span',{class:'pill GREEN'},'🚚 DESPACHADO '+ago(o.dispatchedAt)) : h('span',{class:'pill YELLOW'},'📦 PENDIENTE DESPACHO'),
-      o.saleId?h('button',{class:'b main',onclick:()=>showTicket(o.saleId)},'🧾 Ver factura'):null,
-      !o.dispatchedAt&&o.saleId?h('button',{class:'b',style:'background:#1e40af;color:#fff',onclick:async()=>{
-        if(!confirm(`¿Marcar Pedido #${o.id} como despachado y avisar al cliente por WhatsApp?`))return;
-        try{await api(`/api/sales/${o.saleId}/dispatch`,{method:'POST'});toast('✓ Pedido marcado como despachado');await loadOrders()}catch(e){toast(e.message)}
-      }},'🚚 Despachar'):null,
-      o.saleId?h('button',{class:'b',onclick:async()=>{
-        try{await api(`/api/sales/${o.saleId}/send-whatsapp`,{method:'POST'});toast('✓ Factura enviada al cliente por WhatsApp');await loadOrders()}catch(e){toast(e.message)}
-      }},'📱 Factura WhatsApp'):null,
-      h('button',{class:'b',onclick:async()=>{try{await api(`/api/sales/${o.saleId}/reprint`,{method:'POST'});toast('Reimpresión encolada')}catch(e){toast(e.message)}}},ps==='PRINT_FAILED'?'REINTENTAR':'REIMPRIMIR'),
-      convBtn
+      h('span',{class:'mut',style:'font-size:12px'},ago(o.receivedAt))
     ),
+    o.address ? h('div',{style:'font-size:13px;color:var(--mut);margin:4px 0'}, '📍 ' + o.address) : null,
+    o.messageText ? h('div',{class:'msg',style:'margin:6px 0;font-size:13.5px'}, '“' + o.messageText + '”') : null,
+    itemsSummary,
+    tools,
     convBox
   );
   return cardEl;
@@ -250,10 +449,23 @@ function card(o){
     }
   }}, (view.customerName || o.customer?.name || 'Cliente') + ' ✏️');
 
+  const inputPill = o.inputType==='IMAGE'
+    ? h('span',{class:'pill',style:'background:#7c3aed;color:#fff'},'📷 FOTO')
+    : o.inputType==='AUDIO'
+      ? h('span',{class:'pill gray'},'🎙️ AUDIO')
+      : o.inputType==='MANUAL'
+        ? h('span',{class:'pill gray'},'🏪 MANUAL / LLAMADA')
+        : h('span',{class:'pill gray'},'📝 TEXTO');
+
+  const verifPill = o.requiresVerification
+    ? h('span',{class:'pill YELLOW',style:'font-size:12.5px;padding:3px 9px;font-weight:700'},'⚠️ DUDOSO / REVISAR' + (o.verificationReason ? ': ' + o.verificationReason : ''))
+    : null;
+
   el.append(h('div',{class:'top'},
-    h('span',{class:'pill gray'},o.inputType==='AUDIO'?'🎙️ AUDIO':o.inputType==='MANUAL'?'🏪 MANUAL / LLAMADA':'📝 TEXTO'),
+    inputPill,
     h('b',{},'PEDIDO #'+o.id),
     statusPill(o),
+    verifPill,
     h('span',{class:'sp'}),
     h('span',{class:'mut'}, custNameEl, ' · ' + (o.customer?.phoneMasked || '') + (o.customer?.type==='WHOLESALE'?' · MAYORISTA':'') + ' · hace ', h('span',{class:'ago',dataset:{t:o.receivedAt}},ago(o.receivedAt)))
   ));
@@ -275,8 +487,9 @@ function card(o){
   if(o.aiStatus==='TRANSCRIPTION_FAILED')el.append(h('div',{class:'banner'},'🎙️ 🔴 TRANSCRIPCIÓN FALLIDA — escucha el audio y digita manualmente'));
   if(o.conversationStatus==='WAITING_FOR_CUSTOMER')el.append(h('div',{class:'ai'},'⏳ Esperando respuesta del cliente'));
   if(o.messageText)el.append(h('div',{class:'msg'},'“'+o.messageText+'”'));
-  const tools=h('div',{class:'row'});
-  if(o.hasAudio){const box=h('div');tools.append(h('button',{class:'b',onclick:()=>{box.replaceChildren(h('audio',{controls:true,autoplay:true,src:`/api/orders/${o.id}/audio`}))}},'▶ ESCUCHAR'),box)}
+  const tools=h('div',{class:'row',style:'gap:8px'});
+  if(o.hasAudio){const box=h('div');tools.append(h('button',{class:'b',style:'background:#0284c7;color:#fff',onclick:()=>{box.replaceChildren(h('audio',{controls:true,autoplay:true,src:`/api/orders/${o.id}/audio`}))}},'▶ ESCUCHAR'),box)}
+  if(o.hasImage){tools.append(h('button',{class:'b',style:'background:#7c3aed;color:#fff;font-weight:700',onclick:()=>showImageModal(o.id)},'🖼️ VER FOTO DE LISTA'))}
   
   const convBox=h('div',{class:'conv',dataset:{convFor:o.id},style:S.openConvs.has(o.id)?'margin-top:8px':'display:none'});
   const convBtn=h('button',{class:'b'+(S.openConvs.has(o.id)?' active':''),onclick:()=>{
@@ -1248,7 +1461,7 @@ $('#logout').onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'X-
   S.me=await api('/api/me');
   S.products=await api('/api/products');
   try{S.deliveryPersons=await api('/api/delivery-persons')}catch(e){S.deliveryPersons=[]}
-  fillDl();nav();await loadOrders();
+  fillDl();nav();await updatePrinterStatus();await loadOrders();
   let t;
   const connectSse=()=>{
     try{
@@ -1256,7 +1469,7 @@ $('#logout').onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'X-
       es.addEventListener('orders',()=>{
         clearTimeout(t);
         t=setTimeout(async()=>{
-          if(S.tab==='ops'){try{await loadOrders();refreshOpenConvs()}catch(e){}}
+          if(S.tab==='ops'){try{await updatePrinterStatus();await loadOrders();refreshOpenConvs()}catch(e){}}
         },300);
       });
       es.onerror=()=>{try{es.close()}catch(x){}setTimeout(connectSse,5000)};
@@ -1265,7 +1478,7 @@ $('#logout').onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'X-
   connectSse();
   // Auto-actualización periódica de respaldo (cada 3.5 segundos en operaciones):
   setInterval(async()=>{
-    if(S.tab==='ops'&&!loading){try{await loadOrders();refreshOpenConvs()}catch(e){}}
+    if(S.tab==='ops'&&!loading){try{await updatePrinterStatus();await loadOrders();refreshOpenConvs()}catch(e){}}
   },3500);
   setInterval(()=>document.querySelectorAll('.ago').forEach(x=>{x.textContent=ago(x.dataset.t)}),15000)})();
 </script></body></html>

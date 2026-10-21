@@ -1,3 +1,3 @@
 package com.fruver.domain.enums;
 
-public enum OrderInputType { TEXT, AUDIO, MANUAL }
+public enum OrderInputType { TEXT, AUDIO, MANUAL, IMAGE }

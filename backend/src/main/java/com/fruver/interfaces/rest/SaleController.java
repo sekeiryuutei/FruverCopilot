@@ -27,11 +27,13 @@ public class SaleController {
     private final com.fruver.config.AppProperties props;
     private final DeliveryZoneService deliveryZones;
     private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
+    private final PrintService printService;
 
     public SaleController(SalesQueryService salesQuery, SaleService sales, ReportService reports, CustomerService customers,
                           SseHub hub, TicketService tickets, com.fruver.config.AppProperties props,
                           org.springframework.jdbc.core.simple.JdbcClient jdbc,
-                          DeliveryZoneService deliveryZones) {
+                          DeliveryZoneService deliveryZones,
+                          PrintService printService) {
         this.salesQuery = salesQuery;
         this.sales = sales;
         this.reports = reports;
@@ -41,6 +43,7 @@ public class SaleController {
         this.props = props;
         this.jdbc = jdbc;
         this.deliveryZones = deliveryZones;
+        this.printService = printService;
     }
 
     @GetMapping("/sales")
@@ -69,6 +72,53 @@ public class SaleController {
         return Map.of("status", "PRINT_PENDING");
     }
 
+    /** Estado de impresoras duales (OFICINA vs CASA) y conteo de fallos */
+    @GetMapping("/printer/status")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public Map<String, Object> printerStatus() {
+        String current = props.printing().currentTargetPrinter(props.timezone());
+        int failedCount = jdbc.sql("SELECT count(*) FROM sale WHERE print_status = 'PRINT_FAILED'").query(Integer.class).single();
+        int pendingCount = jdbc.sql("SELECT count(*) FROM print_job WHERE status = 'PENDING'").query(Integer.class).single();
+        return Map.of(
+                "activePrinter", current,
+                "schedule", "04:00 - 19:00 OFICINA / 19:00 - 04:00 CASA",
+                "failedCount", failedCount,
+                "pendingCount", pendingCount,
+                "officeHost", props.printing().officeHost() + ":" + props.printing().officePort(),
+                "homeHost", props.printing().homeHost() + ":" + props.printing().homePort(),
+                "enabled", props.printing().enabled()
+        );
+    }
+
+    /** Reintenta mandar a imprimir todos los pedidos que hayan fallado por red o papel */
+    @PostMapping("/sales/reprint-all-pending")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public Map<String, Object> reprintAllPending() {
+        int queued = printService.reprintAllPending();
+        return Map.of("status", "enqueued", "count", queued);
+    }
+
+    /** Reimprimir buscando directamente por ID de Pedido */
+    @PostMapping("/orders/{orderId}/reprint")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public Map<String, Object> reprintByOrder(@PathVariable long orderId) {
+        Long saleId = sales.reprintByOrderId(orderId, Actor.name());
+        hub.orderChanged(orderId);
+        return Map.of("status", "PRINT_PENDING", "saleId", saleId, "orderId", orderId);
+    }
+
+    /** Vista previa de comanda / factura por ID de Pedido */
+    @GetMapping("/orders/{orderId}/ticket")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public Map<String, Object> ticketByOrder(@PathVariable long orderId) {
+        Long saleId = jdbc.sql("SELECT id FROM sale WHERE order_id = :o").param("o", orderId).query(Long.class).optional().orElse(null);
+        if (saleId == null) {
+            sales.autoApproveWholesale(orderId, false, null, Actor.name());
+            saleId = jdbc.sql("SELECT id FROM sale WHERE order_id = :o").param("o", orderId).query(Long.class).single();
+        }
+        return ticket(saleId);
+    }
+
     /** Vista previa de factura (para demo sin impresora): mismo texto que iria al papel. */
     @GetMapping("/sales/{id}/ticket")
     @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
@@ -79,7 +129,7 @@ public class SaleController {
         var lines = TicketFormatter.format(t, props.printing().columns());
         StringBuilder sb = new StringBuilder();
         for (var l : lines) sb.append(l.text()).append("\n");
-        return Map.of("saleId", id, "orderId", t.orderNumber(), "total", t.total(), "text", sb.toString().stripTrailing());
+        return Map.of("saleId", id, "orderId", t.orderNumber(), "total", t.total() != null ? t.total() : 0, "text", sb.toString().stripTrailing());
     }
 
     @GetMapping("/reports/sales")

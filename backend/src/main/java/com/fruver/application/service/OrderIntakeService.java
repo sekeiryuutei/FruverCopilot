@@ -59,16 +59,21 @@ public class OrderIntakeService {
         }
 
         boolean audio = type == OrderInputType.AUDIO;
+        boolean image = type == OrderInputType.IMAGE;
+        String msgType = audio ? "AUDIO" : (image ? "IMAGE" : "TEXT");
         long messageId = jdbc.sql("""
                 INSERT INTO conversation_message(order_id, direction, message_type, content, external_message_id)
                 VALUES (:o, 'INBOUND', :mt, :c, :e) RETURNING id
-                """).param("o", orderId).param("mt", audio ? "AUDIO" : "TEXT").param("c", text)
+                """).param("o", orderId).param("mt", msgType).param("c", text)
                 .param("e", externalId).query(Long.class).single();
 
         if (audio) {
             jdbc.sql("INSERT INTO audio(order_id, message_id, media_ref, storage_key, mime_type) VALUES (:o, :m, :r, :k, :t)")
                     .param("o", orderId).param("m", messageId).param("r", mediaId).param("k", storageKey).param("t", mime).update();
+        } else if (image) {
+            jdbc.sql("INSERT INTO media_image(order_id, message_id, media_ref, storage_key, mime_type, caption) VALUES (:o, :m, :r, :k, :t, :c)")
+                    .param("o", orderId).param("m", messageId).param("r", mediaId).param("k", storageKey).param("t", mime).param("c", text).update();
         }
-        return new IntakeResult(orderId, messageId, reply, audio, text, mediaId, storageKey, mime);
+        return new IntakeResult(orderId, messageId, reply, audio, image, text, mediaId, storageKey, mime);
     }
 }

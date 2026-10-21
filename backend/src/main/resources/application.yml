@@ -72,7 +72,12 @@ app:
     columns: ${PRINTER_COLUMNS:42}
     max-attempts: ${PRINTER_MAX_ATTEMPTS:3}
     poll-ms: ${PRINTER_POLL_MS:1000}
-    shop-name: ${SHOP_NAME:FRUVER}
+    shop-name: ${SHOP_NAME:FRUVER EL OASIS}
+    office-host: ${PRINTER_OFFICE_HOST:127.0.0.1}
+    office-port: ${PRINTER_OFFICE_PORT:9100}
+    home-host: ${PRINTER_HOME_HOST:127.0.0.1}
+    home-port: ${PRINTER_HOME_PORT:9100}
+    auto-print-wholesale: ${AUTO_PRINT_WHOLESALE:true}
   audio:
     storage-type: ${AUDIO_STORAGE_TYPE:local}
     storage-path: ${AUDIO_STORAGE_PATH:./data/audio}
@@ -87,7 +92,7 @@ app:
     provider: ${AI_PROVIDER:gemini}
     gemini:
       api-key: ${GEMINI_API_KEY:}
-      model: ${GEMINI_MODEL:gemini-3.7-flash}
+      model: ${GEMINI_MODEL:gemini-2.5-flash}
       base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
   stt:
     model: ${STT_MODEL:whisper-1}

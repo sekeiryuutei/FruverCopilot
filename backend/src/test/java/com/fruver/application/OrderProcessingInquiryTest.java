@@ -9,7 +9,7 @@ class OrderProcessingInquiryTest {
 
     // Instancia ligera para probar métodos de clasificación sin dependencias externas
     private final OrderProcessingService service = new OrderProcessingService(
-            null, null, null, null, null, null, null, null, null, null, null, null, null, null
+            null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
     );
 
     @Test

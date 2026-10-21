@@ -47,6 +47,17 @@ public class MessageIngestService {
         ingest(phone, name, externalId, OrderInputType.AUDIO, null, null, storage.save(data, mime), mime);
     }
 
+    /** Imagen referenciada en WhatsApp (foto de lista/recibo manuscrito). */
+    public void ingestImageRef(String phone, String name, String externalId, String mediaId, String mime, String caption) {
+        ingest(phone, name, externalId, OrderInputType.IMAGE, caption, mediaId, null, mime);
+    }
+
+    /** Imagen ya disponible en bytes (simulador / interfaz web). */
+    public void ingestImageBytes(String phone, String name, String externalId, byte[] data, String mime, String caption) {
+        if (externalId != null && intake.isDuplicate(externalId)) return;
+        ingest(phone, name, externalId, OrderInputType.IMAGE, caption, null, storage.save(data, mime), mime);
+    }
+
     private void ingest(String phone, String name, String externalId, OrderInputType type, String text,
                         String mediaId, String storageKey, String mime) {
         if (phone == null || phone.isBlank()) throw new ApiException(400, "VALIDATION_ERROR", "Telefono requerido");

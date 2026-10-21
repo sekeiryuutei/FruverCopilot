@@ -17,6 +17,7 @@ import java.util.Map;
 /**
  * Adaptador de transcripción multimodal con Google Gemini (Gemini Flash).
  * Ingesta directa de tokens de audio con contexto fonético de fruver colombiano.
+ * Incluye cadena de modelos candidatos de respaldo en caso de 503 o 429.
  */
 @Service
 @ConditionalOnExpression("'${app.ai.provider:gemini}'.equalsIgnoreCase('gemini') && !'${app.ai.gemini.api-key:}'.trim().isEmpty() && !'${app.ai.gemini.api-key:}'.trim().startsWith('#') && '${app.ai.gemini.api-key:}'.trim().length() > 10 && !'${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock')")
@@ -25,12 +26,19 @@ public class GeminiSpeechToText implements SpeechToTextService {
     private static final Logger log = LoggerFactory.getLogger(GeminiSpeechToText.class);
 
     private final RestClient http;
-    private final String model;
+    private final List<String> candidateModels;
     private final String apiKey;
 
     public GeminiSpeechToText(RestClient.Builder builder, AppProperties props) {
         this.http = builder.baseUrl(props.ai().gemini().baseUrl()).build();
-        this.model = props.ai().gemini().model();
+        java.util.List<String> list = new java.util.ArrayList<>();
+        if (props.ai().gemini().model() != null && !props.ai().gemini().model().isBlank()) {
+            list.add(props.ai().gemini().model().strip());
+        }
+        for (String m : java.util.List.of("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest")) {
+            if (!list.contains(m)) list.add(m);
+        }
+        this.candidateModels = java.util.List.copyOf(list);
         this.apiKey = props.ai().gemini().apiKey();
     }
 
@@ -60,37 +68,55 @@ public class GeminiSpeechToText implements SpeechToTextService {
         );
 
         JsonNode root = null;
-        for (int attempt = 1; attempt <= 3; attempt++) {
-            try {
-                root = http.post()
-                        .uri("/v1beta/models/" + model + ":generateContent")
-                        .header("x-goog-api-key", apiKey)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(payload)
-                        .retrieve()
-                        .body(JsonNode.class);
-                break;
-            } catch (org.springframework.web.client.RestClientResponseException e) {
-                int status = e.getStatusCode().value();
-                if ((status == 503 || status == 429) && attempt < 3) {
-                    log.warn("Gemini STT ocupado (HTTP {}), reintentando ({}/3)...", status, attempt);
-                    try {
-                        Thread.sleep(attempt * 1200L);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException("Interrumpido durante reintento de transcripción Gemini", ie);
+        Exception lastException = null;
+
+        for (String candidateModel : candidateModels) {
+            boolean modelSucceeded = false;
+            for (int attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    root = http.post()
+                            .uri("/v1beta/models/" + candidateModel + ":generateContent")
+                            .header("x-goog-api-key", apiKey)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .body(payload)
+                            .retrieve()
+                            .body(JsonNode.class);
+                    modelSucceeded = true;
+                    break;
+                } catch (org.springframework.web.client.RestClientResponseException e) {
+                    lastException = e;
+                    int status = e.getStatusCode().value();
+                    if (status == 429 || status == 404) {
+                        log.warn("Gemini STT modelo '{}' no disponible (HTTP {}), cambiando al modelo de respaldo...", candidateModel, status);
+                        break;
                     }
-                    continue;
+                    if (status == 503 && attempt < 2) {
+                        log.warn("Gemini STT modelo '{}' ocupado (503), reintentando...", candidateModel);
+                        try {
+                            Thread.sleep(1200L);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            throw new RuntimeException("Interrumpido durante reintento de transcripción Gemini", ie);
+                        }
+                        continue;
+                    }
+                    log.warn("Gemini STT modelo '{}' falló (HTTP {}): {}", candidateModel, status, e.getMessage());
+                    break;
+                } catch (Exception e) {
+                    lastException = e;
+                    log.warn("Error en Gemini STT modelo '{}': {}", candidateModel, e.getMessage());
+                    break;
                 }
-                log.warn("Fallo transcripción de audio con Gemini (HTTP {}): {}", status, e.getMessage());
-                throw new RuntimeException("Fallo transcripción con Gemini: " + e.getMessage(), e);
-            } catch (Exception e) {
-                log.warn("Fallo transcripción de audio con Gemini: {}", e.getMessage());
-                throw new RuntimeException("Fallo transcripción con Gemini: " + e.getMessage(), e);
+            }
+            if (modelSucceeded && root != null) {
+                break;
             }
         }
 
         if (root == null || !root.has("candidates") || root.path("candidates").isEmpty()) {
+            if (lastException != null) {
+                log.warn("Fallo transcripción de audio con todos los modelos Gemini: {}", lastException.getMessage());
+            }
             return "";
         }
         return root.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText("").strip();

@@ -47,12 +47,13 @@ public class OrderProcessingService {
     private final AppMetrics metrics;
     private final AppProperties props;
     private final DeliveryZoneService zones;
+    private final SaleService sales;
 
     public OrderProcessingService(OrderExtractor extractor, SpeechToTextService stt, AudioStorageService storage,
                                   MediaDownloader media, ProductCatalogService catalog, ExtractionInterpreter interpreter,
                                   OrderWriter writer, OrderRepository orders, QuoteService quotes,
                                   ConversationService conversation, SseHub hub, AppMetrics metrics, AppProperties props,
-                                  DeliveryZoneService zones) {
+                                  DeliveryZoneService zones, SaleService sales) {
         this.extractor = extractor;
         this.stt = stt;
         this.storage = storage;
@@ -67,6 +68,7 @@ public class OrderProcessingService {
         this.metrics = metrics;
         this.props = props;
         this.zones = zones;
+        this.sales = sales;
     }
 
     @Async("aiExecutor")
@@ -83,13 +85,35 @@ public class OrderProcessingService {
 
     private void doProcess(IntakeResult r) {
         String text = r.text();
+        byte[] imageData = null;
+        String imageMime = null;
+
         if (r.audio()) {
             text = transcribe(r);
             if (text == null) return;
+        } else if (r.image()) {
+            try {
+                String key = r.storageKey();
+                if (key == null) {
+                    MediaDownloader.MediaFile f = media.download(r.mediaId());
+                    imageMime = f.mime();
+                    key = storage.save(f.data(), imageMime);
+                    writer.attachImage(r.messageId(), key, r.mediaId(), imageMime, r.text());
+                    imageData = f.data();
+                } else {
+                    imageData = storage.load(key);
+                    imageMime = r.mime();
+                }
+            } catch (Exception e) {
+                log.warn("Fallo cargando imagen del pedido {}: {}", r.orderId(), e.getMessage());
+                metrics.aiError("image");
+                writer.markFailed(r.orderId(), "FAILED", "No se pudo cargar la imagen; digitar manualmente");
+                return;
+            }
         }
 
         // 1. Si es solo un saludo sin productos previos en el pedido:
-        if (!r.reply() && isGreetingOnly(text)) {
+        if (!r.image() && !r.reply() && isGreetingOnly(text)) {
             boolean hasHistory = writer.hasPriorMessages(r.orderId());
             String greeting = hasHistory
                     ? "Buenas, ¿en qué te podemos colaborar hoy? Puedes dejarnos tu lista de mercado o preguntarnos lo que necesites."
@@ -100,7 +124,7 @@ public class OrderProcessingService {
         }
 
         // 2. Si es una consulta directa de disponibilidad o precios de catálogo (solo si no es un pedido activo):
-        if (!r.reply() && isPriceOrInventoryInquiry(text)) {
+        if (!r.image() && !r.reply() && isPriceOrInventoryInquiry(text)) {
             String reply = buildCatalogOrPriceReply(text);
             conversation.send(r.orderId(), reply, ConversationService.Kind.INFO, "ia");
             writer.markInquiryHandled(r.orderId(), "Consulta sobre disponibilidad/precios respondida automáticamente.");
@@ -108,13 +132,13 @@ public class OrderProcessingService {
         }
 
         // 3. Si solicitan foto o imagen de un producto:
-        if (isProductPhotoRequest(text)) {
+        if (!r.image() && isProductPhotoRequest(text)) {
             handleProductPhotoRequest(r, text);
             return;
         }
 
         // 4. Si el cliente pregunta cosas como tiempo de entrega / demora:
-        if (isDeliveryTimeInquiry(text)) {
+        if (!r.image() && isDeliveryTimeInquiry(text)) {
             handleDeliveryTimeInquiry(r, text);
             return;
         }
@@ -156,7 +180,11 @@ public class OrderProcessingService {
         long t0 = System.nanoTime();
         AIOrderResponse ai;
         try {
-            ai = extractor.extract(req);
+            if (imageData != null) {
+                ai = extractor.extractImage(imageData, imageMime, req);
+            } else {
+                ai = extractor.extract(req);
+            }
         } catch (ExtractionUnavailableException e) {
             log.warn("IA no disponible para pedido {}: {}", r.orderId(), e.getMessage());
             metrics.aiError("unavailable");
@@ -169,6 +197,16 @@ public class OrderProcessingService {
         InterpretedOrder io = interpreter.interpret(ai);
         if (!writer.applyExtraction(r.orderId(), io)) return;
         metrics.review(io.review().name());
+
+        if (props.printing().autoPrintWholesale()) {
+            boolean requiresVerification = io.review() == ReviewStatus.YELLOW
+                    || io.review() == ReviewStatus.RED
+                    || io.items().stream().anyMatch(InterpretedOrder.Item::aiAmbiguous);
+            String reason = requiresVerification ? (io.note() != null ? io.note() : "Líneas con duda en pedido") : null;
+            sales.autoApproveWholesale(r.orderId(), requiresVerification, reason, "ia_wholesale");
+            return;
+        }
+
         autoActions(r.orderId(), io, text, r.audio());
     }
 

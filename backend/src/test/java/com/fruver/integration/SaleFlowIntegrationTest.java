@@ -38,7 +38,8 @@ import static org.mockito.Mockito.when;
         "app.audio.storage-path=target/test-audio",
         "app.printing.poll-ms=3600000",
         "app.conversation.ai-auto-reply=false",
-        "app.conversation.auto-confirm-clear-orders=false"
+        "app.conversation.auto-confirm-clear-orders=false",
+        "app.printing.auto-print-wholesale=false"
 })
 @Testcontainers(disabledWithoutDocker = true)
 class SaleFlowIntegrationTest {
@@ -147,14 +148,14 @@ class SaleFlowIntegrationTest {
         while (print.processOne()) { /* drena trabajos de otras pruebas */ }
         long order = newOrder("570000000006", papaCriolla("1", "LB"));
         var result = sales.approve(order, orders.find(order).orElseThrow().version(), "tester");
-        doThrow(new ThermalPrinterService.PrinterException("apagada", null)).when(printer).print(any());
+        doThrow(new ThermalPrinterService.PrinterException("apagada", null)).when(printer).print(any(), any());
         for (int i = 0; i < 3; i++) {
             jdbc.sql("UPDATE print_job SET next_attempt_at = now() WHERE sale_id = :s AND status = 'PENDING'").param("s", result.saleId()).update();
             print.processOne();
         }
         assertEquals("PRINT_FAILED", jdbc.sql("SELECT print_status FROM sale WHERE id = :s").param("s", result.saleId()).query(String.class).single());
 
-        doNothing().when(printer).print(any());
+        doNothing().when(printer).print(any(), any());
         sales.reprint(result.saleId(), "tester");
         while (print.processOne()) { /* drena */ }
         assertEquals("PRINTED", jdbc.sql("SELECT print_status FROM sale WHERE id = :s").param("s", result.saleId()).query(String.class).single());

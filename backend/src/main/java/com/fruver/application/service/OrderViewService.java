@@ -14,6 +14,7 @@ import com.fruver.infrastructure.persistence.Rows.OrderRow;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -96,10 +97,12 @@ public class OrderViewService {
                     r.inputType(), r.aiStatus(), r.aiNote(), r.suggestedReply(),
                     active ? ConfirmationMessageBuilder.build(quote) : null,
                     new OrderView.CustomerInfo(r.customerId(), r.customerName(), Phones.mask(r.customerPhone()), r.customerType()),
-                    r.address(), r.notes(), r.receivedAt(), texts.get(r.id()), r.hasAudio(), r.corrected(),
+                    r.address(), r.notes(), r.receivedAt(), texts.get(r.id()), r.hasAudio(), r.hasImage(), r.corrected(),
                     itemViews, quote.total(), quote.complete(), r.saleId(), r.printStatus(),
                     r.dispatchedAt(), r.dispatchedBy(), msgCounts.getOrDefault(r.id(), 0), pendingDispatchOrderId,
-                    r.deliveryPersonId(), r.deliveryPersonName()));
+                    r.deliveryPersonId(), r.deliveryPersonName(),
+                    r.requiresVerification(), r.verificationReason(),
+                    r.targetPrinter(), r.printedPrinter()));
         }
         return out;
     }
@@ -109,8 +112,13 @@ public class OrderViewService {
                 ? (i.aiProductName() == null ? i.mentioned() : i.aiProductName()) + " "
                   + (i.aiQuantity() == null ? "?" : Money.qty(i.aiQuantity())) + " " + (i.aiUnit() == null ? "?" : i.aiUnit())
                 : null;
-        return new ItemView(i.id(), i.productId(), l.productName(), i.mentioned(), i.observation(), i.aiAmbiguous(), ai,
-                i.quantity(), i.unit(), l.catalogPrice(), i.manualPrice(), i.priceChangeReason(),
-                l.appliedPrice(), l.subtotal(), l.problem());
+        String prodName = l != null && l.productName() != null ? l.productName() : (i.aiProductName() != null ? i.aiProductName() : i.mentioned());
+        BigDecimal catPrice = l != null ? l.catalogPrice() : null;
+        BigDecimal appPrice = l != null ? l.appliedPrice() : i.manualPrice();
+        BigDecimal subtotal = l != null ? l.subtotal() : null;
+        String problem = l != null ? l.problem() : null;
+        return new ItemView(i.id(), i.productId(), prodName, i.mentioned(), i.observation(), i.aiAmbiguous(), ai,
+                i.quantity(), i.unit(), catPrice, i.manualPrice(), i.priceChangeReason(),
+                appPrice, subtotal, problem);
     }
 }

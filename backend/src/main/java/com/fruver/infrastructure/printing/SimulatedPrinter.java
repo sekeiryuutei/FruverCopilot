@@ -16,12 +16,18 @@ public class SimulatedPrinter implements ThermalPrinterService {
     private static final Logger log = LoggerFactory.getLogger(SimulatedPrinter.class);
 
     @Override
-    public void print(byte[] payload) {
+    public void print(byte[] payload, String targetLocation) {
+        String loc = targetLocation != null ? targetLocation : "OFICINA";
         String text = new String(payload, StandardCharsets.US_ASCII).replaceAll("[\\x00-\\x09\\x0B-\\x1F]", "");
         // No volcar PII (nombre/telefono/direccion) al log: enmascara lineas sensibles (Ley 1581).
         String safe = text.replaceAll("(?m)^(.*(Tel|Cliente|Direcci[oó]n|Cliente:|Tel:).{0,40})$", "$1 [oculto]");
         if (safe.length() > 2000) safe = safe.substring(0, 2000) + "…[truncado]";
-        log.info("[IMPRESORA SIMULADA] ticket de {} caracteres (contenido enmascarado)", text.length());
-        log.debug("[IMPRESORA SIMULADA]\n{}", safe);
+        log.info("[IMPRESORA SIMULADA - {}] ticket de {} caracteres (contenido enmascarado)", loc, text.length());
+        log.debug("[IMPRESORA SIMULADA - {}]\n{}", loc, safe);
+    }
+
+    @Override
+    public void print(byte[] payload) {
+        print(payload, "OFICINA");
     }
 }

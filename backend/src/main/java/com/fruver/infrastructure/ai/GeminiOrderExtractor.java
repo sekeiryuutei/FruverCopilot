@@ -14,12 +14,14 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Adaptador de IA para Google Gemini (Gemini 2.5/2.0/1.5 Flash).
  * Consume la API de Gemini vía REST con salida estructurada JSON nativa.
+ * Soporta tanto extracción de texto conversacional como OCR multimodal de imágenes (fotos de listas).
  * Su salida es UNTRUSTED: la valida determinísticamente ExtractionInterpreter.
  */
 @Service
@@ -39,7 +41,7 @@ public class GeminiOrderExtractor implements OrderExtractor {
         if (props.ai().gemini().model() != null && !props.ai().gemini().model().isBlank()) {
             list.add(props.ai().gemini().model().strip());
         }
-        for (String m : java.util.List.of("gemini-3.7-flash", "gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite")) {
+        for (String m : java.util.List.of("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest")) {
             if (!list.contains(m)) list.add(m);
         }
         this.candidateModels = java.util.List.copyOf(list);
@@ -77,10 +79,57 @@ public class GeminiOrderExtractor implements OrderExtractor {
                 "generationConfig", Map.of(
                         "response_mime_type", "application/json",
                         "temperature", 0.0,
-                        "maxOutputTokens", 500
+                        "maxOutputTokens", 4096
                 )
         );
 
+        return executeGemini(payload);
+    }
+
+    @Override
+    public AIOrderResponse extractImage(byte[] imageBytes, String mimeType, ExtractionRequest request) {
+        if (imageBytes == null || imageBytes.length == 0) {
+            return extract(request);
+        }
+        String base64Image = Base64.getEncoder().encodeToString(imageBytes);
+        String cleanMime = sanitizeImageMime(mimeType);
+
+        String contextPrompt = """
+                <catalogo_candidato>%s</catalogo_candidato>
+                <zonas_domicilio>%s</zonas_domicilio>
+                <historial_cliente>%s</historial_cliente>
+                <nota_adicional_cliente>%s</nota_adicional_cliente>
+                Lee con precisión los productos y cantidades de la lista en la imagen adjunta.
+                """.formatted(
+                join(request.catalogCandidates()),
+                request.deliveryZones() == null ? "(No especificado)" : request.deliveryZones(),
+                request.customerHistory() == null ? "(Sin historial previo registrado)" : request.customerHistory(),
+                request.message() == null ? "" : request.message());
+
+        Map<String, Object> payload = Map.of(
+                "system_instruction", Map.of(
+                        "parts", List.of(Map.of("text", SystemPrompts.IMAGE_ORDER_EXTRACTION))
+                ),
+                "contents", List.of(
+                        Map.of(
+                                "role", "user",
+                                "parts", List.of(
+                                        Map.of("inline_data", Map.of("mime_type", cleanMime, "data", base64Image)),
+                                        Map.of("text", contextPrompt)
+                                )
+                        )
+                ),
+                "generationConfig", Map.of(
+                        "response_mime_type", "application/json",
+                        "temperature", 0.0,
+                        "maxOutputTokens", 4096
+                )
+        );
+
+        return executeGemini(payload);
+    }
+
+    private AIOrderResponse executeGemini(Map<String, Object> payload) {
         JsonNode root = null;
         Exception lastException = null;
 
@@ -100,9 +149,14 @@ public class GeminiOrderExtractor implements OrderExtractor {
                 } catch (org.springframework.web.client.RestClientResponseException e) {
                     lastException = e;
                     int status = e.getStatusCode().value();
-                    if (status == 429 || status == 404) {
-                        log.warn("Gemini modelo '{}' no disponible (HTTP {}), cambiando inmediatamente al modelo de respaldo...", candidateModel, status);
-                        break; // pasa al siguiente modelo
+                    if (status == 429) {
+                        log.warn("Gemini modelo '{}' con rate limit (HTTP 429), pausando brevemente y cambiando al modelo de respaldo...", candidateModel);
+                        try { Thread.sleep(2500L); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                        break;
+                    }
+                    if (status == 404) {
+                        log.warn("Gemini modelo '{}' no encontrado (HTTP 404), cambiando inmediatamente al modelo de respaldo...", candidateModel);
+                        break;
                     }
                     if (status == 503 && attempt < 2) {
                         log.warn("Gemini modelo '{}' con 503, reintentando...", candidateModel);
@@ -134,7 +188,7 @@ public class GeminiOrderExtractor implements OrderExtractor {
         }
 
         try {
-            if (root == null || !root.has("candidates") || root.path("candidates").isEmpty()) {
+            if (!root.has("candidates") || root.path("candidates").isEmpty()) {
                 throw new ExtractionUnavailableException("Respuesta vacía o sin candidatos de Gemini", null);
             }
 
@@ -153,22 +207,37 @@ public class GeminiOrderExtractor implements OrderExtractor {
         } catch (ExtractionUnavailableException e) {
             throw e;
         } catch (Exception e) {
-            log.warn("Fallo deserializando respuesta de Gemini: {}", e.getMessage());
-            throw new ExtractionUnavailableException("Fallo al procesar JSON de Gemini: " + e.getClass().getSimpleName(), e);
+            log.warn("Fallo al procesar JSON de Gemini: {}", e.getMessage());
+            throw new ExtractionUnavailableException("Respuesta de Gemini no parseable como JSON", e);
         }
     }
 
-    private static String join(List<String> values) {
-        return values == null || values.isEmpty() ? "(ninguno)" : String.join(" | ", values);
+    static String stripMarkdownFences(String text) {
+        String s = text.strip();
+        if (s.startsWith("```json")) {
+            s = s.substring(7);
+        } else if (s.startsWith("```")) {
+            s = s.substring(3);
+        }
+        if (s.endsWith("```")) {
+            s = s.substring(0, s.length() - 3);
+        }
+        return s.strip();
     }
 
-    static String stripMarkdownFences(String s) {
-        if (s == null) return "";
-        String t = s.strip();
-        if (t.startsWith("```json")) t = t.substring(7);
-        else if (t.startsWith("```")) t = t.substring(3);
-        if (t.endsWith("```")) t = t.substring(0, t.length() - 3);
-        return t.strip();
+    private static String sanitizeImageMime(String mime) {
+        if (mime == null || mime.isBlank()) return "image/jpeg";
+        int semi = mime.indexOf(';');
+        String base = semi > 0 ? mime.substring(0, semi).strip() : mime.strip();
+        if ("image/jpg".equalsIgnoreCase(base) || "image/jpeg".equalsIgnoreCase(base)) return "image/jpeg";
+        if ("image/png".equalsIgnoreCase(base)) return "image/png";
+        if ("image/webp".equalsIgnoreCase(base)) return "image/webp";
+        return base;
+    }
+
+    private static String join(List<String> items) {
+        if (items == null || items.isEmpty()) return "";
+        return String.join("\n", items);
     }
 }
 

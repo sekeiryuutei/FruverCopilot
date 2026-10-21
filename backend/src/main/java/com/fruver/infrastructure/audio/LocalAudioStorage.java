@@ -54,6 +54,9 @@ public class LocalAudioStorage implements AudioStorageService {
 
     public static String extension(String mime) {
         String m = mime == null ? "" : mime.toLowerCase();
+        if (m.contains("jpeg") || m.contains("jpg")) return "jpg";
+        if (m.contains("png")) return "png";
+        if (m.contains("webp")) return "webp";
         if (m.contains("mpeg") || m.contains("mp3")) return "mp3";
         if (m.contains("mp4") || m.contains("m4a") || m.contains("aac")) return "m4a";
         if (m.contains("wav")) return "wav";

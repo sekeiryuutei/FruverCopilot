@@ -192,6 +192,25 @@ public class OrderWriter {
     }
 
     @Transactional
+    public void attachImage(long messageId, String storageKey, String mediaRef, String mime, String caption) {
+        jdbc.sql("""
+                INSERT INTO media_image(order_id, message_id, media_ref, storage_key, mime_type, caption)
+                VALUES ((SELECT order_id FROM conversation_message WHERE id = :m), :m, :r, :k, :t, :c)
+                """).param("m", messageId).param("r", mediaRef).param("k", storageKey).param("t", mime).param("c", caption).update();
+    }
+
+    @Transactional
+    public void updateImageStorageKey(long messageId, String storageKey) {
+        jdbc.sql("UPDATE media_image SET storage_key = :k WHERE message_id = :m").param("k", storageKey).param("m", messageId).update();
+    }
+
+    @Transactional
+    public void saveImageOcrText(long messageId, String text) {
+        jdbc.sql("UPDATE conversation_message SET content = :t WHERE id = :m AND (content IS NULL OR content = '')")
+                .param("t", text).param("m", messageId).update();
+    }
+
+    @Transactional
     public void saveTranscription(long messageId, String text, String model) {
         jdbc.sql("UPDATE conversation_message SET content = :t WHERE id = :m").param("t", text).param("m", messageId).update();
         jdbc.sql("INSERT INTO transcription(audio_id, message_id, text, model) SELECT a.id, :m, :t, :mo FROM audio a WHERE a.message_id = :m")

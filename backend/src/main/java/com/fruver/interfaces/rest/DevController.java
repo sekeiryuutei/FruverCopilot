@@ -59,4 +59,15 @@ public class DevController {
                 file.getContentType() == null ? "audio/ogg" : file.getContentType());
         return Map.of("status", "accepted");
     }
+
+    @PostMapping("/image")
+    public Map<String, String> image(@RequestParam @Size(max = 20) @Pattern(regexp = "^[+]?[0-9\\s\\-()]{5,20}$") String phone,
+                                     @RequestParam(required = false) @Size(max = 120) String name,
+                                     @RequestParam(required = false) @Size(max = 500) String caption,
+                                     @RequestParam("file") MultipartFile file) throws IOException {
+        if (file.getSize() > 20 * 1024 * 1024) throw new ApiException(413, "FILE_TOO_LARGE", "Imagen demasiado grande (max 20MB)");
+        ingest.ingestImageBytes(phone, name, "sim-" + UUID.randomUUID(), file.getBytes(),
+                file.getContentType() == null ? "image/jpeg" : file.getContentType(), caption);
+        return Map.of("status", "accepted");
+    }
 }
