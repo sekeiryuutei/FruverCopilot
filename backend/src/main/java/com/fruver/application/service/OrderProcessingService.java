@@ -97,8 +97,8 @@ public class OrderProcessingService {
             return;
         }
 
-        // 2. Si es una consulta directa de disponibilidad o precios de catálogo:
-        if (isPriceOrInventoryInquiry(text)) {
+        // 2. Si es una consulta directa de disponibilidad o precios de catálogo (solo si no es un pedido activo):
+        if (!r.reply() && isPriceOrInventoryInquiry(text)) {
             String reply = buildCatalogOrPriceReply(text);
             conversation.send(r.orderId(), reply, ConversationService.Kind.INFO, "ia");
             writer.markInquiryHandled(r.orderId(), "Consulta sobre disponibilidad/precios respondida automáticamente.");
@@ -196,6 +196,15 @@ public class OrderProcessingService {
                         conversation.send(orderId, askAddr, ConversationService.Kind.ASK, "ia");
                         return;
                     }
+                    boolean wasAlreadyConfirmed = "CONFIRMED".equals(row.conversationStatus());
+                    if (wasAlreadyConfirmed) {
+                        if (isPoliteAcknowledgment(text)) {
+                            conversation.send(orderId, "Con mucho gusto, ya estamos en ello 😊", ConversationService.Kind.INFO, "ia");
+                            return;
+                        }
+                        // Si ya estaba confirmado y no hubo cambio de productos o solo confirmó recepción, no repetir factura completa
+                        return;
+                    }
                     Quote q = quotes.quote(orders.items(orderId), PriceType.forCustomer(CustomerType.valueOf(row.customerType())));
                     String msg = buildOrderReceivedAndConfirmedMessage(q, row.address());
                     if (msg != null) {
@@ -229,23 +238,53 @@ public class OrderProcessingService {
         }
         sb.append("\nTotal estimado: ").append(Money.format(quote.total()));
         if (address != null && !address.isBlank()) {
-            sb.append("\n📍 Entrega: ").append(address);
+            boolean isPickup = address.toLowerCase().contains("recoge")
+                    || address.toLowerCase().contains("tienda")
+                    || address.toLowerCase().contains("punto");
+            sb.append("\n📍 Entrega: ").append(isPickup ? "Recoges en tienda / Punto físico" : address);
         }
         sb.append("\nEn un momento te confirmamos el despacho \uD83D\uDE0A");
         return sb.toString();
     }
 
+    public static boolean isPoliteAcknowledgment(String text) {
+        if (text == null || text.isBlank()) return false;
+        String t = TextTokens.fold(text).trim();
+        return t.equals("gracias") || t.equals("muchas gracias") || t.equals("mil gracias")
+                || t.equals("perfecto") || t.equals("perfecto gracias") || t.equals("vale")
+                || t.equals("vale gracias") || t.equals("ok") || t.equals("ok gracias")
+                || t.equals("listo") || t.equals("listo gracias") || t.equals("bueno")
+                || t.equals("excelente") || t.equals("dale") || t.equals("bien")
+                || t.contains("por que repites") || t.contains("porque repites");
+    }
+
     public boolean isPriceOrInventoryInquiry(String text) {
         if (text == null || text.isBlank()) return false;
         String t = text.toLowerCase(Locale.ROOT);
+
+        // Si contiene verbos de pedido directo, NUNCA es consulta simple de precios:
         if (t.contains("me vende") || t.contains("me manda") || t.contains("enviar") || t.contains("mandeme")
                 || t.contains("mándeme") || t.contains("deme") || t.contains("dame") || t.contains("quiero")
-                || t.contains("llevar") || t.contains("mande") || t.contains("traigame") || t.contains("tráigame")) {
+                || t.contains("llevar") || t.contains("mande") || t.contains("traigame") || t.contains("tráigame")
+                || t.contains("regalame") || t.contains("regálame") || t.contains("regale") || t.contains("regáleme")
+                || t.contains("necesito") || t.contains("ponme") || t.contains("póngame") || t.contains("agregue")
+                || t.contains("agrega") || t.contains("agregame") || t.contains("agrégame") || t.contains("traer")
+                || t.contains("traiga")) {
             return false;
         }
-        return t.contains("precio") || t.contains("precios") || t.contains("cuanto vale") || t.contains("cuánto vale")
+
+        // Si pregunta explícitamente por precio o costo:
+        boolean asksPrice = t.contains("precio") || t.contains("precios") || t.contains("cuanto vale") || t.contains("cuánto vale")
                 || t.contains("cuanto cuesta") || t.contains("cuánto cuesta") || t.contains("a como") || t.contains("a cómo")
-                || t.contains("costo") || t.contains("valor") || t.contains("catalogo") || t.contains("catálogo")
+                || t.contains("costo") || t.contains("valor");
+        if (asksPrice) return true;
+
+        // Si tiene cantidades explícitas (ej: "2 kilos", "2 libras", "2mil"), es un pedido:
+        if (t.matches(".*\\b\\d+\\s*(libras?|kilos?|kg|lb|unidades?|mil)\\b.*")) {
+            return false;
+        }
+
+        return t.contains("catalogo") || t.contains("catálogo")
                 || t.contains("inventario") || t.contains("que tienen") || t.contains("qué tienen")
                 || t.contains("tienen") || t.contains("tiene") || t.contains("tienes")
                 || t.contains("hay") || t.contains("vende") || t.contains("venden")

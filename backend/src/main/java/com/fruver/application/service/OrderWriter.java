@@ -53,22 +53,29 @@ public class OrderWriter {
         if (io.address() != null && !io.address().isBlank()) {
             jdbc.sql("""
                     UPDATE orders SET address = :addr
-                    WHERE id = :id AND (address IS NULL OR address = '')
+                    WHERE id = :id
                     """).param("addr", io.address()).param("id", orderId).update();
-            jdbc.sql("""
-                    UPDATE customer SET address = COALESCE(customer.address, :addr)
-                    FROM orders o WHERE o.id = :id AND customer.id = o.customer_id
-                    """).param("addr", io.address()).param("id", orderId).update();
-            jdbc.sql("""
-                    INSERT INTO customer_address(customer_id, label, address, is_default)
-                    SELECT o.customer_id, 'Casa', :addr, TRUE
-                    FROM orders o
-                    WHERE o.id = :id AND o.customer_id IS NOT NULL
-                      AND NOT EXISTS (
-                          SELECT 1 FROM customer_address ca
-                          WHERE ca.customer_id = o.customer_id AND lower(trim(ca.address)) = lower(trim(:addr))
-                      )
-                    """).param("addr", io.address()).param("id", orderId).update();
+
+            boolean isPickup = io.address().toLowerCase().contains("recoge")
+                    || io.address().toLowerCase().contains("tienda")
+                    || io.address().toLowerCase().contains("punto");
+
+            if (!isPickup) {
+                jdbc.sql("""
+                        UPDATE customer SET address = COALESCE(customer.address, :addr)
+                        FROM orders o WHERE o.id = :id AND customer.id = o.customer_id
+                        """).param("addr", io.address()).param("id", orderId).update();
+                jdbc.sql("""
+                        INSERT INTO customer_address(customer_id, label, address, is_default)
+                        SELECT o.customer_id, 'Casa', :addr, TRUE
+                        FROM orders o
+                        WHERE o.id = :id AND o.customer_id IS NOT NULL
+                          AND NOT EXISTS (
+                              SELECT 1 FROM customer_address ca
+                              WHERE ca.customer_id = o.customer_id AND lower(trim(ca.address)) = lower(trim(:addr))
+                          )
+                        """).param("addr", io.address()).param("id", orderId).update();
+            }
         }
 
         if (io.deliveryTime() != null && !io.deliveryTime().isBlank()) {
