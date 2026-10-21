@@ -329,13 +329,9 @@ public class OrderProcessingService {
             sb.append("Total: ").append(Money.format(q.total())).append(".\n");
         }
 
-        if (row.address() == null || row.address().isBlank()) {
-            sb.append(" ¿Deseas algo más o es para domicilio o recoges en punto físico / tienda?");
-        } else {
-            String next = getNextMissingRequirementQuestion(row);
-            if (next != null) {
-                sb.append("\n\n").append(next);
-            }
+        String next = getNextMissingRequirementQuestion(row);
+        if (next != null) {
+            sb.append("\n\n").append(next);
         }
         return sb.toString();
     }
@@ -379,8 +375,13 @@ public class OrderProcessingService {
         if (row == null) return null;
 
         // 1. ¿Tiene dirección o método de entrega definido?
+        // Hacemos toda la pregunta de una para gastar los mínimos tokens y mensajes posibles:
         if (row.address() == null || row.address().isBlank()) {
-            return "¿Es para domicilio o recoges en el punto físico / tienda? Si es domicilio, por favor indícanos la dirección exacta (calle/carrera, número, barrio y si es casa o apto).";
+            return "¿Es para domicilio o recoges en la tienda?\n"
+                    + "Si es domicilio, por favor indícanos de una vez:\n"
+                    + "1. Tu dirección exacta y barrio.\n"
+                    + "2. ¿A nombre de quién dejamos el pedido?\n"
+                    + "3. ¿Cómo pagas? (Transferencia / Llave o Efectivo, y con qué billete cancelas para el cambio).";
         }
 
         boolean isPickup = isPickupAddress(row.address());
@@ -389,20 +390,19 @@ public class OrderProcessingService {
         // 2. Si es para recoger en tienda:
         if (isPickup) {
             if (!hasName) {
-                return "¡Listo! Lo prepararemos para recoger en la tienda. ¿A nombre de quién dejamos registrado el pedido?";
+                return "¡Listo! Lo preparamos para recoger en tienda. ¿A nombre de quién dejamos registrado el pedido?";
             }
             return null; // Todo completo para recoger en tienda
         }
 
-        // 3. Si es domicilio:
+        // 3. Si es domicilio y falta algo, preguntamos puntualmente lo que falta:
         boolean hasPayment = hasPaymentInfo(row.notes());
         boolean needsBill = needsCashBillClarification(row.notes());
 
         if (!hasName && !hasPayment) {
-            return "¡Listo! Ya registramos tu dirección en " + row.address() + ".\n\n"
-                    + "Para programar tu despacho:\n"
-                    + "1. ¿A *nombre de quién* dejamos el pedido?\n"
-                    + "2. ¿Cómo vas a realizar el pago? (*Transferencia / Llave* o *Efectivo*). Si es en efectivo, ¿con qué billete cancelas para enviarte el cambio exacto?";
+            return "¡Listo! Para programar tu despacho a " + row.address() + ":\n"
+                    + "• ¿A nombre de quién dejamos el pedido?\n"
+                    + "• ¿Cómo vas a pagar? (Transferencia / Llave o Efectivo, y con qué billete cancelas para el cambio).";
         }
 
         if (!hasName) {
@@ -410,7 +410,7 @@ public class OrderProcessingService {
         }
 
         if (!hasPayment) {
-            return "¿Cómo vas a realizar el pago? (*Transferencia / Llave* o *Efectivo*). Si es en efectivo, ¿con qué billete cancelas para enviarte el cambio exacto?";
+            return "¿Cómo vas a realizar el pago? (Transferencia / Llave o Efectivo. Si es en efectivo, ¿con qué billete cancelas para enviarte el cambio exacto?).";
         }
 
         if (needsBill) {

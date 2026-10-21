@@ -76,7 +76,8 @@ public class GeminiOrderExtractor implements OrderExtractor {
                 ),
                 "generationConfig", Map.of(
                         "response_mime_type", "application/json",
-                        "temperature", 0.0
+                        "temperature", 0.0,
+                        "maxOutputTokens", 500
                 )
         );
 

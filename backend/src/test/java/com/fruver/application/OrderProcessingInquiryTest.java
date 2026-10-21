@@ -127,7 +127,7 @@ class OrderProcessingInquiryTest {
         );
         String q1 = service.getNextMissingRequirementQuestion(rowNoAddr);
         assertNotNull(q1);
-        assertTrue(q1.contains("domicilio o recoges"));
+        assertTrue(q1.contains("domicilio o recoges") && q1.contains("nombre de quién") && q1.contains("billete"));
 
         // 2. Recoger en tienda pero sin nombre
         var rowPickupNoName = new com.fruver.infrastructure.persistence.Rows.OrderRow(
