@@ -16,9 +16,11 @@ public class OrderIntakeService {
     private record CustomerRef(long id, String type) {}
 
     private final JdbcClient jdbc;
+    private final com.fruver.config.AppProperties props;
 
-    public OrderIntakeService(JdbcClient jdbc) {
+    public OrderIntakeService(JdbcClient jdbc, com.fruver.config.AppProperties props) {
         this.jdbc = jdbc;
+        this.props = props;
     }
 
     public boolean isDuplicate(String externalId) {
@@ -37,12 +39,24 @@ public class OrderIntakeService {
                 """).param("n", name).param("p", phone)
                 .query((rs, i) -> new CustomerRef(rs.getLong(1), rs.getString(2))).single();
 
+        boolean wholesaleMode = props.printing().autoPrintWholesale();
         var activeOrder = jdbc.sql("""
-                SELECT id FROM orders WHERE customer_id = :c
-                AND status IN ('RECEIVED','PROCESSING','REVIEW')
-                AND received_at >= NOW() - INTERVAL '12 hours'
-                ORDER BY id DESC LIMIT 1 FOR UPDATE
-                """).param("c", customer.id()).query(Long.class).optional();
+                SELECT o.id FROM orders o
+                WHERE o.customer_id = :c
+                AND (
+                    o.status IN ('RECEIVED','PROCESSING','REVIEW')
+                    OR (
+                        :wholesale = TRUE
+                        AND o.status = 'APPROVED'
+                        AND NOT EXISTS (
+                            SELECT 1 FROM sale s
+                            WHERE s.order_id = o.id AND s.print_status = 'PRINTED'
+                        )
+                    )
+                )
+                AND o.received_at >= NOW() - INTERVAL '12 hours'
+                ORDER BY o.id DESC LIMIT 1 FOR UPDATE
+                """).param("c", customer.id()).param("wholesale", wholesaleMode).query(Long.class).optional();
 
         long orderId;
         boolean reply = activeOrder.isPresent();

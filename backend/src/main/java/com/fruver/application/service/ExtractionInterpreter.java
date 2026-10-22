@@ -78,26 +78,20 @@ public class ExtractionInterpreter {
 
         ConversationAction action;
         String message = null;
-        if (requested == ConversationAction.ASK_CUSTOMER) {
-            action = ConversationAction.ASK_CUSTOMER;
-            message = aiMessage != null ? aiMessage : (items.isEmpty() ? null : template(items));
-            if (review == ReviewStatus.GREEN || items.isEmpty()) review = ReviewStatus.YELLOW;
-        } else if (requested == ConversationAction.WAIT_FOR_OPERATOR || requested == ConversationAction.CUSTOMER_REJECTED) {
-            if (review == ReviewStatus.GREEN) review = ReviewStatus.YELLOW;
-            action = ConversationAction.WAIT_FOR_OPERATOR;
-        } else if (review == ReviewStatus.GREEN) {
-            action = ConversationAction.CONFIRM_ORDER; // el texto de confirmacion lo construye el backend
-        } else if (items.isEmpty()) {
-            if (aiMessage != null && !aiMessage.isBlank()) {
-                action = ConversationAction.ASK_CUSTOMER;
-                message = aiMessage;
-                review = ReviewStatus.YELLOW;
-            } else {
+        if (!items.isEmpty()) {
+            if (requested == ConversationAction.WAIT_FOR_OPERATOR || requested == ConversationAction.CUSTOMER_REJECTED) {
                 action = ConversationAction.WAIT_FOR_OPERATOR;
+            } else {
+                action = ConversationAction.CONFIRM_ORDER;
             }
-        } else {
+        } else if (requested == ConversationAction.WAIT_FOR_OPERATOR || requested == ConversationAction.CUSTOMER_REJECTED) {
+            action = ConversationAction.WAIT_FOR_OPERATOR;
+        } else if (aiMessage != null && !aiMessage.isBlank()) {
             action = ConversationAction.ASK_CUSTOMER;
-            message = aiMessage != null ? aiMessage : template(items);
+            message = aiMessage;
+            review = ReviewStatus.YELLOW;
+        } else {
+            action = ConversationAction.WAIT_FOR_OPERATOR;
         }
         return new InterpretedOrder(items, review, action, message, reason, address, time, customerName, paymentInfo);
     }
@@ -114,30 +108,11 @@ public class ExtractionInterpreter {
     }
 
     /** Un mensaje al cliente nunca debe traer precios, links ni ser enorme: si los trae, se descarta. */
-    static String sanitizeReply(String msg) {
+    public static String sanitizeReply(String msg) {
         if (msg == null) return null;
         String m = msg.strip();
         if (m.isEmpty() || m.length() > 400 || m.contains("$") || m.toLowerCase().contains("http")) return null;
         return m;
-    }
-
-    private static String template(List<Item> items) {
-        for (Item i : items) {
-            if (i.productId() == null) {
-                return "Claro 😊 ¿Nos confirmas qué producto exacto necesitas en \"" + clip(oneLine(i.mentioned()), 60) + "\"?";
-            }
-        }
-        for (Item i : items) {
-            if (i.quantity() != null && i.unit() == null) {
-                String cant = i.quantity().stripTrailingZeros().toPlainString();
-                String prod = i.aiProductName() != null ? i.aiProductName() : clip(oneLine(i.mentioned()), 60);
-                return "Claro 😊 ¿Te refieres a " + cant + " kilos o " + cant + " libras de " + prod + "?";
-            }
-            if (i.quantity() == null || i.unit() == null) {
-                return "Claro 😊 ¿Qué cantidad y unidad (libras, kilos o unidades) necesitas de " + clip(oneLine(i.mentioned()), 60) + "?";
-            }
-        }
-        return "Claro 😊 ¿Nos confirmas los productos y cantidades de tu pedido?";
     }
 
     private static String oneLine(String s) { return s.replaceAll("[\\r\\n\"]+", " "); }

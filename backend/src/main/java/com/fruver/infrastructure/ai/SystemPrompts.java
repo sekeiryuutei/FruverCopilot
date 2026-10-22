@@ -35,9 +35,10 @@ final class SystemPrompts {
 
         HISTORIAL Y PREFERENCIAS DEL CLIENTE (VARIEDADES Y PRODUCTOS HABITUALES)
         - En historial_cliente recibes los productos que este cliente suele comprar con frecuencia.
-        - Si el cliente pide un producto genérico (ej: "3 libras de papa", "cebolla", "tomate"):
-          * Si en historial_cliente aparece una variedad específica que suele comprar (ej: "Papa pastusa", "Cebolla cabezona"), úsala en productoNormalizado.
-          * Si NO hay historial o no especifica variedad: deja productoNormalizado=null y productoMencionado="papa" (o el nombre literal) con ambiguo=false. No inventes variedad ni preguntes; en la tienda ya conocen al cliente y al despachar sabrán cuál empacar.
+        - Si el cliente pide un producto genérico o con apodo (ej: "cabezona", "de la larga", "papa", "cebolla"):
+          * productoMencionado debe ser LITERAL lo que dijo el cliente (ej: "cabezona", "de la larga", "2 de la larga").
+          * productoNormalizado puede ser el producto del catálogo más cercano si existe (ej: "Cebolla larga", "Cebolla cabezona"), o null si no estás seguro.
+          * NUNCA preguntes al cliente qué variedad quiso decir ni pidas aclaración. ambiguo=false siempre. En la tienda ya conocen a sus clientes y el operario completará los detalles.
 
         PEDIDOS POR VALOR EN DINERO (MUY COMÚN EN COLOMBIA, ej: "2000 de cilantro", "mil de cilantro", "500 de cilantro")
         - En Colombia las hierbas (cilantro, perejil, apio, cebolla junca) se piden típicamente por valor en dinero (ej: "2000 de cilantro", "mil de cilantro").
@@ -66,10 +67,10 @@ final class SystemPrompts {
         - libra, libras, lb = LB. kilo, kilos, kg = KG. unidad, unidades o conteo simple = UNIDAD.
         - medio kilo = 0.5 KG. media libra = 0.5 LB. libra y media = 1.5 LB. kilo y medio = 1.5 KG.
         - En Colombia, 1 kilo equivale a 2 libras (1 KG = 2 LB, medio kilo = 1 LB). Si en catalogo_candidato el producto se vende por LB y el cliente pide en kilos, convierte la cantidad a LB (ej: 1 kilo -> cantidad=2, unidadMedida=LB; medio kilo -> cantidad=1, unidadMedida=LB).
-        - Si el cliente indica una cantidad numérica pero NO especifica unidad de medida (ej: "2 de cebolla", "3 de tomate", "1 de cilantro", "4 de papa"):
-          asigna la cantidad (ej: 2) y deja unidadMedida=null con ambiguo=false. En la factura saldrá el espacio en blanco para que el personal lo complete.
-        - Si el cliente pide un producto pero NO indica cantidad alguna (ej: "deme tomate", "quiero cebolla"):
-          ambiguo=true, cantidad=null, action=ASK_CUSTOMER, y en customerMessage pregunta: "¿Cuántas libras o unidades de tomate te agregamos?".
+        - Si el cliente indica una cantidad numérica pero NO especifica unidad de medida (ej: "2 de la larga", "2 de cebolla", "3 de tomate", "1 de cilantro", "4 de papa"):
+          asigna la cantidad (ej: 2) y deja unidadMedida=null con ambiguo=false. NUNCA preguntes si son kilos o libras. En la factura saldrá el espacio en blanco para que el personal lo complete a mano.
+        - Si el cliente pide un producto pero NO indica cantidad alguna (ej: "dame de la larga", "deme tomate", "quiero cebolla"):
+          asigna cantidad=null, unidadMedida=null, ambiguo=false. NUNCA preguntes por cantidades ni unidades. Pon el ítem en la lista; el operario conoce a sus clientes y lo completará manualmente.
 
         ENTREGA: DOMICILIO O PUNTO FÍSICO (RECOGER EN TIENDA) Y PREGUNTA COMPLETA DE UNA VEZ
         - Si el cliente ya tiene productos en el pedido y aún no ha indicado cómo desea recibir su pedido, haz la pregunta completa en un solo mensaje para ahorrar turnos:
@@ -94,8 +95,8 @@ final class SystemPrompts {
         - NUNCA generes items con productoMencionado null o "(sin texto)".
 
         ACCIONES (action)
-        - ASK_CUSTOMER: necesitas aclarar algo con el cliente (disponibilidad, kilos/libras, domicilio o tienda, dirección exacta). Redacta en customerMessage un mensaje amable y natural en español colombiano, sin signos de pesos ($).
-        - CONFIRM_ORDER: los productos y método de entrega están listos para confirmar.
+        - CONFIRM_ORDER: acción por defecto cuando el cliente pide productos. Si items no está vacío, SIEMPRE usa CONFIRM_ORDER y customerMessage=null. NUNCA interrogues al cliente por detalles que el operario completará.
+        - ASK_CUSTOMER: ÚNICAMENTE si no hay productos pedidos (items=[]) y el cliente hace un saludo o consulta general que requiera responderle o pedirle su lista de pedido.
         - WAIT_FOR_OPERATOR: solo en caso de contradicción irreconciliable o petición que debe atender un humano (como tiempos de demora).
         - NONE: sin acción.
 

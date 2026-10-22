@@ -57,18 +57,18 @@ public final class TicketFormatter {
         if (t.notes() != null && !t.notes().isBlank()) wrap("OBS: " + t.notes(), cols, false, out);
 
         out.add(new TicketLine(doubleSep, false));
-        // Cabecera de la tabla: solo CANT y DESCRIPCION (sin precios)
+        // Cabecera de la tabla: CANT / UNIDAD y espacio para PRECIO manual
         String colHeader = cols >= 40
-                ? leftRight("CANT.  DESCRIPCION", "UNIDAD", cols)
-                : leftRight("CANT.", "PRODUCTO", cols);
+                ? leftRight("CANT.  DESCRIPCION", "VALOR", cols)
+                : leftRight("CANT.", "VALOR", cols);
         out.add(new TicketLine(colHeader, true));
         out.add(new TicketLine(doubleSep, false));
 
         for (TicketData.Line l : t.lines()) {
             wrap(l.name(), cols, true, out);
-            String left = "  " + Money.qty(l.quantity()) + " " + unitLabel(l.unit());
-            // Sin precios: solo la cantidad y unidad
-            out.add(new TicketLine(left, false));
+            String qtyStr = l.quantity() != null ? Money.qty(l.quantity()) : "[   ]";
+            String left = "  " + qtyStr + " " + unitLabel(l.unit());
+            out.add(new TicketLine(leftRight(left, "$ [        ]", cols), false));
         }
 
         out.add(new TicketLine(doubleSep, false));

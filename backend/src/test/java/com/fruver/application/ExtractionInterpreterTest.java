@@ -42,12 +42,12 @@ class ExtractionInterpreterTest {
         assertEquals(UnitOfMeasure.LB, r.items().get(0).unit());
         assertEquals(ConversationAction.CONFIRM_ORDER, r.action());
     }
-    @Test void ambiguousProductAsksCustomerWithAiQuestion() {
+    @Test void ambiguousProductDoesNotInterrogateCustomer() {
         InterpretedOrder r = run(ConversationAction.ASK_CUSTOMER, "¿Criolla, pastusa o sabanera?", item("papa", null, "5", "LB", true));
         assertEquals(ReviewStatus.YELLOW, r.review());
         assertNull(r.items().get(0).productId());
-        assertEquals(ConversationAction.ASK_CUSTOMER, r.action());
-        assertEquals("¿Criolla, pastusa o sabanera?", r.customerMessage());
+        assertEquals(ConversationAction.CONFIRM_ORDER, r.action());
+        assertNull(r.customerMessage());
     }
     @Test void missingQuantityIsRed() {
         assertEquals(ReviewStatus.RED, run(ConversationAction.NONE, null, item("papa criolla", "Papa criolla", null, "LB", false)).review());
@@ -55,7 +55,8 @@ class ExtractionInterpreterTest {
     @Test void monetaryValueIsNotAQuantity() {
         InterpretedOrder r = run(ConversationAction.ASK_CUSTOMER, null, item("5 mil de tomate", null, null, null, true));
         assertEquals(ReviewStatus.RED, r.review());
-        assertNotNull(r.customerMessage()); // el backend genera la pregunta
+        assertEquals(ConversationAction.CONFIRM_ORDER, r.action());
+        assertNull(r.customerMessage());
     }
     @Test void promptInjectionQuantityNeverTurnsGreen() {
         assertEquals(ReviewStatus.YELLOW, run(ConversationAction.CONFIRM_ORDER, null, item("aguacates", "Aguacate Hass", "500", "UNIDAD", false)).review());
@@ -78,9 +79,9 @@ class ExtractionInterpreterTest {
         assertEquals(ReviewStatus.RED, interpreter.interpret(new AIOrderResponse(null, null, null, null)).review());
     }
     @Test void customerMessageWithPriceOrLinkIsDiscarded() {
-        InterpretedOrder r = run(ConversationAction.ASK_CUSTOMER, "La libra cuesta $4.500", item("papa", null, "1", "LB", true));
-        assertFalse(r.customerMessage().contains("$"));
-        assertNotNull(run(ConversationAction.ASK_CUSTOMER, "mira http://malo.com", item("papa", null, "1", "LB", true)).customerMessage());
+        assertNull(ExtractionInterpreter.sanitizeReply("La libra cuesta $4.500"));
+        assertNull(ExtractionInterpreter.sanitizeReply("mira http://malo.com"));
+        assertEquals("Hola con gusto", ExtractionInterpreter.sanitizeReply("  Hola con gusto  "));
     }
     @Test void aiCannotDowngradeAmbiguity() {
         assertEquals(ReviewStatus.YELLOW, run(ConversationAction.CONFIRM_ORDER, null, item("papa criolla", "Papa criolla", "3", "LB", true)).review());
@@ -103,24 +104,23 @@ class ExtractionInterpreterTest {
                 List.of(item("cebolla", "Cebolla cabezona", "5", "LB", false)),
                 ConversationAction.ASK_CUSTOMER, "¿Te enviamos cabezona?", "Contradicción entre cebolla gruesa y cabezona"));
         assertEquals(ReviewStatus.RED, r.review());
-        assertEquals(ConversationAction.ASK_CUSTOMER, r.action());
-        assertEquals("¿Te enviamos cabezona?", r.customerMessage());
+        assertEquals(ConversationAction.CONFIRM_ORDER, r.action());
+        assertNull(r.customerMessage());
     }
-    @Test void askCustomerDowngradesOtherwiseGreenOrderToYellow() {
+    @Test void askCustomerWithItemsDoesNotInterrogate() {
         InterpretedOrder r = interpreter.interpret(new AIOrderResponse(
                 List.of(item("papa criolla", "Papa criolla", "2", "LB", false)),
                 ConversationAction.ASK_CUSTOMER, "¿Confirmas 2 libras?", "Confirmar intención"));
-        assertEquals(ReviewStatus.YELLOW, r.review());
-        assertEquals(ConversationAction.ASK_CUSTOMER, r.action());
-        assertEquals("¿Confirmas 2 libras?", r.customerMessage());
+        assertEquals(ConversationAction.CONFIRM_ORDER, r.action());
+        assertNull(r.customerMessage());
     }
-    @Test void missingUnitWithQuantityGeneratesKilosOrLibrasQuestion() {
+    @Test void missingUnitWithQuantityDoesNotGenerateQuestion() {
         InterpretedOrder r = interpreter.interpret(new AIOrderResponse(
                 List.of(new ItemSugeridoDTO("papa", "Papa criolla", new BigDecimal("5"), null, true, "Sin unidad")),
                 ConversationAction.ASK_CUSTOMER, null, null));
         assertEquals(ReviewStatus.RED, r.review());
-        assertEquals(ConversationAction.ASK_CUSTOMER, r.action());
-        assertEquals("Claro 😊 ¿Te refieres a 5 kilos o 5 libras de Papa criolla?", r.customerMessage());
+        assertEquals(ConversationAction.CONFIRM_ORDER, r.action());
+        assertNull(r.customerMessage());
     }
     @Test void inquiryWithNoItemsPreservesAiMessageAndSetsYellow() {
         InterpretedOrder r = interpreter.interpret(new AIOrderResponse(
