@@ -201,7 +201,7 @@ public class OrderProcessingService {
         if (props.printing().autoPrintWholesale()) {
             boolean hasTrulyDoubtfulLines = io.items().isEmpty()
                     || io.items().stream().anyMatch(it -> (it.quantity() == null && it.aiQuantity() == null)
-                    || (it.aiAmbiguous() && ((it.aiProductName() == null || it.aiProductName().isBlank()) && (it.mentioned() == null || it.mentioned().isBlank()))));
+                    || (it.aiAmbiguous() && it.productId() == null));
             boolean requiresVerification = hasTrulyDoubtfulLines;
             String reason = requiresVerification ? (io.note() != null ? io.note() : "Líneas con duda en pedido") : null;
             sales.autoApproveWholesale(r.orderId(), requiresVerification, reason, "ia_wholesale");

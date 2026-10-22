@@ -638,7 +638,7 @@ async function refreshConv(orderId, container){
       if(!text) return;
       sendReplyBtn.disabled = true;
       try{
-        await api(`/api/orders/${orderId}/messages`,{method:'POST',body:{text,kind:'INFO'}});
+        await api(`/api/orders/${orderId}/messages`,{method:'POST',body:{text,message:text,kind:'INFO'}});
         toast('✓ Mensaje enviado por WhatsApp');
         replyInput.value = '';
         await refreshConv(orderId, container);

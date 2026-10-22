@@ -34,7 +34,7 @@ public class OrderController {
         }
     }
 
-    public record ReplyBody(@NotBlank @Size(max = 1000) String message, @NotNull ConversationService.Kind kind) {}
+    public record MessageSendBody(String message, String text, ConversationService.Kind kind) {}
 
     private final OrderViewService views;
     private final OrderEditService edits;
@@ -110,10 +110,16 @@ public class OrderController {
         return java.util.Map.of("status", "MERGED", "sourceOrderId", id, "targetOrderId", targetId);
     }
 
-    /** [PREGUNTAR AL CLIENTE] / [ENVIAR CONFIRMACION]: el empleado revisa y edita el texto antes de enviarlo. */
-    @PostMapping("/{id}/reply")
-    public OrderView reply(@PathVariable long id, @Valid @RequestBody ReplyBody b) {
-        conversation.send(id, b.message(), b.kind(), Actor.name());
+    /** [PREGUNTAR AL CLIENTE] / [ENVIAR CONFIRMACION] / [HISTORIAL CHAT]: enviar mensaje al cliente vía WhatsApp. */
+    @PostMapping(value = {"/{id}/reply", "/{id}/messages"})
+    public OrderView reply(@PathVariable long id, @RequestBody MessageSendBody b) {
+        String msg = b.message() != null && !b.message().isBlank() ? b.message() : b.text();
+        if (msg == null || msg.isBlank()) {
+            throw new ApiException(400, "VALIDATION_ERROR", "El mensaje no puede estar vacío");
+        }
+        ConversationService.Kind k = b.kind() != null ? b.kind() : ConversationService.Kind.INFO;
+        conversation.send(id, msg.strip(), k, Actor.name());
+        hub.orderChanged(id);
         return views.get(id);
     }
 

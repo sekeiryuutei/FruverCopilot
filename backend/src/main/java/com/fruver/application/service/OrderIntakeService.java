@@ -39,8 +39,7 @@ public class OrderIntakeService {
 
         var activeOrder = jdbc.sql("""
                 SELECT id FROM orders WHERE customer_id = :c
-                AND (status IN ('RECEIVED','PROCESSING','REVIEW')
-                     OR (status = 'APPROVED' AND dispatched_at IS NULL AND received_at >= NOW() - INTERVAL '30 minutes'))
+                AND status IN ('RECEIVED','PROCESSING','REVIEW')
                 AND received_at >= NOW() - INTERVAL '12 hours'
                 ORDER BY id DESC LIMIT 1 FOR UPDATE
                 """).param("c", customer.id()).query(Long.class).optional();

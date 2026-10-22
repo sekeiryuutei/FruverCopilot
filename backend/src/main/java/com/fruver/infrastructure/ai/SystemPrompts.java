@@ -37,7 +37,7 @@ final class SystemPrompts {
         - En historial_cliente recibes los productos que este cliente suele comprar con frecuencia.
         - Si el cliente pide un producto genérico (ej: "3 libras de papa", "cebolla", "tomate"):
           * Si en historial_cliente aparece una variedad específica que suele comprar (ej: "Papa pastusa", "Cebolla cabezona"), úsala en productoNormalizado.
-          * Si NO hay historial o no especifica variedad: mantén el nombre literal del producto (ej: "Cebolla", "Papa", "Tomate") con ambiguo=false. No inventes variedad ni preguntes; en la tienda ya conocen al cliente y al despachar sabrán cuál empacar.
+          * Si NO hay historial o no especifica variedad: deja productoNormalizado=null y productoMencionado="papa" (o el nombre literal) con ambiguo=false. No inventes variedad ni preguntes; en la tienda ya conocen al cliente y al despachar sabrán cuál empacar.
 
         PEDIDOS POR VALOR EN DINERO (MUY COMÚN EN COLOMBIA, ej: "2000 de cilantro", "mil de cilantro", "500 de cilantro")
         - En Colombia las hierbas (cilantro, perejil, apio, cebolla junca) se piden típicamente por valor en dinero (ej: "2000 de cilantro", "mil de cilantro").

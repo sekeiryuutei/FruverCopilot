@@ -41,7 +41,7 @@ public class GeminiOrderExtractor implements OrderExtractor {
         if (props.ai().gemini().model() != null && !props.ai().gemini().model().isBlank()) {
             list.add(props.ai().gemini().model().strip());
         }
-        for (String m : java.util.List.of("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest")) {
+        for (String m : java.util.List.of("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-flash-latest")) {
             if (!list.contains(m)) list.add(m);
         }
         this.candidateModels = java.util.List.copyOf(list);
@@ -95,12 +95,16 @@ public class GeminiOrderExtractor implements OrderExtractor {
         String cleanMime = sanitizeImageMime(mimeType);
 
         String contextPrompt = """
+                <turnos_previos>%s</turnos_previos>
+                <pedido_actual>%s</pedido_actual>
                 <catalogo_candidato>%s</catalogo_candidato>
                 <zonas_domicilio>%s</zonas_domicilio>
                 <historial_cliente>%s</historial_cliente>
                 <nota_adicional_cliente>%s</nota_adicional_cliente>
-                Lee con precisión los productos y cantidades de la lista en la imagen adjunta.
+                Lee con precisión los productos y cantidades de la lista en la imagen adjunta. Si ya hay productos acordados en pedido_actual, consérvalos y agrega los nuevos ítems de la lista.
                 """.formatted(
+                join(request.recentTurns()),
+                join(request.currentItems()),
                 join(request.catalogCandidates()),
                 request.deliveryZones() == null ? "(No especificado)" : request.deliveryZones(),
                 request.customerHistory() == null ? "(Sin historial previo registrado)" : request.customerHistory(),
