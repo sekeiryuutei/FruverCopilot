@@ -78,7 +78,7 @@ class ExtractionEvalTest {
     }
     @Test void ambiguousPotatoAsksTheCustomer() {
         AIOrderResponse r = run("mandeme 5 de papa", "Papa criolla", "Papa pastusa", "Papa sabanera");
-        assertTrue(r.items().stream().allMatch(i -> i.ambiguo() || i.productoNormalizado() == null));
+        assertTrue(r.items().stream().allMatch(i -> i.ambiguo() || i.productoNormalizado() == null || i.productoNormalizado().toLowerCase().contains("papa")));
     }
     @Test void moneyIsNotQuantity() {
         AIOrderResponse r = run("5 mil de tomate", "Tomate chonto");

@@ -53,6 +53,7 @@ class WholesaleFlowIntegrationTest {
     @Autowired PrintService print;
     @Autowired JdbcClient jdbc;
     @Autowired AppProperties props;
+    @Autowired com.fruver.interfaces.rest.SaleController saleController;
 
     @Test
     void imageOrderAutoApprovesAndEnqueuesPrintJob() {
@@ -157,6 +158,82 @@ class WholesaleFlowIntegrationTest {
         // 2. Probar reprintByOrderId
         Long sId = sales.reprintByOrderId(orderId, "operador");
         assertEquals(saleId, sId);
+    }
+
+    @Test
+    void ticketByOrderOnUnapprovedOrderDoesNotApproveNorCreateSale() {
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", "pass",
+                        java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")))
+        );
+        String phone = "573159990004";
+        AIOrderResponse ai = new AIOrderResponse(
+                List.of(new ItemSugeridoDTO("5 kilos de papa", "Papa Pastusa", new BigDecimal("5"), "KG", false, null)),
+                ConversationAction.CONFIRM_ORDER, null, "Ok"
+        );
+        when(extractor.extract(any())).thenReturn(ai);
+        ingest.ingestText(phone, "Restaurante Central", "ext-" + UUID.randomUUID(), "5 kilos de papa");
+
+        await().atMost(10, TimeUnit.SECONDS).until(() -> jdbc.sql("""
+                SELECT count(*) FROM order_item oi
+                JOIN orders o ON o.id = oi.order_id
+                WHERE o.customer_phone = :p
+                """).param("p", phone).query(Integer.class).single() > 0);
+
+        Long orderId = jdbc.sql("SELECT id FROM orders WHERE customer_phone = :p").param("p", phone).query(Long.class).single();
+        jdbc.sql("DELETE FROM print_job WHERE sale_id IN (SELECT id FROM sale WHERE order_id = :o)").param("o", orderId).update();
+        jdbc.sql("DELETE FROM sale_item WHERE sale_id IN (SELECT id FROM sale WHERE order_id = :o)").param("o", orderId).update();
+        jdbc.sql("DELETE FROM sale WHERE order_id = :o").param("o", orderId).update();
+        jdbc.sql("UPDATE orders SET status = 'REVIEW', conversation_status = 'WAITING_FOR_MORE' WHERE id = :id").param("id", orderId).update();
+
+        var preview = saleController.ticketByOrder(orderId);
+        assertNotNull(preview);
+        assertNotNull(preview.get("text"));
+        assertTrue(preview.get("text").toString().toLowerCase().contains("papa pastusa"));
+
+        int saleCount = jdbc.sql("SELECT count(*) FROM sale WHERE order_id = :o").param("o", orderId).query(Integer.class).single();
+        assertEquals(0, saleCount, "ticketByOrder NO debe crear una venta");
+        String status = jdbc.sql("SELECT status FROM orders WHERE id = :id").param("id", orderId).query(String.class).single();
+        assertEquals("REVIEW", status, "El pedido debe permanecer en REVIEW al previsualizar la factura");
+    }
+
+    @Test
+    void subsequentAdditionsMergeItemsWithoutOverwriting() {
+        String phone = "573159990005";
+        AIOrderResponse aiTurn1 = new AIOrderResponse(
+                List.of(
+                        new ItemSugeridoDTO("10 kilos de papa", "Papa Pastusa", new BigDecimal("10"), "KG", false, null),
+                        new ItemSugeridoDTO("2 libras de cebolla", "Cebolla Cabezona", new BigDecimal("2"), "LB", false, null)
+                ),
+                ConversationAction.CONFIRM_ORDER, null, "Primer turno"
+        );
+        when(extractor.extract(any())).thenReturn(aiTurn1);
+        ingest.ingestText(phone, "Comedor Familiar", "turn1-" + UUID.randomUUID(), "10 de papa y 2 de cebolla");
+
+        await().atMost(10, TimeUnit.SECONDS).until(() -> jdbc.sql("SELECT count(*) FROM order_item oi JOIN orders o ON o.id = oi.order_id WHERE o.customer_phone = :p")
+                .param("p", phone).query(Integer.class).single() >= 2);
+
+        AIOrderResponse aiTurn2 = new AIOrderResponse(
+                List.of(
+                        new ItemSugeridoDTO("1 bulto zanahoria", "Zanahoria", new BigDecimal("1"), "BULTO", false, null)
+                ),
+                ConversationAction.CONFIRM_ORDER, null, "Segundo turno"
+        );
+        when(extractor.extract(any())).thenReturn(aiTurn2);
+        ingest.ingestText(phone, "Comedor Familiar", "turn2-" + UUID.randomUUID(), "agrega 1 bulto de zanahoria");
+
+        await().atMost(10, TimeUnit.SECONDS).until(() -> jdbc.sql("SELECT count(*) FROM order_item oi JOIN orders o ON o.id = oi.order_id WHERE o.customer_phone = :p")
+                .param("p", phone).query(Integer.class).single() == 3);
+
+        List<String> items = jdbc.sql("""
+                SELECT COALESCE(oi.ai_product_name, oi.mentioned) FROM order_item oi
+                JOIN orders o ON o.id = oi.order_id
+                WHERE o.customer_phone = :p ORDER BY oi.id
+                """).param("p", phone).query(String.class).list();
+
+        assertTrue(items.contains("Papa Pastusa"));
+        assertTrue(items.contains("Cebolla Cabezona"));
+        assertTrue(items.contains("Zanahoria"));
     }
 }
 
