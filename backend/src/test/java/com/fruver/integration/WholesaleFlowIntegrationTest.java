@@ -34,6 +34,7 @@ import static org.mockito.Mockito.when;
         "app.audio.storage-path=target/test-audio",
         "app.printing.poll-ms=3600000",
         "app.printing.auto-print-wholesale=true",
+        "app.printing.wholesale-grace-seconds=0",
         "app.conversation.ai-auto-reply=false",
         "app.conversation.auto-confirm-clear-orders=false"
 })

@@ -78,6 +78,7 @@ app:
     home-host: ${PRINTER_HOME_HOST:127.0.0.1}
     home-port: ${PRINTER_HOME_PORT:9100}
     auto-print-wholesale: ${AUTO_PRINT_WHOLESALE:true}
+    wholesale-grace-seconds: ${WHOLESALE_GRACE_SECONDS:120}
   audio:
     storage-type: ${AUDIO_STORAGE_TYPE:local}
     storage-path: ${AUDIO_STORAGE_PATH:./data/audio}

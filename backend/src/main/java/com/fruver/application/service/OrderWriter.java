@@ -98,17 +98,62 @@ public class OrderWriter {
         }
 
         if (!io.items().isEmpty()) {
-            jdbc.sql("DELETE FROM order_item WHERE order_id = :o").param("o", orderId).update();
-            int line = 0;
-            for (InterpretedOrder.Item i : io.items()) {
-                jdbc.sql("""
-                        INSERT INTO order_item(order_id, line_no, mentioned, ai_product_name, ai_quantity, ai_unit, ai_ambiguous,
-                                               observation, product_id, quantity, unit)
-                        VALUES (:o, :ln, :m, :apn, :aq, :au, :aa, :obs, :pid, :q, :u)
-                        """).param("o", orderId).param("ln", line++).param("m", i.mentioned()).param("apn", i.aiProductName())
-                        .param("aq", i.aiQuantity()).param("au", i.aiUnit()).param("aa", i.aiAmbiguous())
-                        .param("obs", i.observation()).param("pid", i.productId()).param("q", i.quantity())
-                        .param("u", i.unit() == null ? null : i.unit().name()).update();
+            List<com.fruver.infrastructure.persistence.Rows.ItemRow> existingItems = jdbc.sql(
+                    "SELECT * FROM order_item WHERE order_id = :o ORDER BY line_no, id"
+            ).param("o", orderId).query(com.fruver.infrastructure.persistence.Rows.ItemRow.class).list();
+
+            if (existingItems.isEmpty()) {
+                int line = 0;
+                for (InterpretedOrder.Item i : io.items()) {
+                    jdbc.sql("""
+                            INSERT INTO order_item(order_id, line_no, mentioned, ai_product_name, ai_quantity, ai_unit, ai_ambiguous,
+                                                   observation, product_id, quantity, unit)
+                            VALUES (:o, :ln, :m, :apn, :aq, :au, :aa, :obs, :pid, :q, :u)
+                            """).param("o", orderId).param("ln", line++).param("m", i.mentioned()).param("apn", i.aiProductName())
+                            .param("aq", i.aiQuantity()).param("au", i.aiUnit()).param("aa", i.aiAmbiguous())
+                            .param("obs", i.observation()).param("pid", i.productId()).param("q", i.quantity())
+                            .param("u", i.unit() == null ? null : i.unit().name()).update();
+                }
+            } else {
+                // Fusión inteligente: preservar ítems existentes y anexar o actualizar nuevos
+                int nextLine = existingItems.size();
+                for (InterpretedOrder.Item ni : io.items()) {
+                    com.fruver.infrastructure.persistence.Rows.ItemRow match = existingItems.stream()
+                            .filter(ex -> (ni.productId() != null && java.util.Objects.equals(ex.productId(), ni.productId()))
+                                    || (ni.aiProductName() != null && ex.aiProductName() != null && ex.aiProductName().equalsIgnoreCase(ni.aiProductName()))
+                                    || (ni.mentioned() != null && ex.mentioned() != null && ex.mentioned().equalsIgnoreCase(ni.mentioned())))
+                            .findFirst().orElse(null);
+
+                    if (match != null) {
+                        boolean aiReturnedFullList = io.items().size() >= existingItems.size();
+                        if (aiReturnedFullList) {
+                            jdbc.sql("""
+                                    UPDATE order_item SET quantity = :q, unit = :u, ai_quantity = :aq, ai_unit = :au,
+                                           ai_ambiguous = :aa, observation = :obs
+                                    WHERE id = :id
+                                    """).param("q", ni.quantity()).param("u", ni.unit() == null ? null : ni.unit().name())
+                                    .param("aq", ni.aiQuantity()).param("au", ni.aiUnit()).param("aa", ni.aiAmbiguous())
+                                    .param("obs", ni.observation()).param("id", match.id()).update();
+                        } else {
+                            java.math.BigDecimal addQty = ni.quantity() != null ? ni.quantity() : ni.aiQuantity();
+                            if (addQty != null && addQty.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                                java.math.BigDecimal curQty = match.quantity() != null ? match.quantity() : (match.aiQuantity() != null ? match.aiQuantity() : java.math.BigDecimal.ZERO);
+                                java.math.BigDecimal totalQty = curQty.add(addQty);
+                                jdbc.sql("UPDATE order_item SET quantity = :q, ai_quantity = :aq WHERE id = :id")
+                                        .param("q", totalQty).param("aq", totalQty).param("id", match.id()).update();
+                            }
+                        }
+                    } else {
+                        jdbc.sql("""
+                                INSERT INTO order_item(order_id, line_no, mentioned, ai_product_name, ai_quantity, ai_unit, ai_ambiguous,
+                                                       observation, product_id, quantity, unit)
+                                VALUES (:o, :ln, :m, :apn, :aq, :au, :aa, :obs, :pid, :q, :u)
+                                """).param("o", orderId).param("ln", nextLine++).param("m", ni.mentioned()).param("apn", ni.aiProductName())
+                                .param("aq", ni.aiQuantity()).param("au", ni.aiUnit()).param("aa", ni.aiAmbiguous())
+                                .param("obs", ni.observation()).param("pid", ni.productId()).param("q", ni.quantity())
+                                .param("u", ni.unit() == null ? null : ni.unit().name()).update();
+                    }
+                }
             }
         }
         audit.log("ia", "AI_EXTRACTED", orderId, null, Map.of("review", io.review().name(),

@@ -48,12 +48,14 @@ public class OrderProcessingService {
     private final AppProperties props;
     private final DeliveryZoneService zones;
     private final SaleService sales;
+    private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
     public OrderProcessingService(OrderExtractor extractor, SpeechToTextService stt, AudioStorageService storage,
                                   MediaDownloader media, ProductCatalogService catalog, ExtractionInterpreter interpreter,
                                   OrderWriter writer, OrderRepository orders, QuoteService quotes,
                                   ConversationService conversation, SseHub hub, AppMetrics metrics, AppProperties props,
-                                  DeliveryZoneService zones, SaleService sales) {
+                                  DeliveryZoneService zones, SaleService sales,
+                                  org.springframework.jdbc.core.simple.JdbcClient jdbc) {
         this.extractor = extractor;
         this.stt = stt;
         this.storage = storage;
@@ -69,6 +71,7 @@ public class OrderProcessingService {
         this.props = props;
         this.zones = zones;
         this.sales = sales;
+        this.jdbc = jdbc;
     }
 
     @Async("aiExecutor")
@@ -204,11 +207,60 @@ public class OrderProcessingService {
                     || (it.aiAmbiguous() && it.productId() == null));
             boolean requiresVerification = hasTrulyDoubtfulLines;
             String reason = requiresVerification ? (io.note() != null ? io.note() : "Líneas con duda en pedido") : null;
-            sales.autoApproveWholesale(r.orderId(), requiresVerification, reason, "ia_wholesale");
+
+            int graceSec = props.printing().wholesaleGraceSeconds();
+            if (graceSec <= 0) {
+                sales.autoApproveWholesale(r.orderId(), requiresVerification, reason, "ia_wholesale");
+                return;
+            }
+            jdbc.sql("""
+                    UPDATE orders SET requires_verification = :rv, verification_reason = :vr,
+                           conversation_status = 'WAITING_FOR_MORE', version = version + 1
+                    WHERE id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW')
+                    """).param("rv", requiresVerification).param("vr", reason).param("id", r.orderId()).update();
+            hub.orderChanged(r.orderId());
             return;
         }
 
         autoActions(r.orderId(), io, text, r.audio());
+    }
+
+    /** Tarea programada que aprueba e imprime facturas mayoristas una vez vencido el margen de espera por adiciones */
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 10000)
+    public void processPendingWholesaleAutoApprovals() {
+        if (!props.printing().autoPrintWholesale()) return;
+        int graceSec = props.printing().wholesaleGraceSeconds();
+        if (graceSec <= 0) return;
+
+        List<Long> readyOrders = jdbc.sql("""
+                SELECT o.id FROM orders o
+                WHERE o.status = 'REVIEW'
+                  AND o.ai_status = 'OK'
+                  AND o.extracted_at <= NOW() - (:sec || ' seconds')::interval
+                  AND NOT EXISTS (
+                      SELECT 1 FROM conversation_message cm
+                      WHERE cm.order_id = o.id
+                        AND cm.created_at > NOW() - (:sec || ' seconds')::interval
+                  )
+                ORDER BY o.id ASC LIMIT 20
+                """).param("sec", graceSec).query(Long.class).list();
+
+        for (Long oId : readyOrders) {
+            try {
+                boolean hasTrulyDoubtfulLines = jdbc.sql("""
+                        SELECT count(*) FROM order_item
+                        WHERE order_id = :o
+                          AND ((quantity IS NULL AND ai_quantity IS NULL) OR (ai_ambiguous AND product_id IS NULL))
+                        """).param("o", oId).query(Integer.class).single() > 0
+                        || jdbc.sql("SELECT count(*) FROM order_item WHERE order_id = :o").param("o", oId).query(Integer.class).single() == 0;
+
+                String reason = hasTrulyDoubtfulLines ? "Líneas con duda en pedido" : null;
+                sales.autoApproveWholesale(oId, hasTrulyDoubtfulLines, reason, "ia_wholesale_timer");
+                hub.orderChanged(oId);
+            } catch (Exception e) {
+                log.warn("Fallo auto-aprobación diferida para pedido {}: {}", oId, e.getMessage());
+            }
+        }
     }
 
     /** @return texto transcrito, o null si fallo (el pedido queda en rojo con el audio disponible). */
