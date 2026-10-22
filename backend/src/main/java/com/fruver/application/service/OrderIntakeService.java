@@ -39,7 +39,8 @@ public class OrderIntakeService {
 
         var activeOrder = jdbc.sql("""
                 SELECT id FROM orders WHERE customer_id = :c
-                AND status IN ('RECEIVED','PROCESSING','REVIEW')
+                AND (status IN ('RECEIVED','PROCESSING','REVIEW')
+                     OR (status = 'APPROVED' AND dispatched_at IS NULL AND received_at >= NOW() - INTERVAL '30 minutes'))
                 AND received_at >= NOW() - INTERVAL '12 hours'
                 ORDER BY id DESC LIMIT 1 FOR UPDATE
                 """).param("c", customer.id()).query(Long.class).optional();
@@ -48,6 +49,14 @@ public class OrderIntakeService {
         boolean reply = activeOrder.isPresent();
         if (reply) {
             orderId = activeOrder.get();
+            var prevSaleId = jdbc.sql("SELECT sale_id FROM orders WHERE id = :id").param("id", orderId).query(Long.class).optional();
+            if (prevSaleId.isPresent() && prevSaleId.get() != null) {
+                long sId = prevSaleId.get();
+                jdbc.sql("DELETE FROM print_job WHERE sale_id = :s").param("s", sId).update();
+                jdbc.sql("DELETE FROM sale_item WHERE sale_id = :s").param("s", sId).update();
+                jdbc.sql("DELETE FROM sale WHERE id = :s").param("s", sId).update();
+                jdbc.sql("UPDATE orders SET sale_id = NULL WHERE id = :id").param("id", orderId).update();
+            }
             jdbc.sql("UPDATE orders SET status = 'PROCESSING', ai_status = 'PENDING', conversation_status = 'READY_FOR_REVIEW' WHERE id = :id")
                     .param("id", orderId).update();
         } else {
