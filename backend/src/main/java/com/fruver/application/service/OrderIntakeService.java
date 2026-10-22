@@ -49,13 +49,12 @@ public class OrderIntakeService {
         boolean reply = activeOrder.isPresent();
         if (reply) {
             orderId = activeOrder.get();
-            var prevSaleId = jdbc.sql("SELECT sale_id FROM orders WHERE id = :id").param("id", orderId).query(Long.class).optional();
+            var prevSaleId = jdbc.sql("SELECT id FROM sale WHERE order_id = :id").param("id", orderId).query(Long.class).optional();
             if (prevSaleId.isPresent() && prevSaleId.get() != null) {
                 long sId = prevSaleId.get();
                 jdbc.sql("DELETE FROM print_job WHERE sale_id = :s").param("s", sId).update();
                 jdbc.sql("DELETE FROM sale_item WHERE sale_id = :s").param("s", sId).update();
                 jdbc.sql("DELETE FROM sale WHERE id = :s").param("s", sId).update();
-                jdbc.sql("UPDATE orders SET sale_id = NULL WHERE id = :id").param("id", orderId).update();
             }
             jdbc.sql("UPDATE orders SET status = 'PROCESSING', ai_status = 'PENDING', conversation_status = 'READY_FOR_REVIEW' WHERE id = :id")
                     .param("id", orderId).update();

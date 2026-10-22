@@ -90,8 +90,10 @@ public class CustomerService {
         jdbc.sql("UPDATE customer SET name = :n, phone = :p, customer_type = :t WHERE id = :id")
                 .param("n", cleanName).param("p", p).param("t", cType.name()).param("id", id).update();
 
-        // Actualizar nombres en pedidos activos
-        jdbc.sql("UPDATE orders SET customer_name = :n, customer_phone = :p WHERE customer_id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW')")
+        // Actualizar nombres en pedidos y ventas
+        jdbc.sql("UPDATE orders SET customer_name = :n, customer_phone = :p WHERE customer_id = :id")
+                .param("n", cleanName).param("p", p).param("id", id).update();
+        jdbc.sql("UPDATE sale SET customer_name = :n, customer_phone = :p WHERE customer_id = :id")
                 .param("n", cleanName).param("p", p).param("id", id).update();
 
         audit.log(user, "CUSTOMER_UPDATED", null, null, Map.of("customerId", id, "name", cleanName, "type", cType.name()));

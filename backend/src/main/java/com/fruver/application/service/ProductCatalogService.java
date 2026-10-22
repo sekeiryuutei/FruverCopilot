@@ -21,6 +21,8 @@ public class ProductCatalogService implements ProductLookup {
         }
     }
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ProductCatalogService.class);
+
     private final JdbcClient jdbc;
     private final AuditService audit;
 
@@ -33,8 +35,9 @@ public class ProductCatalogService implements ProductLookup {
 
     @Override
     public Resolution resolve(ItemSugeridoDTO item) {
+        String clean = null;
         if (item.productoNormalizado() != null && !item.productoNormalizado().isBlank()) {
-            String clean = item.productoNormalizado().replaceAll("\\[.*?\\]", "").replaceAll("\\(.*?\\)", "").strip();
+            clean = item.productoNormalizado().replaceAll("\\[.*?\\]", "").replaceAll("\\(.*?\\)", "").strip();
             List<Resolution> exact = jdbc.sql("SELECT id, unit FROM product WHERE active AND lower(name) = lower(:n)")
                     .param("n", clean)
                     .query((rs, i) -> new Resolution(rs.getLong(1), 1, rs.getString(2))).list();
@@ -57,6 +60,37 @@ public class ProductCatalogService implements ProductLookup {
         List<Resolution> ids = jdbc.sql(sql.toString()).params(params)
                 .query((rs, i) -> new Resolution(rs.getLong(1), 1, rs.getString(2))).list();
         if (!ids.isEmpty()) return ids.get(0);
+
+        // Si no se encontró producto activo:
+        // 1. Verificar si existe inactivo (marcado previamente como "no se maneja")
+        String targetName = (clean != null && !clean.isBlank()) ? clean : source;
+        if (targetName != null && !targetName.isBlank()) {
+            String stripped = targetName.strip();
+            var inactive = jdbc.sql("SELECT id FROM product WHERE NOT active AND lower(name) = lower(:n)")
+                    .param("n", stripped).query(Long.class).optional();
+            if (inactive.isPresent()) {
+                // Producto marcado explícitamente como "no se maneja": NO agregar
+                return new Resolution(null, 0, null);
+            }
+            // 2. Auto-registrar la fruta o verdura nueva en el catálogo activo
+            if (stripped.length() >= 3 && stripped.length() <= 80 && !stripped.matches(".*\\d.*")) {
+                String defaultUnit = "LB";
+                if ("UNIDAD".equalsIgnoreCase(item.unidadMedida())) defaultUnit = "UNIDAD";
+                else if ("KG".equalsIgnoreCase(item.unidadMedida())) defaultUnit = "KG";
+                try {
+                    long newId = jdbc.sql("""
+                            INSERT INTO product(name, unit, active)
+                            VALUES (:n, :u, TRUE)
+                            ON CONFLICT (lower(name)) DO UPDATE SET active = product.active
+                            RETURNING id
+                            """).param("n", stripped).param("u", defaultUnit).query(Long.class).single();
+                    return new Resolution(newId, 1, defaultUnit);
+                } catch (Exception e) {
+                    log.warn("No se pudo auto-registrar producto '{}': {}", stripped, e.getMessage());
+                }
+            }
+        }
+
         return new Resolution(null, 0, null);
     }
 

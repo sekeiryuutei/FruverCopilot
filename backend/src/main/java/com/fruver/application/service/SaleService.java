@@ -310,12 +310,19 @@ public class SaleService {
         }
     }
 
-    /** Reimprimir/reintentar NO crea otra venta: solo encola otro trabajo de impresion en la impresora actual. */
+    /** Reimprimir/reintentar NO crea otra venta: solo encola otro trabajo de impresion en la impresora actual o seleccionada. */
     @Transactional
     public void reprint(long saleId, String user) {
+        reprint(saleId, user, null);
+    }
+
+    @Transactional
+    public void reprint(long saleId, String user, String targetPrinter) {
         Long orderId = jdbc.sql("SELECT order_id FROM sale WHERE id = :id FOR UPDATE").param("id", saleId).query(Long.class).optional()
                 .orElseThrow(() -> new ApiException(404, "SALE_NOT_FOUND", "Venta no encontrada"));
-        String target = props.printing().currentTargetPrinter(props.timezone());
+        String target = (targetPrinter != null && !targetPrinter.isBlank())
+                ? targetPrinter.toUpperCase().trim()
+                : props.printing().currentTargetPrinter(props.timezone());
         jdbc.sql("INSERT INTO print_job(sale_id, reprint, target_printer) VALUES (:s, TRUE, :tp)")
                 .param("s", saleId).param("tp", target).update();
         jdbc.sql("UPDATE sale SET print_status = 'PRINT_PENDING', print_error = NULL, target_printer = :tp WHERE id = :id")
@@ -326,12 +333,21 @@ public class SaleService {
     /** Reimprime buscando por ID de pedido o factura */
     @Transactional
     public Long reprintByOrderId(long orderId, String user) {
+        return reprintByOrderId(orderId, user, null);
+    }
+
+    @Transactional
+    public Long reprintByOrderId(long orderId, String user, String targetPrinter) {
         Long saleId = jdbc.sql("SELECT id FROM sale WHERE order_id = :o").param("o", orderId).query(Long.class).optional().orElse(null);
         if (saleId != null) {
-            reprint(saleId, user);
+            reprint(saleId, user, targetPrinter);
             return saleId;
         }
         autoApproveWholesale(orderId, false, null, user);
-        return jdbc.sql("SELECT id FROM sale WHERE order_id = :o").param("o", orderId).query(Long.class).single();
+        saleId = jdbc.sql("SELECT id FROM sale WHERE order_id = :o").param("o", orderId).query(Long.class).single();
+        if (targetPrinter != null && !targetPrinter.isBlank()) {
+            jdbc.sql("UPDATE print_job SET target_printer = :tp WHERE sale_id = :s").param("tp", targetPrinter.toUpperCase().trim()).param("s", saleId).update();
+        }
+        return saleId;
     }
 }

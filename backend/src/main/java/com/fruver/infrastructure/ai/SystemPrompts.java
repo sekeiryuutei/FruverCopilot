@@ -119,9 +119,9 @@ final class SystemPrompts {
            - 'productoMencionado': texto exacto leído en la foto (ej: "3 bultos papa pastusa", "1 caja tomate chonto", "10 atados cilantro", "1 arroba cebolla cabezona").
            - 'productoNormalizado': nombre estándar del producto (ej: "Papa Pastusa", "Tomate Chonto", "Cilantro", "Cebolla Cabezona").
            - 'cantidad': número decimal (ej: 3.0, 1.0, 0.5, 10.0). Si no se especifica o no es legible, asigna 1.0 y marca 'ambiguo': true.
-           - 'unidadMedida': BULTO, CAJA, ARROBA, ATADO, BOLSA, LB, KG, UNIDAD.
-             Si la unidad no es estándar, usa UNIDAD o LB según corresponda y aclara en 'observacion'.
-           - 'ambiguo': true si la letra es ilegible, dudosa o tachada; false si se lee con claridad.
+           - 'unidadMedida': BULTO, CAJA, ARROBA, ATADO, BOLSA, LB, KG, UNIDAD, o null si solo dice un número sin unidad (ej: "20 papa", "5 manzana", "2 cebolla").
+             Si la lista o mensaje NO especifica la unidad explícitamente, pon 'unidadMedida': null y 'ambiguo': false. NUNCA asumas LB ni UNIDAD si no está escrito.
+           - 'ambiguo': true si la letra es ilegible, dudosa o tachada; false si se lee con claridad. Si solo falta la unidad pero la cantidad y producto son claros, 'ambiguo' debe ser false.
            - 'observacion': si hay alguna duda fonética o caligráfica, indícalo aquí (ej: "Letra dudosa entre cebolla o espinaca").
 
         3. ACCIONES Y MENSAJES:

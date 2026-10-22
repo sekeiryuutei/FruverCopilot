@@ -52,7 +52,7 @@ public class ConversationService {
         if (recentSends.size() > 500) {
             recentSends.entrySet().removeIf(e -> java.time.Duration.between(e.getValue(), now).toMinutes() > 5);
         }
-        String phone = jdbc.sql("SELECT customer_phone FROM orders WHERE id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW')")
+        String phone = jdbc.sql("SELECT customer_phone FROM orders WHERE id = :id AND status != 'CANCELLED'")
                 .param("id", orderId).query(String.class).optional()
                 .orElseThrow(() -> new ApiException(409, "ORDER_NOT_ACTIVE", "El pedido no admite mensajes"));
         String delivery;
@@ -68,7 +68,7 @@ public class ConversationService {
 
     public void sendImage(long orderId, String imageUrl, String caption, String actor) {
         if (imageUrl == null || imageUrl.isBlank()) return;
-        String phone = jdbc.sql("SELECT customer_phone FROM orders WHERE id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW')")
+        String phone = jdbc.sql("SELECT customer_phone FROM orders WHERE id = :id AND status != 'CANCELLED'")
                 .param("id", orderId).query(String.class).optional()
                 .orElseThrow(() -> new ApiException(409, "ORDER_NOT_ACTIVE", "El pedido no admite mensajes"));
         String delivery;
@@ -89,17 +89,37 @@ public class ConversationService {
     @Transactional
     void persistSend(long orderId, String text, String delivery, Kind kind, String actor) {
         // Re-verifica bajo bloqueo que el pedido siga activo.
-        Integer locked = jdbc.sql("SELECT 1 FROM orders WHERE id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW') FOR UPDATE")
-                .param("id", orderId).query(Integer.class).optional().orElse(null);
-        if (locked == null) throw new ApiException(409, "ORDER_NOT_ACTIVE", "El pedido no admite mensajes");
+        var row = jdbc.sql("SELECT status FROM orders WHERE id = :id AND status != 'CANCELLED' FOR UPDATE")
+                .param("id", orderId).query(String.class).optional().orElse(null);
+        if (row == null) throw new ApiException(409, "ORDER_NOT_ACTIVE", "El pedido no admite mensajes");
         record(orderId, text, delivery);
-        String cs = switch (kind) {
-            case ASK -> "WAITING_FOR_CUSTOMER";
-            case CONFIRM -> "CONFIRMED";
-            case INFO -> "READY_FOR_REVIEW";
-        };
-        jdbc.sql("UPDATE orders SET conversation_status = :cs, suggested_reply = NULL WHERE id = :id")
-                .param("cs", cs).param("id", orderId).update();
+
+        // Si el operador responde que no se maneja o no hay un producto, lo desactiva del catálogo
+        String lower = text.toLowerCase();
+        if (lower.contains("no manejamos") || lower.contains("no se maneja") || lower.contains("no hay") || lower.contains("agotado")) {
+            var items = jdbc.sql("SELECT product_id, product_name FROM order_item WHERE order_id = :o")
+                    .param("o", orderId).query((rs, n) -> new Object[]{rs.getObject(1), rs.getString(2)}).list();
+            for (var it : items) {
+                Long pid = (Long) it[0];
+                String pname = (String) it[1];
+                if (pid != null && pname != null && lower.contains(pname.toLowerCase())) {
+                    jdbc.sql("UPDATE product SET active = FALSE WHERE id = :pid").param("pid", pid).update();
+                    log.info("Producto {} (#{}) desactivado por respuesta 'no se maneja'", pname, pid);
+                }
+            }
+        }
+
+        if (!"APPROVED".equals(row)) {
+            String cs = switch (kind) {
+                case ASK -> "WAITING_FOR_CUSTOMER";
+                case CONFIRM -> "CONFIRMED";
+                case INFO -> "READY_FOR_REVIEW";
+            };
+            jdbc.sql("UPDATE orders SET conversation_status = :cs, suggested_reply = NULL WHERE id = :id")
+                    .param("cs", cs).param("id", orderId).update();
+        } else {
+            jdbc.sql("UPDATE orders SET suggested_reply = NULL WHERE id = :id").param("id", orderId).update();
+        }
         audit.log(actor, switch (kind) {
             case ASK -> "CUSTOMER_ASKED";
             case CONFIRM -> "CUSTOMER_CONFIRMATION_SENT";

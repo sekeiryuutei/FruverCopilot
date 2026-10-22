@@ -69,10 +69,10 @@ public class SaleController {
     /** Reimprimir / reintentar: registra auditoria y NO crea otra venta. */
     @PostMapping("/sales/{id}/reprint")
     @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
-    public Map<String, Object> reprint(@PathVariable long id) {
-        sales.reprint(id, Actor.name());
+    public Map<String, Object> reprint(@PathVariable long id, @RequestParam(required = false) String printer) {
+        sales.reprint(id, Actor.name(), printer);
         jdbc.sql("SELECT order_id FROM sale WHERE id = :id").param("id", id).query(Long.class).optional().ifPresent(hub::orderChanged);
-        return Map.of("status", "PRINT_PENDING");
+        return Map.of("status", "PRINT_PENDING", "printer", printer != null ? printer : "AUTO");
     }
 
     public record PrinterConfigUpdateRequest(
@@ -148,10 +148,10 @@ public class SaleController {
     /** Reimprimir buscando directamente por ID de Pedido */
     @PostMapping("/orders/{orderId}/reprint")
     @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
-    public Map<String, Object> reprintByOrder(@PathVariable long orderId) {
-        Long saleId = sales.reprintByOrderId(orderId, Actor.name());
+    public Map<String, Object> reprintByOrder(@PathVariable long orderId, @RequestParam(required = false) String printer) {
+        Long saleId = sales.reprintByOrderId(orderId, Actor.name(), printer);
         hub.orderChanged(orderId);
-        return Map.of("status", "PRINT_PENDING", "saleId", saleId, "orderId", orderId);
+        return Map.of("status", "PRINT_PENDING", "saleId", saleId, "orderId", orderId, "printer", printer != null ? printer : "AUTO");
     }
 
     /** Vista previa de comanda / factura por ID de Pedido */

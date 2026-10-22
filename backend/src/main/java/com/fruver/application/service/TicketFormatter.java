@@ -47,7 +47,11 @@ public final class TicketFormatter {
         // Datos del cliente
         wrap("CLIENTE: " + nz(t.customer()), cols, true, out);
         if ("WHOLESALE".equals(t.customerType())) out.add(new TicketLine("TIPO: MAYORISTA", false));
-        if (t.phone() != null && !t.phone().isBlank()) out.add(new TicketLine("TEL: " + t.phone(), false));
+        if (t.phone() != null && !t.phone().isBlank()) {
+            String p = t.phone().strip();
+            if (p.startsWith("57") && p.length() == 12) p = p.substring(2);
+            out.add(new TicketLine("TEL: " + p, false));
+        }
         if (t.address() != null && !t.address().isBlank()) wrap("DIRECCION: " + t.address(), cols, false, out);
         if (t.deliveryPersonName() != null && !t.deliveryPersonName().isBlank()) wrap("REPARTIDOR: " + t.deliveryPersonName(), cols, true, out);
         if (t.notes() != null && !t.notes().isBlank()) wrap("OBS: " + t.notes(), cols, false, out);

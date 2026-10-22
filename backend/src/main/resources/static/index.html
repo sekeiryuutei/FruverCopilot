@@ -118,6 +118,7 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
 <script>
 const $=s=>document.querySelector(s);
 const cop=n=>n==null?'—':'$'+Math.round(n).toLocaleString('es-CO');
+const cleanPhone=p=>(p||'').replace(/^57(?=\d{10}$)/,'');
 const num=v=>v===''||v==null?null:Number(v);
 function h(tag,attrs={},...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(k==='class')e.className=v;else if(k==='dataset')Object.assign(e.dataset,v);else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);else if(v!==false&&v!=null)e.setAttribute(k,v===true?'':v)}
   for(const c of kids.flat()){if(c==null||c===false)continue;e.append(c.nodeType?c:document.createTextNode(String(c)))}return e}
@@ -262,21 +263,28 @@ function showImageModal(orderId){
 function showTicketModal(t){
   const overlay=h('div',{class:'modal-overlay',onclick:e=>{if(e.target===overlay)overlay.remove()}});
   const pre=h('pre',{style:'background:var(--bg);color:var(--ink);padding:14px;border-radius:8px;white-space:pre-wrap;font-family:monospace;font-size:13px;overflow-x:auto;line-height:1.3'},t.text);
-  const reprintBtn=h('button',{class:'b main',style:'font-size:15px;padding:10px 18px',onclick:async()=>{
+  
+  const printTo=async(printerLoc)=>{
     try{
-      await api(`/api/orders/${t.orderId}/reprint`,{method:'POST'});
-      toast(`✓ Pedido #${t.orderId} enviado a reimprimir en ${S.printerStatus?.activePrinter||'impresora activa'}`);
+      const q = printerLoc ? `?printer=${printerLoc}` : '';
+      await api(`/api/orders/${t.orderId}/reprint${q}`,{method:'POST'});
+      toast(`✓ Pedido #${t.orderId} enviado a imprimir en ${printerLoc || S.printerStatus?.activePrinter || 'impresora'}`);
       overlay.remove();
       await updatePrinterStatus();
       await loadOrders();
     }catch(e){toast(e.message)}
-  }},'🖨️ Mandar a Impresora');
-  const m=h('div',{class:'modal-card',style:'max-width:480px'},
+  };
+
+  const m=h('div',{class:'modal-card',style:'max-width:520px'},
     h('div',{class:'top'},h('b',{style:'font-size:16px'},'Factura Pedido #'+t.orderId),h('span',{class:'sp'}),h('button',{class:'b',onclick:()=>overlay.remove()},'✕ Cerrar')),
     pre,
-    h('div',{class:'row',style:'justify-content:space-between'},
-      h('button',{class:'b',onclick:()=>window.print()},'🖨️ Imprimir Navegador'),
-      reprintBtn
+    h('div',{style:'display:flex;gap:6px;justify-content:space-between;flex-wrap:wrap;align-items:center;margin-top:12px'},
+      h('button',{class:'b',style:'font-size:13.5px',onclick:()=>window.print()},'🖨️ Navegador'),
+      h('div',{style:'display:flex;gap:6px;flex-wrap:wrap'},
+        h('button',{class:'b',style:'background:#1e3a5f;color:#93c5fd;font-weight:700;font-size:13.5px;padding:8px 12px',onclick:()=>printTo('OFICINA')},'🏢 OFICINA'),
+        h('button',{class:'b',style:'background:#1e3a5f;color:#fcd34d;font-weight:700;font-size:13.5px;padding:8px 12px',onclick:()=>printTo('CASA')},'🏠 CASA'),
+        h('button',{class:'b main',style:'font-size:13.5px;padding:8px 14px;font-weight:800',onclick:()=>printTo()},'🖨️ Auto ('+(S.printerStatus?.activePrinter||'HORARIO')+')')
+      )
     )
   );
   overlay.append(m);
@@ -532,26 +540,76 @@ function doneCard(o){
   }
   tools.append(convBtn);
 
-  const phoneStr = o.customer?.phone || o.customer?.phoneMasked || '';
-  const custLabel = (o.customer?.name ? o.customer.name + ' · ' : '') + phoneStr;
+  const phoneStr = cleanPhone(o.customer?.phone || o.customer?.phoneMasked || '');
+  const custNameEl = h('b',{style:'color:var(--ink);cursor:pointer;border-bottom:1px dashed var(--mut)',title:'Clic para modificar nombre del cliente',onclick:async()=>{
+    const current = o.customer?.name || '';
+    const n = prompt('Modificar nombre del cliente (WhatsApp / Real):', current);
+    if(n !== null && n.trim() && n.trim() !== current){
+      const clean = n.trim();
+      try{
+        if(o.customer?.id){
+          await api(`/api/customers/${o.customer.id}`,{method:'PUT',body:{name:clean,phone:o.customer.phoneMasked}});
+          toast(`✓ Nombre actualizado: "${clean}"`);
+          await loadOrders();
+        }
+      }catch(e){toast(e.message)}
+    }
+  }}, (o.customer?.name || 'Cliente') + ' ✏️');
+
+  const topRow = h('div',{class:'top',style:'gap:8px;align-items:center'},
+    chk,
+    h('b',{style:'font-size:22px;color:var(--g);font-weight:900'},'#'+o.id),
+    inputPill,
+    h('span',{style:'font-weight:700;font-size:15px'},custNameEl,' · '+phoneStr),
+    o.deliveryPersonName ? h('span',{class:'pill',style:'background:rgba(59,130,246,0.15);color:#60a5fa'},'🛵 '+o.deliveryPersonName) : null,
+    h('span',{class:'sp'}),
+    verifPill,
+    printPill,
+    h('span',{class:'mut',style:'font-size:12px'},ago(o.receivedAt))
+  );
+
+  const addressRow = h('div',{style:'font-size:13px;color:var(--mut);margin:4px 0;display:flex;align-items:center;gap:6px'},
+    h('span',{},'📍 ' + (o.address || '(Sin dirección)')),
+    h('button',{class:'b',style:'padding:2px 7px;font-size:11px',title:'Editar o guardar dirección',onclick:async()=>{
+      const current = o.address || '';
+      const a = prompt('Dirección de entrega para este cliente:', current);
+      if(a !== null && a.trim() && a.trim() !== current){
+        const clean = a.trim();
+        try{
+          if(o.customer?.id){
+            await api(`/api/customers/${o.customer.id}/addresses`,{method:'POST',body:{label:'Principal',address:clean,isDefault:true}}).catch(()=>{});
+          }
+          await api(`/api/orders/${o.id}`,{method:'PUT',body:{version:o.version,address:clean}});
+          toast('✓ Dirección actualizada');
+          await loadOrders();
+        }catch(e){toast(e.message)}
+      }
+    }},'✏️ Editar dir')
+  );
+
+  const msgRow = o.messageText ? h('div',{class:'msg',style:'margin:6px 0;font-size:13.5px'}, '“' + o.messageText + '”') : null;
+
+  if(o.saleId && !o.dispatchedAt){
+    tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700;background:#059669;color:#fff;border-color:#059669',onclick:async()=>{
+      try{
+        await api(`/api/sales/${o.saleId}/dispatch`,{method:'POST'});
+        toast(`✓ Factura #${o.id} despachada y archivada como venta`);
+        await loadOrders();
+      }catch(e){toast(e.message)}
+    }},'📦 Despachar / Pasar a Venta'));
+  } else if(o.dispatchedAt){
+    tools.append(h('span',{class:'pill GREEN',style:'font-weight:700'},'✓ VENTA DESPACHADA'));
+  }
 
   cardEl.append(
-    h('div',{class:'top',style:'gap:8px;align-items:center'},
-      chk,
-      h('b',{style:'font-size:22px;color:var(--g);font-weight:900'},'#'+o.id),
-      inputPill,
-      h('span',{style:'font-weight:700;font-size:15px'},custLabel||'Cliente'),
-      o.deliveryPersonName ? h('span',{class:'pill',style:'background:rgba(59,130,246,0.15);color:#60a5fa'},'🛵 '+o.deliveryPersonName) : null,
-      h('span',{class:'sp'}),
-      verifPill,
-      printPill,
-      h('span',{class:'mut',style:'font-size:12px'},ago(o.receivedAt))
-    ),
-    o.address ? h('div',{style:'font-size:13px;color:var(--mut);margin:4px 0'}, '📍 ' + o.address) : null,
-    o.messageText ? h('div',{class:'msg',style:'margin:6px 0;font-size:13.5px'}, '“' + o.messageText + '”') : null,
-    itemsSummary,
-    tools,
-    convBox
+    ...[
+      topRow,
+      addressRow,
+      msgRow,
+      itemsSummary,
+      tools,
+      convBox
+    ].filter(Boolean)
   );
   if(o.requiresVerification){
     makeSwipeable(cardEl, o.id, () => validateOrderQuick(o.id, cardEl));
@@ -573,7 +631,33 @@ async function refreshConv(orderId, container){
       (x.type==='INVOICE'?'🧾 ':'')+(x.content||'(audio)'),
       x.delivery==='LOCAL_ONLY'?h('span',{class:'mut'},' [modo local]'):x.delivery==='FAILED'?h('span',{style:'color:var(--r)'},' [FALLÓ ENVÍO]'):null
     )):[h('div',{class:'mut',style:'font-size:12px;padding:4px'},'Sin mensajes previos registrados')];
-    container.replaceChildren(header,...list);
+
+    const replyInput = h('input',{placeholder:'Escribe una respuesta para el cliente...',style:'flex:1;font-size:13px;height:34px'});
+    const sendReplyBtn = h('button',{class:'b main',style:'font-size:13px;padding:6px 14px;height:34px',onclick:async()=>{
+      const text = replyInput.value.trim();
+      if(!text) return;
+      sendReplyBtn.disabled = true;
+      try{
+        await api(`/api/orders/${orderId}/messages`,{method:'POST',body:{text,kind:'INFO'}});
+        toast('✓ Mensaje enviado por WhatsApp');
+        replyInput.value = '';
+        await refreshConv(orderId, container);
+      }catch(e){toast('Error al enviar: ' + e.message)}
+      finally{sendReplyBtn.disabled = false}
+    }},'📤 Enviar');
+
+    const chips = h('div',{style:'display:flex;gap:6px;flex-wrap:wrap;margin-top:6px'},
+      ...['Buenas tardes, su pedido ya va en camino 🛵','No manejamos ese producto','Confirmamos su despacho'].map(txt =>
+        h('button',{class:'b',style:'font-size:11px;padding:2px 8px;opacity:0.85',onclick:()=>{replyInput.value=txt;replyInput.focus()}},txt)
+      )
+    );
+
+    const sendBox = h('div',{style:'margin-top:8px;border-top:1px solid var(--line);padding-top:8px'},
+      h('div',{style:'display:flex;gap:6px;align-items:center'}, replyInput, sendReplyBtn),
+      chips
+    );
+
+    container.replaceChildren(header, ...list, sendBox);
   }catch(e){container.textContent='Error cargando conversación: '+e.message}
 }
 
@@ -629,7 +713,7 @@ function card(o){
     verifPill,
     validateBtn,
     h('span',{class:'sp'}),
-    h('span',{class:'mut'}, custNameEl, ' · ' + (o.customer?.phone || o.customer?.phoneMasked || '') + (o.customer?.type==='WHOLESALE'?' · MAYORISTA':'') + ' · hace ', h('span',{class:'ago',dataset:{t:o.receivedAt}},ago(o.receivedAt)))
+    h('span',{class:'mut'}, custNameEl, ' · ' + cleanPhone(o.customer?.phone || o.customer?.phoneMasked || '') + (o.customer?.type==='WHOLESALE'?' · MAYORISTA':'') + ' · hace ', h('span',{class:'ago',dataset:{t:o.receivedAt}},ago(o.receivedAt)))
   ));
 
   if(o.pendingDispatchOrderId){

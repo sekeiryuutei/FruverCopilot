@@ -13,3 +13,4 @@ CREATE TABLE IF NOT EXISTS printer_setting (
 INSERT INTO printer_setting(id, office_host, office_port, home_host, home_port, enabled, mode)
 VALUES ('DEFAULT', '127.0.0.1', 9100, '127.0.0.1', 9100, TRUE, 'AUTO')
 ON CONFLICT (id) DO NOTHING;
+
