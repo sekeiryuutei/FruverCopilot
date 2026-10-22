@@ -263,6 +263,67 @@ public class OrderProcessingService {
         }
     }
 
+    /** Recuperación automática de pedidos pendientes si la app se reinició o hubo corte de conexión */
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    public void onStartupRecoverPendingExtractions() {
+        recoverPendingExtractions();
+    }
+
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 15000)
+    public void recoverPendingExtractions() {
+        try {
+            List<Long> pendingOrders = jdbc.sql("""
+                    SELECT o.id FROM orders o
+                    WHERE o.ai_status = 'PENDING'
+                      AND o.status IN ('RECEIVED', 'PROCESSING', 'REVIEW')
+                    ORDER BY o.id ASC LIMIT 10
+                    """).query(Long.class).list();
+
+            for (Long oId : pendingOrders) {
+                try {
+                    var msgRow = jdbc.sql("""
+                            SELECT cm.id, cm.message_type, cm.content
+                            FROM conversation_message cm
+                            WHERE cm.order_id = :o AND cm.direction = 'INBOUND'
+                            ORDER BY cm.id DESC LIMIT 1
+                            """).param("o", oId).query((rs, n) -> new Object[]{
+                                    rs.getLong(1), rs.getString(2), rs.getString(3)
+                            }).optional().orElse(null);
+
+                    if (msgRow == null) continue;
+                    long msgId = (Long) msgRow[0];
+                    String type = (String) msgRow[1];
+                    String content = msgRow[2] == null ? "" : (String) msgRow[2];
+                    boolean isAudio = "AUDIO".equalsIgnoreCase(type);
+                    boolean isImage = "IMAGE".equalsIgnoreCase(type);
+
+                    String storageKey = null;
+                    String mime = null;
+                    if (isAudio) {
+                        var aRow = jdbc.sql("SELECT storage_key, mime_type FROM audio WHERE message_id = :m")
+                                .param("m", msgId).query((rs, n) -> new String[]{rs.getString(1), rs.getString(2)}).optional().orElse(null);
+                        if (aRow != null) { storageKey = aRow[0]; mime = aRow[1]; }
+                    } else if (isImage) {
+                        var iRow = jdbc.sql("SELECT storage_key, mime_type FROM media_image WHERE message_id = :m")
+                                .param("m", msgId).query((rs, n) -> new String[]{rs.getString(1), rs.getString(2)}).optional().orElse(null);
+                        if (iRow != null) { storageKey = iRow[0]; mime = iRow[1]; }
+                    }
+
+                    int msgCount = jdbc.sql("SELECT count(*) FROM conversation_message WHERE order_id = :o").param("o", oId).query(Integer.class).single();
+                    boolean reply = msgCount > 1;
+
+                    IntakeResult recoveryResult = new IntakeResult(oId, msgId, reply, isAudio, isImage, content, null, storageKey, mime);
+                    log.info("Auto-recuperando procesamiento pendiente de IA para orden #{} (mensaje #{})", oId, msgId);
+                    doProcess(recoveryResult);
+                } catch (Exception e) {
+                    log.warn("Fallo auto-recuperar orden #{}: {}", oId, e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Error en tarea programada de recuperación de pedidos: {}", e.getMessage());
+        }
+    }
+
     /** @return texto transcrito, o null si fallo (el pedido queda en rojo con el audio disponible). */
     private String transcribe(IntakeResult r) {
         try {

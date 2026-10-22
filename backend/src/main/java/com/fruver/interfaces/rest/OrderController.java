@@ -157,6 +157,34 @@ public class OrderController {
                 .body(new ByteArrayResource(storage.load(row[0])));
     }
 
+    public record ImageMeta(long id, long messageId, String created) {}
+
+    @GetMapping("/{id}/images")
+    public List<ImageMeta> images(@PathVariable long id) {
+        return jdbc.sql("SELECT id, message_id, created_at FROM media_image WHERE order_id = :o AND storage_key IS NOT NULL ORDER BY id ASC")
+                .param("o", id)
+                .query((rs, n) -> new ImageMeta(rs.getLong(1), rs.getLong(2), rs.getString(3))).list();
+    }
+
+    @GetMapping("/{id}/images/{imageId}")
+    public ResponseEntity<ByteArrayResource> imageById(@PathVariable long id, @PathVariable long imageId) {
+        var row = jdbc.sql("SELECT storage_key, mime_type FROM media_image WHERE order_id = :o AND id = :img")
+                .param("o", id).param("img", imageId).query((rs, n) -> new String[]{rs.getString(1), rs.getString(2)}).optional()
+                .orElseThrow(() -> new ApiException(404, "IMAGE_NOT_FOUND", "Imagen no encontrada"));
+        if (row[0] == null) throw new ApiException(404, "IMAGE_NOT_FOUND", "La imagen aún no está disponible");
+        String raw = row[1] == null ? "image/jpeg" : row[1].split(";")[0].trim().toLowerCase();
+        String mime = switch (raw) {
+            case "image/jpeg", "image/jpg", "image/png", "image/webp" -> raw;
+            default -> "image/jpeg";
+        };
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Security-Policy", "default-src 'none'")
+                .header("Content-Disposition", "inline; filename=\"pedido-" + id + "-img-" + imageId + ".jpg\"")
+                .contentType(MediaType.parseMediaType(mime))
+                .body(new ByteArrayResource(storage.load(row[0])));
+    }
+
     @GetMapping("/{id}/image")
     public ResponseEntity<ByteArrayResource> image(@PathVariable long id) {
         var row = jdbc.sql("SELECT storage_key, mime_type FROM media_image WHERE order_id = :o ORDER BY id DESC LIMIT 1")

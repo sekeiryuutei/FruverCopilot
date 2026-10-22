@@ -247,14 +247,44 @@ function triggerCameraUpload(){
   fi.click();
 }
 
-function showImageModal(orderId){
+async function showImageModal(orderId){
   const overlay=h('div',{class:'modal-overlay',onclick:e=>{if(e.target===overlay)overlay.remove()}});
   let deg=0;
-  const img=h('img',{src:`/api/orders/${orderId}/image?_t=${Date.now()}`,alt:'Foto del pedido',style:'max-width:100%;max-height:75vh;object-fit:contain;border-radius:8px;transition:transform .2s'});
-  const rotBtn=h('button',{class:'b',style:'font-size:14px;padding:8px 14px',onclick:()=>{deg=(deg+90)%360;img.style.transform=`rotate(${deg}deg)`}},'🔄 Girar');
-  const closeBtn=h('button',{class:'b main',style:'font-size:14px;padding:8px 16px',onclick:()=>overlay.remove()},'✕ Cerrar');
+  let images=[{url:`/api/orders/${orderId}/image`}];
+  let curIdx=0;
+
+  try {
+    const list = await api(`/api/orders/${orderId}/images`);
+    if(Array.isArray(list) && list.length>0){
+      images = list.map(item => ({url:`/api/orders/${orderId}/images/${item.id}`}));
+    }
+  } catch(e) {}
+
+  const titleEl=h('b',{style:'font-size:16px'},`📷 Foto de Lista (1/${images.length}) - Pedido #${orderId}`);
+  const img=h('img',{src:images[0].url+`?_t=${Date.now()}`,alt:'Foto del pedido',style:'max-width:100%;max-height:75vh;object-fit:contain;border-radius:8px;transition:transform .2s'});
+  const rotBtn=h('button',{class:'b',style:'font-size:13px;padding:7px 12px',onclick:()=>{deg=(deg+90)%360;img.style.transform=`rotate(${deg}deg)`}},'🔄 Girar');
+  const closeBtn=h('button',{class:'b main',style:'font-size:13px;padding:7px 14px',onclick:()=>overlay.remove()},'✕ Cerrar');
+
+  const prevBtn=h('button',{class:'b',style:'font-size:13px;padding:7px 12px;display:'+(images.length>1?'inline-flex':'none'),onclick:()=>{
+    if(curIdx>0){curIdx--;updateView()}
+  }},'◀ Anterior');
+
+  const nextBtn=h('button',{class:'b',style:'font-size:13px;padding:7px 12px;display:'+(images.length>1?'inline-flex':'none'),onclick:()=>{
+    if(curIdx<images.length-1){curIdx++;updateView()}
+  }},'Siguiente ▶');
+
+  const updateView=()=>{
+    deg=0;
+    img.style.transform='rotate(0deg)';
+    img.src=images[curIdx].url+`?_t=${Date.now()}`;
+    titleEl.textContent=`📷 Foto (${curIdx+1}/${images.length}) - Pedido #${orderId}`;
+    prevBtn.disabled = curIdx===0;
+    nextBtn.disabled = curIdx===images.length-1;
+  };
+  updateView();
+
   const m=h('div',{class:'modal-card',style:'max-width:750px;text-align:center'},
-    h('div',{class:'top'},h('b',{style:'font-size:16px'},'📷 Foto de Lista - Pedido #'+orderId),h('span',{class:'sp'}),rotBtn,closeBtn),
+    h('div',{class:'top',style:'gap:6px;flex-wrap:wrap;align-items:center'},titleEl,h('span',{class:'sp'}),prevBtn,nextBtn,rotBtn,closeBtn),
     h('div',{style:'overflow:auto;padding:10px;background:#111;border-radius:8px;min-height:200px;display:flex;align-items:center;justify-content:center'},img)
   );
   overlay.append(m);
