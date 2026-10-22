@@ -14,7 +14,7 @@ import java.util.Optional;
 public class OrderRepository {
 
     private static final String SELECT = """
-            SELECT o.id, o.customer_id, o.customer_name, o.customer_phone, o.address, o.notes, o.input_type,
+            SELECT o.id, o.customer_id, COALESCE(o.customer_name, c.name) AS customer_name, o.customer_phone, o.address, o.notes, o.input_type,
                    o.status, o.conversation_status, o.review_status, o.ai_status, o.ai_note, o.suggested_reply,
                    o.corrected, o.version, o.received_at, o.extracted_at, o.approved_at,
                    COALESCE(c.customer_type, 'RETAIL') AS customer_type,

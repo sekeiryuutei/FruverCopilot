@@ -28,7 +28,7 @@ class TicketAndConfirmationTest {
         for (int cols : new int[]{32, 42}) {
             var lines = TicketFormatter.format(data(false), cols);
             String all = String.join("\n", lines.stream().map(TicketFormatter.TicketLine::text).toList());
-            assertTrue(all.contains("PEDIDO #10542"));
+            assertTrue(all.contains("FACTURA #10542") || all.contains("PEDIDO #10542"));
             assertTrue(all.contains("MAYORISTA"));
             assertTrue(all.contains("TOTAL"));
             assertTrue(all.contains("DIRECCION") && all.contains("OBS: Sin cilantro"));

@@ -62,7 +62,7 @@ public class OrderIntakeService {
         } else {
             orderId = jdbc.sql("""
                     INSERT INTO orders(customer_id, customer_name, customer_phone, address, input_type, status, ai_status)
-                    SELECT c.id, NULL, c.phone, c.address, :t, 'PROCESSING', 'PENDING' FROM customer c WHERE c.id = :c
+                    SELECT c.id, c.name, c.phone, c.address, :t, 'PROCESSING', 'PENDING' FROM customer c WHERE c.id = :c
                     RETURNING id
                     """).param("t", type.name()).param("c", customer.id()).query(Long.class).single();
         }

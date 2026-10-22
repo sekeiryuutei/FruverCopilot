@@ -173,7 +173,7 @@ public class SaleService {
                 INSERT INTO sale(order_id, customer_id, customer_name, customer_phone, address, notes, customer_type, price_type,
                                  input_type, total, approved_by, delivery_person_id, delivery_person_name, target_printer,
                                  requires_verification, verification_reason)
-                VALUES (:o, :c, :n, :p, :a, :no, :ct, :pt, :it, :t, :u, :dpid, :dpname, :tp, :rv, :vr) RETURNING id
+                VALUES (:o, :c, COALESCE(:n, (SELECT name FROM customer WHERE id = :c)), :p, :a, :no, :ct, :pt, :it, :t, :u, :dpid, :dpname, :tp, :rv, :vr) RETURNING id
                 """).param("o", orderId).param("c", o.customerId()).param("n", o.customerName()).param("p", o.customerPhone())
                 .param("a", o.address()).param("no", o.notes()).param("ct", o.customerType()).param("pt", priceType.name())
                 .param("it", o.inputType()).param("t", total).param("u", user)
@@ -184,7 +184,7 @@ public class SaleService {
         for (ItemRow it : items) {
             String pName = it.aiProductName() != null && !it.aiProductName().isBlank() ? it.aiProductName() : it.mentioned();
             if (pName == null || pName.isBlank()) pName = "Artículo";
-            String unit = it.unit() != null ? it.unit() : (it.aiUnit() != null ? it.aiUnit() : "UNIDAD");
+            String unit = it.unit() != null ? it.unit() : (it.aiUnit() != null ? it.aiUnit() : null);
             BigDecimal qty = it.quantity() != null && it.quantity().compareTo(BigDecimal.ZERO) > 0
                     ? it.quantity()
                     : (it.aiQuantity() != null && it.aiQuantity().compareTo(BigDecimal.ZERO) > 0 ? it.aiQuantity() : BigDecimal.ONE);

@@ -33,12 +33,11 @@ final class SystemPrompts {
           * Asigna cantidad=1 (o la cantidad estimada) y unidadMedida=LB con ambiguo=false.
           * NUNCA preguntes "¿te referías al tomate que mencioné antes?" ni pongas trabas. Si el cliente dice "quiero 2 unidades", ¡agrégaselas de inmediato al pedido!
 
-        HISTORIAL Y PREFERENCIAS DEL CLIENTE (VARIEDADES DE PAPA Y PRODUCTOS HABITUALES)
+        HISTORIAL Y PREFERENCIAS DEL CLIENTE (VARIEDADES Y PRODUCTOS HABITUALES)
         - En historial_cliente recibes los productos que este cliente suele comprar con frecuencia.
-        - Si el cliente pide un producto genérico (ej: "3 libras de papa") y en historial_cliente aparece que suele comprar una variedad específica (ej: "Papa pastusa"):
-          * SELECCIONA DIRECTAMENTE esa variedad favorita en productoNormalizado (no dejes ambiguo ni preguntes qué papa prefiere; facilítale la compra al cliente).
-          * En observacion indica "Papa pastusa seleccionada según historial del cliente".
-        - Solo si no hay historial previo ni certeza entre opciones (ej: primera vez que pide papa y no sabemos si es criolla, pastusa o sabanera), pregunta amablemente qué tipo de papa prefiere.
+        - Si el cliente pide un producto genérico (ej: "3 libras de papa", "cebolla", "tomate"):
+          * Si en historial_cliente aparece una variedad específica que suele comprar (ej: "Papa pastusa", "Cebolla cabezona"), úsala en productoNormalizado.
+          * Si NO hay historial o no especifica variedad: mantén el nombre literal del producto (ej: "Cebolla", "Papa", "Tomate") con ambiguo=false. No inventes variedad ni preguntes; en la tienda ya conocen al cliente y al despachar sabrán cuál empacar.
 
         PEDIDOS POR VALOR EN DINERO (MUY COMÚN EN COLOMBIA, ej: "2000 de cilantro", "mil de cilantro", "500 de cilantro")
         - En Colombia las hierbas (cilantro, perejil, apio, cebolla junca) se piden típicamente por valor en dinero (ej: "2000 de cilantro", "mil de cilantro").
@@ -63,10 +62,12 @@ final class SystemPrompts {
         - metodoPago: si el cliente menciona su medio de pago (ej: "transferencia", "llave", "nequi", "daviplata", "efectivo con 50mil", "con 20 mil en efectivo", "plata exacta"), extrae la indicación en metodoPago.
 
         UNIDADES Y CANTIDADES (KILOS / LIBRAS / UNIDADES)
-        - unidadMedida solo puede ser LB, KG o UNIDAD.
+        - unidadMedida puede ser LB, KG, UNIDAD, BULTO, CAJA, ARROBA, ATADO, BOLSA o null.
         - libra, libras, lb = LB. kilo, kilos, kg = KG. unidad, unidades o conteo simple = UNIDAD.
         - medio kilo = 0.5 KG. media libra = 0.5 LB. libra y media = 1.5 LB. kilo y medio = 1.5 KG.
         - En Colombia, 1 kilo equivale a 2 libras (1 KG = 2 LB, medio kilo = 1 LB). Si en catalogo_candidato el producto se vende por LB y el cliente pide en kilos, convierte la cantidad a LB (ej: 1 kilo -> cantidad=2, unidadMedida=LB; medio kilo -> cantidad=1, unidadMedida=LB).
+        - Si el cliente indica una cantidad numérica pero NO especifica unidad de medida (ej: "2 de cebolla", "3 de tomate", "1 de cilantro", "4 de papa"):
+          asigna la cantidad (ej: 2) y deja unidadMedida=null con ambiguo=false. En la factura saldrá el espacio en blanco para que el personal lo complete.
         - Si el cliente pide un producto pero NO indica cantidad alguna (ej: "deme tomate", "quiero cebolla"):
           ambiguo=true, cantidad=null, action=ASK_CUSTOMER, y en customerMessage pregunta: "¿Cuántas libras o unidades de tomate te agregamos?".
 

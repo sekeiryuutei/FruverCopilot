@@ -33,12 +33,12 @@ public final class TicketFormatter {
         out.add(new TicketLine(center("Frutas y Verduras al por Mayor", cols), false));
         out.add(new TicketLine(sep, false));
 
-        // Número de pedido grande y prominente
+        // Número de factura grande y prominente
         if (cols >= 40) {
-            out.add(new TicketLine(center("*** PEDIDO #" + t.orderNumber() + " ***", cols), true));
+            out.add(new TicketLine(center("*** FACTURA #" + t.orderNumber() + " ***", cols), true));
             out.add(new TicketLine("FECHA: " + t.at().format(DATE), false));
         } else {
-            out.add(new TicketLine(center("** PEDIDO #" + t.orderNumber() + " **", cols), true));
+            out.add(new TicketLine(center("** FACTURA #" + t.orderNumber() + " **", cols), true));
             out.add(new TicketLine("FECHA: " + t.at().format(DATE), false));
         }
 
@@ -80,7 +80,7 @@ public final class TicketFormatter {
     }
 
     static String unitLabel(String unit) {
-        if (unit == null) return "UN";
+        if (unit == null || unit.isBlank() || "null".equalsIgnoreCase(unit)) return "[    ]";
         return switch (unit.toUpperCase()) {
             case "UNIDAD" -> "UN";
             case "BULTO"  -> "BLT";

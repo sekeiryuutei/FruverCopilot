@@ -204,9 +204,9 @@ async function updatePrinterStatus(){
 
 async function reprintAllPending(){
   try{
-    toast('Reimprimiendo comandas pendientes... ⏳');
+    toast('Reimprimiendo facturas pendientes... ⏳');
     const r=await api('/api/sales/reprint-all-pending',{method:'POST'});
-    toast(`✓ Se enviaron ${r.count} comanda(s) a reimprimir en ${S.printerStatus?.activePrinter||'impresora activa'}`);
+    toast(`✓ Se enviaron ${r.count} factura(s) a reimprimir en ${S.printerStatus?.activePrinter||'impresora activa'}`);
     await updatePrinterStatus();
     await loadOrders();
   }catch(e){toast('Error al reimprimir: '+e.message)}
@@ -233,7 +233,7 @@ function triggerCameraUpload(){
           body:fd
         });
         if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.message||'Error al procesar foto')}
-        toast('✓ ¡Foto recibida! Extrayendo comanda e imprimiendo...');
+        toast('✓ ¡Foto recibida! Extrayendo factura e imprimiendo...');
         fi.value='';
         setTimeout(async()=>{
           await updatePrinterStatus();
@@ -272,7 +272,7 @@ function showTicketModal(t){
     }catch(e){toast(e.message)}
   }},'🖨️ Mandar a Impresora');
   const m=h('div',{class:'modal-card',style:'max-width:480px'},
-    h('div',{class:'top'},h('b',{style:'font-size:16px'},'Factura / Comanda Pedido #'+t.orderId),h('span',{class:'sp'}),h('button',{class:'b',onclick:()=>overlay.remove()},'✕ Cerrar')),
+    h('div',{class:'top'},h('b',{style:'font-size:16px'},'Factura Pedido #'+t.orderId),h('span',{class:'sp'}),h('button',{class:'b',onclick:()=>overlay.remove()},'✕ Cerrar')),
     pre,
     h('div',{class:'row',style:'justify-content:space-between'},
       h('button',{class:'b',onclick:()=>window.print()},'🖨️ Imprimir Navegador'),
@@ -287,7 +287,7 @@ async function showTicket(saleId){try{const t=await api(`/api/sales/${saleId}/ti
 async function showTicketByOrder(orderId){try{const t=await api(`/api/orders/${orderId}/ticket`);showTicketModal(t)}catch(e){toast(e.message)}}
 
 const emptyMsg=h('p',{class:'mut'},'Sin pedidos pendientes. Cuando llegue uno aparece aquí solo.');
-const doneTitle=h('h3',{},'Confirmados hoy');
+const doneTitle=h('h3',{},'Facturas de hoy');
 /** Seleccion multiple para reimprimir */
 const reprintSel=new Set();
 /** Reconciliación con llave: solo se crean/reemplazan las tarjetas que cambiaron; las demás no se tocan. */
@@ -349,7 +349,7 @@ function renderOps(){
     h('div',{style:'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px'},
       h('div',{},
         h('b',{style:'font-size:17px'},'🌴 Fruver El Oasis'),
-        h('span',{class:'mut',id:'toolbarStats',style:'margin-left:10px;font-size:13px'},`Activos: ${active.length} · Confirmados hoy: ${done.length}`)
+        h('span',{class:'mut',id:'toolbarStats',style:'margin-left:10px;font-size:13px'},`Activos: ${active.length} · Facturas de hoy: ${done.length}`)
       ),
       h('div',{style:'display:flex;gap:8px;align-items:center'},
         toggleBtn
@@ -357,29 +357,29 @@ function renderOps(){
     ),
     actionsPanel,
     h('div',{style:'display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap'},
-      h('span',{style:'font-size:13px;font-weight:700;color:var(--mut)'},'🔍 Buscar:'),
-      h('input',{id:'quickReprintId',type:'number',placeholder:'# Pedido',style:'width:110px;height:38px;font-size:15px;font-weight:700;text-align:center'}),
+      h('span',{style:'font-size:13px;font-weight:700;color:var(--mut)'},'🔍 Buscar Factura:'),
+      h('input',{id:'quickReprintId',type:'number',placeholder:'# Factura / Pedido',style:'width:150px;height:38px;font-size:15px;font-weight:700;text-align:center'}),
       h('button',{class:'b',style:'height:38px;font-size:13.5px;font-weight:700;background:#1e3a5f;color:#93c5fd;border-color:#1e3a5f',onclick:async()=>{
         const idInput=$('#quickReprintId');
         const val=idInput?.value?.trim();
-        if(!val){toast('Digita el número de pedido');return}
+        if(!val){toast('Digita el número de factura/pedido');return}
         try{
           await api(`/api/orders/${val}/reprint`,{method:'POST'});
-          toast(`✓ Pedido #${val} enviado a reimprimir`);
+          toast(`✓ Factura #${val} enviada a reimprimir`);
           await updatePrinterStatus();await loadOrders();
         }catch(e){toast('Error al reimprimir: '+e.message)}
       }},'🖨️ Reimprimir #'),
       h('button',{class:'b',style:'height:38px;font-size:13.5px',onclick:()=>{
         const idInput=$('#quickReprintId');
         const val=idInput?.value?.trim();
-        if(!val){toast('Digita el número de pedido');return}
+        if(!val){toast('Digita el número de factura/pedido');return}
         showTicketByOrder(val);
-      }},'🧾 Ver Comanda'),
+      }},'🧾 Ver Factura'),
       reprintSelBtn
     )
   );
   if(existing.get('toolbar')){
-    const mutEl=opsBar.querySelector('#toolbarStats');if(mutEl)mutEl.textContent=`Activos: ${active.length} · Confirmados hoy: ${done.length}`;
+    const mutEl=opsBar.querySelector('#toolbarStats');if(mutEl)mutEl.textContent=`Activos: ${active.length} · Facturas de hoy: ${done.length}`;
   }
   const wanted=[...(alertBanner?[alertBanner]:[]),opsBar,...(active.length?[]:[emptyMsg]),...active.map(o=>cardFor(o,existing)),...(done.length?[doneTitle]:[]),...done.map(o=>cardFor(o,existing))];
   const keep=new Set(wanted);[...m.children].forEach(n=>{if(!keep.has(n))n.remove()});
@@ -447,7 +447,7 @@ function doneCard(o){
   const mediaAudioBox = h('div');
   const tools = h('div',{class:'row',style:'gap:8px;margin-top:8px'});
 
-  if(o.saleId) tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>showTicket(o.saleId)},'🧾 Ver comanda'));
+  if(o.saleId) tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>showTicket(o.saleId)},'🧾 Ver Factura'));
   tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',onclick:async()=>{
     try{
       await api(`/api/orders/${o.id}/reprint`,{method:'POST'});
