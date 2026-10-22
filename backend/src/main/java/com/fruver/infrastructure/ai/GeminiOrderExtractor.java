@@ -41,7 +41,7 @@ public class GeminiOrderExtractor implements OrderExtractor {
         if (props.ai().gemini().model() != null && !props.ai().gemini().model().isBlank()) {
             list.add(props.ai().gemini().model().strip());
         }
-        for (String m : java.util.List.of("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-flash-latest")) {
+        for (String m : java.util.List.of("gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.7-flash")) {
             if (!list.contains(m)) list.add(m);
         }
         this.candidateModels = java.util.List.copyOf(list);

@@ -48,7 +48,13 @@ public class OrderWriter {
                 WHERE id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW')
                 """).param("r", io.review().name()).param("note", io.note()).param("reply", reply)
                 .param("cs", conversation).param("id", orderId).update();
-        if (updated == 0) return false;
+        if (updated == 0) {
+            int approvedUpdated = jdbc.sql("""
+                    UPDATE orders SET ai_status = 'OK', ai_note = :note, extracted_at = now(), version = version + 1
+                    WHERE id = :id AND status = 'APPROVED'
+                    """).param("note", io.note()).param("id", orderId).update();
+            if (approvedUpdated == 0) return false;
+        }
 
         if (io.address() != null && !io.address().isBlank()) {
             jdbc.sql("""
@@ -154,6 +160,29 @@ public class OrderWriter {
                                 .param("u", ni.unit() == null ? null : ni.unit().name()).update();
                     }
                 }
+            }
+        }
+        Long saleId = jdbc.sql("SELECT id FROM sale WHERE order_id = :o").param("o", orderId).query(Long.class).optional().orElse(null);
+        if (saleId != null) {
+            int saleItemCount = jdbc.sql("SELECT COUNT(*) FROM sale_item WHERE sale_id = :s").param("s", saleId).query(Integer.class).single();
+            if (saleItemCount == 0) {
+                var currentOrderItems = jdbc.sql("SELECT * FROM order_item WHERE order_id = :o ORDER BY line_no, id")
+                        .param("o", orderId).query(com.fruver.infrastructure.persistence.Rows.ItemRow.class).list();
+                for (var it : currentOrderItems) {
+                    String pName = it.aiProductName() != null && !it.aiProductName().isBlank() ? it.aiProductName() : it.mentioned();
+                    if (pName == null || pName.isBlank()) pName = "Artículo";
+                    String unit = it.unit() != null ? it.unit() : (it.aiUnit() != null ? it.aiUnit() : null);
+                    java.math.BigDecimal qty = it.quantity() != null && it.quantity().compareTo(java.math.BigDecimal.ZERO) > 0
+                            ? it.quantity()
+                            : (it.aiQuantity() != null && it.aiQuantity().compareTo(java.math.BigDecimal.ZERO) > 0 ? it.aiQuantity() : java.math.BigDecimal.ONE);
+
+                    jdbc.sql("""
+                            INSERT INTO sale_item(sale_id, product_id, product_name, unit, quantity, price_type, applied_price, price_manually_changed, subtotal)
+                            VALUES (:s, :p, :n, :u, :q, 'WHOLESALE', :ap, :m, NULL)
+                            """).param("s", saleId).param("p", it.productId()).param("n", pName).param("u", unit)
+                            .param("q", qty).param("ap", it.manualPrice()).param("m", it.manualPrice() != null).update();
+                }
+                jdbc.sql("INSERT INTO print_job(sale_id, reprint, target_printer) VALUES (:s, TRUE, 'OFICINA')").param("s", saleId).update();
             }
         }
         audit.log("ia", "AI_EXTRACTED", orderId, null, Map.of("review", io.review().name(),

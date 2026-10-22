@@ -154,16 +154,19 @@ public class SaleController {
         return Map.of("status", "PRINT_PENDING", "saleId", saleId, "orderId", orderId, "printer", printer != null ? printer : "AUTO");
     }
 
-    /** Vista previa de comanda / factura por ID de Pedido */
+    /** Vista previa de comanda / factura por ID de Pedido (no muta ni aprueba) */
     @GetMapping("/orders/{orderId}/ticket")
     @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public Map<String, Object> ticketByOrder(@PathVariable long orderId) {
         Long saleId = jdbc.sql("SELECT id FROM sale WHERE order_id = :o").param("o", orderId).query(Long.class).optional().orElse(null);
-        if (saleId == null) {
-            sales.autoApproveWholesale(orderId, false, null, Actor.name());
-            saleId = jdbc.sql("SELECT id FROM sale WHERE order_id = :o").param("o", orderId).query(Long.class).single();
+        if (saleId != null) {
+            return ticket(saleId);
         }
-        return ticket(saleId);
+        TicketData t = tickets.buildFromOrder(orderId);
+        var lines = TicketFormatter.format(t, props.printing().columns());
+        StringBuilder sb = new StringBuilder();
+        for (var l : lines) sb.append(l.text()).append("\n");
+        return Map.of("saleId", -1, "orderId", t.orderNumber(), "total", 0, "text", sb.toString().stripTrailing());
     }
 
     /** Vista previa de factura (para demo sin impresora): mismo texto que iria al papel. */
