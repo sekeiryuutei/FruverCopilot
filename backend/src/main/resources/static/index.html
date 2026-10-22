@@ -3,14 +3,41 @@
 <meta name="theme-color" content="#14361f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="El Oasis">
 <title>Fruver El Oasis · Control Mayorista</title><link rel="icon" href="/icon-192.svg"><link rel="manifest" href="/manifest.json"><link rel="apple-touch-icon" href="/icon-192.svg">
 <style>
-:root{--bg:#f4f6f4;--card:#fff;--ink:#14231a;--mut:#607066;--line:#dbe3dd;--g:#1f9d55;--y:#d99a00;--r:#d33;--brand:#14361f}
+:root{--bg:#f4f6f4;--card:#fff;--ink:#14231a;--mut:#607066;--line:#dbe3dd;--g:#1f9d55;--y:#d99a00;--r:#d33;--brand:#14361f;--bnav-h:64px}
 @media (prefers-color-scheme:dark){:root{--bg:#0e1712;--card:#16261d;--ink:#e9f2ec;--mut:#93a89b;--line:#274233;--brand:#0a1f12}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,sans-serif;-webkit-text-size-adjust:100%}
-header{background:var(--brand);color:#fff;padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:25;box-shadow:0 2px 8px #0002}
-header b{font-size:18px}nav{display:flex;gap:6px;flex:1;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 0}
-nav::-webkit-scrollbar{display:none}
-nav button{background:transparent;color:#cfe;border:1px solid #ffffff33;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:13.5px;flex-shrink:0;font-weight:500;touch-action:manipulation}
-nav button.on{background:#fff;color:#123;font-weight:700}.cnt{font-size:13.5px;white-space:nowrap}
+
+/* ── HEADER ──────────────────────────────────── */
+header{background:var(--brand);color:#fff;padding:10px 14px;display:flex;gap:8px;align-items:center;position:sticky;top:0;z-index:25;box-shadow:0 2px 8px #0002;min-height:52px}
+header .logo{font-size:18px;font-weight:700;letter-spacing:-0.3px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header .hactions{display:flex;gap:6px;align-items:center;flex-shrink:0}
+#printerBadge{font-size:11px;background:#1e3a5f;color:#93c5fd;font-weight:700;padding:4px 8px;border-radius:6px;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.cnt{font-size:13px;white-space:nowrap}
+/* nav de escritorio (tabs horizontales) */
+#desktopNav{display:flex;gap:6px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:none;max-width:100%}
+#desktopNav::-webkit-scrollbar{display:none}
+#desktopNav button{background:transparent;color:#cfe;border:1px solid #ffffff33;padding:7px 12px;border-radius:8px;cursor:pointer;font-size:13.5px;flex-shrink:0;font-weight:500;touch-action:manipulation}
+#desktopNav button.on{background:#fff;color:#123;font-weight:700}
+
+/* ── BOTTOM NAV (mobile) ─────────────────────── */
+#bottomNav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--brand);z-index:50;padding-bottom:env(safe-area-inset-bottom,0);box-shadow:0 -2px 12px #0004}
+#bottomNav .bnav-inner{display:grid;height:var(--bnav-h)}
+#bottomNav button{background:transparent;border:none;color:#8ec9a8;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:6px 2px;font-size:10px;font-weight:600;touch-action:manipulation;transition:color 0.15s}
+#bottomNav button .ico{font-size:22px;line-height:1}
+#bottomNav button.on{color:#fff}
+#bottomNav button.on .ico{filter:drop-shadow(0 0 4px #6fffa844)}
+/* body con espacio para bottom nav */
+body.mobile-nav main{padding-bottom:calc(var(--bnav-h) + env(safe-area-inset-bottom,0) + 8px)}
+body.mobile-nav #toast{bottom:calc(var(--bnav-h) + env(safe-area-inset-bottom,0) + 12px)}
+
+/* ── BANNER INSTALAR PWA ─────────────────────── */
+#installBanner{display:none;position:fixed;bottom:calc(var(--bnav-h) + env(safe-area-inset-bottom,0));left:0;right:0;z-index:49;padding:10px 14px;background:linear-gradient(135deg,#166534,#14532d);border-top:2px solid #22c55e;box-shadow:0 -4px 20px #0005;align-items:center;gap:10px}
+#installBanner .ibtext{flex:1;color:#fff;font-size:14px;font-weight:600;line-height:1.3}
+#installBanner .ibtext small{display:block;font-weight:400;color:#86efac;font-size:12px;margin-top:2px}
+#btnInstall{background:#22c55e;color:#fff;border:none;border-radius:10px;padding:11px 18px;font-size:15px;font-weight:700;cursor:pointer;touch-action:manipulation;white-space:nowrap;flex-shrink:0}
+#btnInstallClose{background:transparent;border:none;color:#86efac;font-size:20px;cursor:pointer;padding:4px;flex-shrink:0;line-height:1}
+
+/* ── MAIN ────────────────────────────────────── */
 main{max-width:1100px;margin:0 auto;padding:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;border-left:8px solid var(--line)}
 .card.GREEN{border-left-color:var(--g)}.card.YELLOW{border-left-color:var(--y)}.card.RED{border-left-color:var(--r)}
@@ -28,32 +55,66 @@ button.b:disabled{opacity:.5;cursor:wait}.row{display:flex;gap:8px;flex-wrap:wra
 .total{font-size:22px;font-weight:800}.prob{color:var(--r);font-size:12px}.ai{color:var(--mut);font-size:12px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .conv{font-size:13px;background:var(--bg);border-radius:8px;padding:8px;margin-top:8px}.conv .out{color:var(--g)}
-#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:9px;display:none;z-index:999;max-width:90vw}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:9px;display:none;z-index:999;max-width:90vw;text-align:center}
 @keyframes fl{from{background:#2fb76766}to{background:transparent}}tr.flash{animation:fl 1.2s}
 input.bad{border-color:var(--r);box-shadow:0 0 0 2px #d3332255}
 h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(3px);z-index:90;display:flex;align-items:center;justify-content:center;padding:12px}
 .modal-card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 50px rgba(0,0,0,0.5);width:100%;max-width:850px;max-height:92vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:16px;z-index:91}
+
+/* ── MOBILE overrides ────────────────────────── */
 @media(max-width:640px){
-  header{padding:8px 10px;gap:6px}
-  header b{font-size:16px}
-  .cnt{width:100%;font-size:12px;order:3;padding:2px 0}
+  #desktopNav{display:none!important}
+  #bottomNav{display:block}
+  body{padding-bottom:0}
+  header{padding:8px 12px;min-height:48px}
+  header .logo{font-size:16px}
+  #printerBadge{font-size:10px;padding:3px 7px}
+  .cnt{display:none}/* quitado del header; aparece en la tarjeta de operaciones */
   main{padding:8px}
-  .card{padding:10px;margin-bottom:10px;border-radius:10px;border-left-width:5px}
+  .card{padding:10px 11px;margin-bottom:10px;border-radius:10px;border-left-width:5px}
   .grid2{grid-template-columns:1fr}
   td input.pn{min-width:110px;font-size:14px}
   td input.q{width:60px;font-size:14px}
   td input.pr{width:74px;font-size:14px}
-  td,th{padding:5px 2px;font-size:12px}
-  button.b{padding:8px 11px;font-size:13px;min-height:36px}
-  button.b.main{padding:10px 14px;font-size:15px;min-height:42px}
+  td,th{padding:5px 2px;font-size:13px}
+  button.b{padding:10px 13px;font-size:14px;min-height:44px;border-radius:10px}
+  button.b.main{padding:12px 16px;font-size:15px;min-height:48px}
   .total{font-size:20px}
   .modal-overlay{padding:0}
-  .modal-card{height:100vh;max-height:100vh;border-radius:0;border:none;padding:12px}
+  .modal-card{height:100dvh;max-height:100dvh;border-radius:0;border:none;padding:12px;padding-bottom:calc(var(--bnav-h) + env(safe-area-inset-bottom,0) + 8px)}
+  input,select,textarea{font-size:16px;/* previene zoom en iOS */}
+  #logoutBtn{display:none}/* solo en mobile se oculta, está en bottom nav */
 }
 </style></head><body>
-<header><div style="display:flex;align-items:center;gap:8px"><b style="font-size:18px;letter-spacing:-0.3px">🌴 Fruver El Oasis</b><span id="printerBadge" class="pill" style="font-size:11.5px;background:#1e3a5f;color:#93c5fd;font-weight:600;padding:3px 9px;border-radius:6px;cursor:pointer" title="Impresora activa según horario">🖨️ OFICINA</span></div><nav id="nav"></nav><span class="cnt" id="cnt"></span><button id="btnInstall" class="b" style="display:none;background:#22c55e;color:#fff;border-color:#16a34a;font-weight:700;padding:5px 10px;font-size:13px" title="Instalar en pantalla de inicio">📲 Instalar</button><button class="b" style="padding:5px 10px" id="logout">Salir</button></header>
-<main id="main"></main><div id="toast"></div><datalist id="dl"></datalist>
+<!-- ── Header ─────────────────────────────────────── -->
+<header>
+  <span class="logo">🌴 Fruver El Oasis</span>
+  <div class="hactions">
+    <span id="printerBadge" title="Impresora activa según horario">🖨️ OFICINA</span>
+    <span class="cnt" id="cnt"></span>
+    <button class="b" style="padding:6px 11px;font-size:13px" id="logoutBtn">Salir</button>
+  </div>
+  <!-- Nav solo en escritorio -->
+  <div id="desktopNav"></div>
+</header>
+
+<!-- ── Banner de instalación PWA (bottom, mobile) ──── -->
+<div id="installBanner">
+  <div class="ibtext">
+    📲 Instalar app en celular
+    <small>Funciona sin abrir el navegador</small>
+  </div>
+  <button id="btnInstall">Instalar</button>
+  <button id="btnInstallClose" title="Cerrar">✕</button>
+</div>
+
+<!-- ── Bottom nav (mobile) ────────────────────────── -->
+<nav id="bottomNav"><div class="bnav-inner" id="bnav"></div></nav>
+
+<main id="main"></main>
+<div id="toast"></div>
+<datalist id="dl"></datalist>
 <script>
 const $=s=>document.querySelector(s);
 const cop=n=>n==null?'—':'$'+Math.round(n).toLocaleString('es-CO');
@@ -1461,11 +1522,12 @@ if(typeof window!=='undefined'){
   window.addEventListener('beforeinstallprompt',e=>{
     e.preventDefault();
     deferredPrompt=e;
+    const banner=$('#installBanner');
+    if(banner)banner.style.display='flex';
     const btn=$('#btnInstall');
     if(btn){
-      btn.style.display='inline-flex';
       btn.onclick=async()=>{
-        btn.style.display='none';
+        if(banner)banner.style.display='none';
         if(deferredPrompt){
           deferredPrompt.prompt();
           await deferredPrompt.userChoice;
@@ -1473,25 +1535,54 @@ if(typeof window!=='undefined'){
         }
       };
     }
+    const closeBtn=$('#btnInstallClose');
+    if(closeBtn)closeBtn.onclick=()=>{if(banner)banner.style.display='none'};
   });
   window.addEventListener('appinstalled',()=>{
-    const btn=$('#btnInstall');
-    if(btn)btn.style.display='none';
-    toast('¡App Fruver El Oasis instalada en tu celular!');
+    const banner=$('#installBanner');
+    if(banner)banner.style.display='none';
+    toast('✅ App Fruver El Oasis instalada en tu celular!');
   });
 }
 
+/* Detecta mobile (<=640) para activar bottom nav */
+const isMobile=()=>window.innerWidth<=640;
+function applyNavLayout(){
+  if(isMobile()){document.body.classList.add('mobile-nav')}
+  else{document.body.classList.remove('mobile-nav')}
+}
+window.addEventListener('resize',applyNavLayout);
+
 function fillDl(){$('#dl').replaceChildren(...S.products.filter(p=>p.active).map(p=>h('option',{value:p.name})))}
-function nav(){const tabs=[['ops','Operación'],['sales','Ventas'],['customers','Clientes']];
+
+/* Iconos y etiquetas para el bottom nav mobile */
+const TAB_ICONS={ops:['📋','Pedidos'],sales:['🧾','Ventas'],customers:['👥','Clientes'],'delivery-persons':['🚴','Repartos'],users:['👤','Usuarios'],prices:['💲','Precios'],zones:['📍','Zonas'],reports:['📊','Reportes']};
+
+function nav(){
+  const tabs=[['ops','Operación'],['sales','Ventas'],['customers','Clientes']];
   if(S.me.role==='ADMIN')tabs.push(['delivery-persons','Repartidores'],['users','Usuarios'],['prices','Precios'],['zones','Zonas Domicilio'],['reports','Reportes']);
-  $('#nav').replaceChildren(...tabs.map(([k,l])=>h('button',{class:S.tab===k?'on':'',onclick:()=>{S.tab=k;nav();show()}},l)))}
+  // Desktop nav (tabs horizontales)
+  $('#desktopNav').replaceChildren(...tabs.map(([k,l])=>h('button',{class:S.tab===k?'on':'',onclick:()=>{S.tab=k;nav();show()}},l)));
+  // Mobile bottom nav
+  const mobileCore=[['ops','Pedidos'],['sales','Ventas'],['customers','Clientes']];
+  const mobileAdmin=[['users','Usuarios'],['prices','Precios']];
+  const mobileTabs=S.me.role==='ADMIN'?[...mobileCore,...mobileAdmin]:mobileCore;
+  $('#bnav').replaceChildren(...mobileTabs.map(([k])=>{
+    const [ico,lbl]=TAB_ICONS[k]||['⚙️',k];
+    return h('button',{class:S.tab===k?'on':'',onclick:()=>{S.tab=k;nav();show()}},
+      h('span',{class:'ico'},ico),lbl);
+  }));
+  // Ajustar columnas del grid según cantidad de tabs mobile
+  const n=mobileTabs.length;
+  $('#bnav').style.gridTemplateColumns=`repeat(${n},1fr)`;
+}
 function show(){({ops:()=>{renderOps()},sales:renderSales,'delivery-persons':renderDeliveryPersons,users:renderUsers,prices:renderPrices,customers:renderCustomers,zones:renderDeliveryZones,reports:renderReports})[S.tab]()}
-$('#logout').onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'X-XSRF-TOKEN':csrf()}});location='/login.html'};
+$('#logoutBtn').onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'X-XSRF-TOKEN':csrf()}});location='/login.html'};
 (async()=>{
   S.me=await api('/api/me');
   S.products=await api('/api/products');
   try{S.deliveryPersons=await api('/api/delivery-persons')}catch(e){S.deliveryPersons=[]}
-  fillDl();nav();await updatePrinterStatus();await loadOrders();
+  fillDl();nav();applyNavLayout();await updatePrinterStatus();await loadOrders();
   let t;
   const connectSse=()=>{
     try{

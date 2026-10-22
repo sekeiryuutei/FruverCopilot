@@ -31,7 +31,7 @@ class El{
 const body=new El('body');const doc={activeElement:null,cookie:'',body,
   createElement:t=>new El(t),createTextNode:t=>new TextN(t),
   querySelector:s=>body.querySelector(s),querySelectorAll:s=>body.querySelectorAll(s)};
-for(const id of['main','toast','cnt','dl','nav','logout']){const e=new El('div');e.id=id;body.append(e)}
+for(const id of ['main','toast','cnt','dl','desktopNav','bnav','logoutBtn','installBanner','btnInstall','btnInstallClose','printerBadge']){const e=new El('div');e.id=id;body.append(e)}
 /* ---------- datos ---------- */
 const products=[{id:1,name:'Papa criolla',unit:'LB',active:true,prices:{RETAIL:3000,WHOLESALE:2610}},
   {id:2,name:'Aguacate Hass',unit:'UNIDAD',active:true,prices:{RETAIL:4500,WHOLESALE:3920}},
@@ -43,6 +43,8 @@ const mkOrder=(id,version=1)=>({id,version,status:'REVIEW',conversationStatus:'R
          {id:102,productId:1,productName:'Papa criolla',mentioned:'papa criolla',quantity:4,unit:'LB',manualPrice:null,aiSummary:'Papa criolla 4 LB'}]});
 let serverOrders=[mkOrder(10005)];const puts=[],calls=[];
 const ctx={document:doc,console,setTimeout,clearTimeout,setInterval:()=>0,scrollTo(){},confirm:()=>true,location:{},Intl,Date,JSON,Math,Object,Map,Set,Array,Promise,Error,Number,String,
+  window:{innerWidth:1024,addEventListener:()=>{}},
+  navigator:{serviceWorker:{register:()=>Promise.resolve()}},
   EventSource:class{addEventListener(){}},
   fetch:async(url,o={})=>{calls.push({url,method:o.method||'GET',body:o.body?JSON.parse(o.body):null});let data=null;
     if(url==='/api/me')data={username:'admin',role:'ADMIN'};else if(url.startsWith('/api/products')&&(o.method||'GET')==='GET')data=products;
