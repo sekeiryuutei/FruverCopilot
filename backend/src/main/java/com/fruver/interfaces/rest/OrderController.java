@@ -110,6 +110,13 @@ public class OrderController {
         return java.util.Map.of("status", "MERGED", "sourceOrderId", id, "targetOrderId", targetId);
     }
 
+    @PostMapping("/{id}/reopen")
+    public OrderView reopen(@PathVariable long id) {
+        edits.reopen(id, Actor.name());
+        hub.orderChanged(id);
+        return views.get(id);
+    }
+
     /** [PREGUNTAR AL CLIENTE] / [ENVIAR CONFIRMACION] / [HISTORIAL CHAT]: enviar mensaje al cliente vía WhatsApp. */
     @PostMapping(value = {"/{id}/reply", "/{id}/messages"})
     public OrderView reply(@PathVariable long id, @RequestBody MessageSendBody b) {

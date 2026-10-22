@@ -58,7 +58,7 @@ public record AppProperties(
             if (officePort <= 0) officePort = (port > 0) ? port : 9100;
             if (homeHost == null || homeHost.isBlank()) homeHost = (host != null && !host.isBlank()) ? host : "127.0.0.1";
             if (homePort <= 0) homePort = (port > 0) ? port : 9100;
-            if (wholesaleGraceSeconds < 0) wholesaleGraceSeconds = 120;
+            if (wholesaleGraceSeconds < 0) wholesaleGraceSeconds = 300;
         }
 
         public String currentTargetPrinter(String timezone) {

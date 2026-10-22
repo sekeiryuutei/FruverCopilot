@@ -402,4 +402,28 @@ class SaleFlowIntegrationTest {
         assertNotNull(finalSale.saleId());
         assertEquals("APPROVED", orders.find(order1).orElseThrow().status());
     }
+
+    @Test
+    void reopenOrderAllowsAddingMoreItems() {
+        String phone = "570000000077";
+        long orderId = newOrder(phone, papaCriolla("2", "LB"));
+        int v = orders.find(orderId).orElseThrow().version();
+        var sale = sales.approve(orderId, v, "cajero1");
+        assertNotNull(sale.saleId());
+        assertEquals("APPROVED", orders.find(orderId).orElseThrow().status());
+
+        // Reopen order to add more items
+        edits.reopen(orderId, "operador1");
+        var reopened = orders.find(orderId).orElseThrow();
+        assertEquals("REVIEW", reopened.status());
+        assertNull(reopened.saleId());
+
+        // Now more items can be updated/added
+        int vAfter = reopened.version();
+        edits.update(orderId, new OrderEditService.OrderEdit(vAfter, "Cliente 77", null, null,
+                List.of(new OrderEditService.ItemEdit(null, papaId(), new BigDecimal("5"), "LB", null, null))), "operador1");
+        var items = orders.items(orderId);
+        assertEquals(1, items.size());
+        assertEquals(0, new BigDecimal("5.000").compareTo(items.get(0).quantity()));
+    }
 }

@@ -188,6 +188,8 @@ const rows=c=>c.querySelector('tbody').kids;const btn=(c,t)=>c.querySelectorAll(
   ok('Pedido 10008 aprobado se dibuja en tablero',!!card8);
   ok('Pedido 10008 muestra badge de FOTO',card8&&card8.textContent.includes('FOTO'));
   ok('Pedido 10008 muestra impreso en OFICINA',card8&&card8.textContent.includes('IMPRESO EN OFICINA'));
+  ok('Pedido 10008 muestra VENDIDA',card8&&card8.textContent.includes('VENDIDA'));
+  ok('Pedido 10008 muestra botón Agregar más cosas',card8&&card8.querySelectorAll('button').some(b=>b.textContent.includes('Agregar más cosas')));
   ok('Pedido 10008 muestra botón Ver Foto de Lista',card8&&card8.querySelectorAll('button').some(b=>b.textContent.includes('Ver Foto')));
   ok('Pedido 10009 muestra DUDOSO / REVISAR',card9&&card9.textContent.includes('DUDOSO')&&card9.textContent.includes('Audio poco claro'));
   ok('Pedido 10009 muestra FALLÓ IMPRESIÓN (CASA)',card9&&card9.textContent.includes('FALLÓ IMPRESIÓN (CASA)'));

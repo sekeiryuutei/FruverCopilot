@@ -119,20 +119,25 @@ flowchart TD
 
 ## 3. Flujos Operativos
 
-### 3.1. Flujo Mayorista (Recepción Ágil y Comandas)
+### 3.1. Flujo Mayorista (Recepción Ágil, Ventas y Comandas)
 
 Es el modo por defecto (`AUTO_PRINT_WHOLESALE=true`):
 
 1. **Recepción del Mensaje/Foto:** El cliente envía su lista por WhatsApp (por ejemplo, una foto de una comanda manuscrita o un mensaje de texto como `"deme 2 de la larga y 20 de papa"`).
-2. **Anexado Automático antes de Imprimir:** 
-   - Si el cliente ya tenía un pedido reciente que aún **no se ha impreso físicamente**, el sistema no crea pedidos divididos ni interroga; anexa los nuevos ítems al pedido existente.
-3. **Margen de Gracia (`WHOLESALE_GRACE_SECONDS`):**
-   - El pedido entra en estado `REVIEW` con `conversation_status = 'WAITING_FOR_MORE'` durante un tiempo configurable (por defecto 60 segundos).
-   - Esto permite que si el cliente envía 3 fotos o varios mensajes consecutivos de adiciones, todos se unan en una sola orden.
-4. **Auto-Aprobación e Impresión:**
-   - Una vez transcurrido el margen sin nuevos mensajes, el sistema aprueba la orden automáticamente y envía el trabajo a la impresora térmica correspondiente.
-5. **Comanda con Espacios Manuales:**
-   - El ticket se imprime con el nombre literal, las cantidades reconocidas, casillas en blanco para la unidad `[    ]` y espacios para el valor `$ [        ]`.
+2. **Anexado Continuo dentro del Margen de 5 Minutos:** 
+   - Mientras la orden no se haya impreso y el cliente continúe enviando mensajes o fotos dentro del margen de **5 minutos** (`WHOLESALE_GRACE_SECONDS=300`), todos los ítems se acumulan y fusionan en la misma comanda.
+3. **Auto-Aprobación e Impresión Térmica:**
+   - Una vez transcurridos los 5 minutos sin nuevas adiciones (o si el operario presiona *"MARCAR COMO VENDIDO"* en cualquier momento), la orden se aprueba, genera la comanda y se envía a la impresora térmica.
+4. **Facturas Impresas se Consideran VENDIDAS:**
+   - Al imprimirse con éxito en papel, la factura queda marcada con el badge destacado **`✅ VENDIDA (🖨️ IMPRESO EN ...)`**.
+5. **Nuevos Pedidos vs. Anexado Opcional:**
+   - Si el cliente vuelve a escribir después de los 5 minutos (es decir, cuando su factura ya fue impresa/vendida), el mensaje ingresa automáticamente como una **NUEVA FACTURA**.
+   - El operario puede:
+     - Dejarlo como nueva factura independiente para facturarla por separado.
+     - O si lo desea, pulsar **`➕ Anexar a Pedido #...`** para consolidarla con la venta anterior.
+     - Desde la tarjeta de una venta ya impresa, el operario también cuenta con el botón **`➕ Agregar más cosas`** para reabrirla y agregar productos si el cliente solicita adiciones de última hora.
+6. **Comanda con Espacios Manuales:**
+   - El ticket se imprime con el nombre literal, cantidades reconocidas, casillas en blanco para la unidad `[    ]` y espacios para el valor `$ [        ]`.
    - El personal de alistamiento y despacho completa a mano los detalles que conoce del cliente.
 
 ### 3.2. Flujo Minorista (Cotización y Catálogo Estricto)
@@ -178,7 +183,7 @@ cp .env.example .env
 | `GEMINI_API_KEY` | Clave de Google Gemini (recomendado para fotos y texto) | `AIzaSy...` |
 | `OPENAI_API_KEY` | Clave de OpenAI (opcional para Whisper o GPT-4o) | `sk-...` |
 | `AUTO_PRINT_WHOLESALE` | Auto-aprobación e impresión mayorista | `true` |
-| `WHOLESALE_GRACE_SECONDS`| Segundos de espera por adiciones antes de imprimir | `60` |
+| `WHOLESALE_GRACE_SECONDS`| Segundos de espera por adiciones antes de imprimir | `300` (5 minutos) |
 | `PRINTER_ENABLED` | Activar impresión en papel | `true` (o `false` para pruebas en log) |
 | `PRINTER_HOST` | IP de la impresora principal | `192.168.1.200` |
 | `PRINTER_PORT` | Puerto RAW ESC/POS | `9100` |
@@ -402,3 +407,4 @@ El sistema incluye scripts automatizados de respaldo de la base de datos Postgre
 
 ---
 *Documentación generada y verificada para la versión 1.0.0 (Rama `mayorista`).*
+

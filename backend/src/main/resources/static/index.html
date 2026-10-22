@@ -473,7 +473,7 @@ function doneCard(o){
   const cardEl=h('div',{class:'card GREEN',dataset:{id:o.id}});
   const printerLoc = o.printedPrinter || o.targetPrinter || (S.printerStatus?.activePrinter || 'OFICINA');
   const printPill = ps==='PRINTED'
-    ? h('span',{class:'pill GREEN'},`🖨️ IMPRESO EN ${printerLoc}`)
+    ? h('span',{class:'pill GREEN',style:'font-weight:800;font-size:12.5px;background:#15803d;color:#fff'},`✅ VENDIDA (🖨️ IMPRESO EN ${printerLoc})`)
     : ps==='PRINT_FAILED'
       ? h('span',{class:'pill RED',style:'font-weight:800'},`🔴 FALLÓ IMPRESIÓN (${printerLoc})`)
       : h('span',{class:'pill YELLOW'},`🖨️ EN COLA (${printerLoc})`);
@@ -529,6 +529,15 @@ function doneCard(o){
       await loadOrders();
     }catch(e){toast(e.message)}
   }},ps==='PRINT_FAILED'?'🔴 REINTENTAR IMPRESIÓN':'🖨️ REIMPRIMIR'));
+
+  tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700;background:rgba(59,130,246,0.15);color:#60a5fa;border:1px solid rgba(59,130,246,0.3)',title:'Reabrir la orden para agregar o modificar productos',onclick:async()=>{
+    if(!confirm(`¿Deseas agregar más cosas al Pedido #${o.id}? La comanda volverá al tablero para que puedas ajustar productos y volver a imprimirla.`))return;
+    try{
+      await api(`/api/orders/${o.id}/reopen`,{method:'POST'});
+      toast(`✓ Pedido #${o.id} reabierto para agregar más cosas`);
+      await loadOrders();
+    }catch(e){toast(e.message)}
+  }},'➕ Agregar más cosas'));
 
   if(o.hasImage){
     tools.append(h('button',{class:'b',style:'background:#7c3aed;color:#fff;font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>showImageModal(o.id)},'🖼️ Ver Foto'));
@@ -719,13 +728,13 @@ function card(o){
 
   if(o.pendingDispatchOrderId){
     el.append(h('div',{class:'banner',style:'background:#1e3a5f;border-left:4px solid #3b82f6;margin-bottom:10px'},
-      `ℹ️ Este cliente tiene el Pedido #${o.pendingDispatchOrderId} aprobado pendiente de despacho. `,
-      h('div',{style:'margin-top:6px;display:flex;gap:8px;align-items:center'},
+      `ℹ️ Este cliente tiene el Pedido #${o.pendingDispatchOrderId} vendido. `,
+      h('div',{style:'margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap'},
         h('button',{class:'b main',style:'background:#2563eb',onclick:async()=>{
           if(!confirm(`¿Anexar estos productos al Pedido #${o.pendingDispatchOrderId}? El pedido consolidado quedará en revisión.`))return;
           try{await api(`/api/orders/${o.id}/merge-into/${o.pendingDispatchOrderId}`,{method:'POST'});toast(`✓ Productos anexados al Pedido #${o.pendingDispatchOrderId}`);await loadOrders()}catch(e){toast(e.message)}
         }},`➕ Anexar a Pedido #${o.pendingDispatchOrderId}`),
-        h('span',{class:'mut'},'o puedes aprobarlo como factura independiente')
+        h('span',{class:'mut'},'(o déjalo así para aprobarlo como nueva factura independiente)')
       )
     ));
   }
@@ -733,7 +742,7 @@ function card(o){
   if(o.aiStatus==='FAILED')el.append(h('div',{class:'banner'},'🔴 IA NO DISPONIBLE — digita el pedido manualmente'));
   if(o.aiStatus==='TRANSCRIPTION_FAILED')el.append(h('div',{class:'banner'},'🎙️ 🔴 TRANSCRIPCIÓN FALLIDA — escucha el audio y digita manualmente'));
   if(o.conversationStatus==='WAITING_FOR_CUSTOMER')el.append(h('div',{class:'ai'},'⏳ Esperando respuesta del cliente'));
-  if(o.conversationStatus==='WAITING_FOR_MORE')el.append(h('div',{class:'banner',style:'background:#064e3b;border-left:4px solid #10b981;color:#ecfdf5;font-weight:600;margin-bottom:8px'},'⏳ Esperando si el cliente manda más cosas (se imprimirá automáticamente al finalizar la espera, o pulsa "MARCAR COMO VENDIDO" ya mismo)'));
+  if(o.conversationStatus==='WAITING_FOR_MORE')el.append(h('div',{class:'banner',style:'background:#064e3b;border-left:4px solid #10b981;color:#ecfdf5;font-weight:600;margin-bottom:8px'},'⏳ Esperando si el cliente manda más cosas (5 min de margen). Se imprimirá y marcará como vendida automáticamente, o pulsa "MARCAR COMO VENDIDO" ya mismo'));
   if(o.messageText)el.append(h('div',{class:'msg'},'“'+o.messageText+'”'));
   const tools=h('div',{class:'row',style:'gap:8px;flex-wrap:wrap;align-items:center'});
   tools.append(h('button',{class:'b main',style:'background:#16a34a;border-color:#15803d;color:#fff;font-size:14px;padding:8px 16px;font-weight:800;cursor:pointer',title:'Marcar como vendido y generar factura',onclick:()=>{

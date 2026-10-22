@@ -348,6 +348,28 @@ public class OrderEditService {
         audit.log(user, "ORDER_MERGED", sourceOrderId, null, Map.of("targetOrderId", targetOrderId));
     }
 
+    @Transactional
+    public void reopen(long orderId, String user) {
+        OrderRow order = orders.findForUpdate(orderId)
+                .orElseThrow(() -> new ApiException(404, "ORDER_NOT_FOUND", "Pedido no encontrado"));
+        Long prevSaleId = jdbc.sql("SELECT id FROM sale WHERE order_id = :id").param("id", orderId).query(Long.class).optional().orElse(null);
+        if (prevSaleId != null) {
+            jdbc.sql("DELETE FROM print_job WHERE sale_id = :s").param("s", prevSaleId).update();
+            jdbc.sql("DELETE FROM sale_item WHERE sale_id = :s").param("s", prevSaleId).update();
+            jdbc.sql("DELETE FROM sale WHERE id = :s").param("s", prevSaleId).update();
+        }
+        jdbc.sql("""
+                UPDATE orders
+                SET status = 'REVIEW',
+                    conversation_status = 'WAITING_FOR_MORE',
+                    review_status = 'GREEN',
+                    approved_at = NULL,
+                    version = version + 1
+                WHERE id = :id
+                """).param("id", orderId).update();
+        audit.log(user, "ORDER_REOPENED", orderId, null, Map.of());
+    }
+
     private void validate(ItemEdit e) {
         if (e.productId() == null) throw new ApiException(422, "ITEM_INVALID", "Cada linea necesita un producto del catálogo");
         if (e.quantity() == null || e.quantity().signum() <= 0 || e.quantity().compareTo(new BigDecimal("100000")) > 0) {
