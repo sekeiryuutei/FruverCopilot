@@ -96,7 +96,7 @@ public class OrderViewService {
             out.add(new OrderView(r.id(), r.version(), r.status(), r.conversationStatus(), r.reviewStatus(),
                     r.inputType(), r.aiStatus(), r.aiNote(), r.suggestedReply(),
                     active ? ConfirmationMessageBuilder.build(quote) : null,
-                    new OrderView.CustomerInfo(r.customerId(), r.customerName(), Phones.mask(r.customerPhone()), r.customerType()),
+                    new OrderView.CustomerInfo(r.customerId(), r.customerName(), Phones.mask(r.customerPhone()), r.customerPhone(), r.customerType()),
                     r.address(), r.notes(), r.receivedAt(), texts.get(r.id()), r.hasAudio(), r.hasImage(), r.corrected(),
                     itemViews, quote.total(), quote.complete(), r.saleId(), r.printStatus(),
                     r.dispatchedAt(), r.dispatchedBy(), msgCounts.getOrDefault(r.id(), 0), pendingDispatchOrderId,

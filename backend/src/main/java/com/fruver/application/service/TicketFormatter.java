@@ -9,7 +9,8 @@ import java.util.List;
 
 /**
  * Formato de ticket y comanda mayorista en columnas fijas (32 = papel 58mm, 42/48 = 80mm).
- * Diseñado según el talonario físico de Fruver El Oasis con espacios en blanco para precios manuales.
+ * Diseñado según el talonario físico de Fruver El Oasis.
+ * SIN precios ni totales: el personal los calcula manualmente.
  */
 public final class TicketFormatter {
 
@@ -24,74 +25,56 @@ public final class TicketFormatter {
         String sep = "-".repeat(cols);
         String doubleSep = "=".repeat(cols);
 
+        // Reimpresión
         if (t.reprint()) out.add(new TicketLine(center("*** REIMPRESION ***", cols), true));
-        if (t.requiresVerification()) {
-            out.add(new TicketLine(center("*** ATENCION: REVISAR LINEAS DUDOSAS ***", cols), true));
-            if (t.verificationReason() != null && !t.verificationReason().isBlank()) {
-                wrap("NOTA: " + t.verificationReason(), cols, true, out);
-            }
-            out.add(new TicketLine(sep, false));
-        }
 
-        out.add(new TicketLine(center(t.shop(), cols), true));
+        // Encabezado: nombre del negocio bien grande
+        out.add(new TicketLine(center("FRUVER EL OASIS", cols), true));
         out.add(new TicketLine(center("Frutas y Verduras al por Mayor", cols), false));
         out.add(new TicketLine(sep, false));
 
+        // Número de pedido grande y prominente
         if (cols >= 40) {
-            out.add(new TicketLine("[X] PEDIDO         [ ] COTIZACION", false));
-            out.add(new TicketLine("[ ] CUENTA COBRO   [ ] REMISION", false));
-            out.add(new TicketLine(sep, false));
-            out.add(new TicketLine("PEDIDO #" + t.orderNumber() + "   FECHA: " + t.at().format(DATE), true));
+            out.add(new TicketLine(center("*** PEDIDO #" + t.orderNumber() + " ***", cols), true));
+            out.add(new TicketLine("FECHA: " + t.at().format(DATE), false));
         } else {
-            out.add(new TicketLine("[X] PEDIDO     [ ] COTIZACION", false));
-            out.add(new TicketLine("[ ] CUENTA     [ ] REMISION", false));
-            out.add(new TicketLine(sep, false));
-            out.add(new TicketLine("PEDIDO #" + t.orderNumber(), true));
+            out.add(new TicketLine(center("** PEDIDO #" + t.orderNumber() + " **", cols), true));
             out.add(new TicketLine("FECHA: " + t.at().format(DATE), false));
         }
 
+        out.add(new TicketLine(sep, false));
+
+        // Datos del cliente
         wrap("CLIENTE: " + nz(t.customer()), cols, true, out);
         if ("WHOLESALE".equals(t.customerType())) out.add(new TicketLine("TIPO: MAYORISTA", false));
-        String nitFill = "_".repeat(Math.max(4, cols - 9));
-        out.add(new TicketLine("NIT/C.C: " + nitFill, false));
         if (t.phone() != null && !t.phone().isBlank()) out.add(new TicketLine("TEL: " + t.phone(), false));
         if (t.address() != null && !t.address().isBlank()) wrap("DIRECCION: " + t.address(), cols, false, out);
         if (t.deliveryPersonName() != null && !t.deliveryPersonName().isBlank()) wrap("REPARTIDOR: " + t.deliveryPersonName(), cols, true, out);
         if (t.notes() != null && !t.notes().isBlank()) wrap("OBS: " + t.notes(), cols, false, out);
 
         out.add(new TicketLine(doubleSep, false));
+        // Cabecera de la tabla: solo CANT y DESCRIPCION (sin precios)
         String colHeader = cols >= 40
-                ? leftRight("CANT.  DESCRIPCION", "VR.UNIT  VR.TOTAL", cols)
-                : leftRight("CANT. DESCRIPCION", "VR.U  VR.TOT", cols);
+                ? leftRight("CANT.  DESCRIPCION", "UNIDAD", cols)
+                : leftRight("CANT.", "PRODUCTO", cols);
         out.add(new TicketLine(colHeader, true));
         out.add(new TicketLine(doubleSep, false));
 
-        String blankSlots = cols >= 40 ? "[      ]  [       ]" : "[   ] [    ]";
         for (TicketData.Line l : t.lines()) {
             wrap(l.name(), cols, true, out);
-            boolean hasPrice = l.price() != null && l.price().compareTo(BigDecimal.ZERO) > 0
-                    && l.subtotal() != null && l.subtotal().compareTo(BigDecimal.ZERO) > 0;
-
             String left = "  " + Money.qty(l.quantity()) + " " + unitLabel(l.unit());
-            if (hasPrice) {
-                left += " x " + Money.format(l.price());
-                out.add(new TicketLine(leftRight(left, Money.format(l.subtotal()), cols), false));
-            } else {
-                out.add(new TicketLine(leftRight(left, blankSlots, cols), false));
-            }
+            // Sin precios: solo la cantidad y unidad
+            out.add(new TicketLine(left, false));
         }
 
         out.add(new TicketLine(doubleSep, false));
-        boolean hasTotal = t.total() != null && t.total().compareTo(BigDecimal.ZERO) > 0;
-        if (hasTotal) {
-            out.add(new TicketLine(leftRight("TOTAL", Money.format(t.total()), cols), true));
-        } else {
-            String blankTotal = cols >= 40 ? "[                 ]" : "[           ]";
-            out.add(new TicketLine(leftRight("TOTAL $:", blankTotal, cols), true));
-        }
+        // Espacio manual para que el personal anote el total
+        String blankTotal = cols >= 40 ? "[                    ]" : "[              ]";
+        out.add(new TicketLine(leftRight("TOTAL $:", blankTotal, cols), true));
         out.add(new TicketLine(sep, false));
-        out.add(new TicketLine("RECIBI:  " + nitFill, false));
-        out.add(new TicketLine("NIT/CC:  " + nitFill, false));
+        // Firma del receptor
+        String nitFill = "_".repeat(Math.max(4, cols - 9));
+        out.add(new TicketLine("RECIBI: " + nitFill, false));
         out.add(new TicketLine(sep, false));
         return out;
     }
@@ -100,11 +83,11 @@ public final class TicketFormatter {
         if (unit == null) return "UN";
         return switch (unit.toUpperCase()) {
             case "UNIDAD" -> "UN";
-            case "BULTO" -> "BLT";
+            case "BULTO"  -> "BLT";
             case "ARROBA" -> "ARR";
-            case "CAJA" -> "CJA";
-            case "ATADO" -> "ATD";
-            case "BOLSA" -> "BLS";
+            case "CAJA"   -> "CJA";
+            case "ATADO"  -> "ATD";
+            case "BOLSA"  -> "BLS";
             default -> unit;
         };
     }
@@ -146,4 +129,3 @@ public final class TicketFormatter {
 
     private static String nz(String s) { return s == null ? "" : s; }
 }
-

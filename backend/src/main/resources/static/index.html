@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#14361f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="El Oasis">
-<title>Fruver El Oasis · Control Mayorista</title><link rel="icon" href="/icon-192.svg"><link rel="manifest" href="/manifest.json"><link rel="apple-touch-icon" href="/icon-192.svg">
+<title>Fruver El Oasis</title><link rel="icon" href="/oasis-logo.png"><link rel="manifest" href="/manifest.json"><link rel="apple-touch-icon" href="/oasis-logo.png">
 <style>
 :root{--bg:#f4f6f4;--card:#fff;--ink:#14231a;--mut:#607066;--line:#dbe3dd;--g:#1f9d55;--y:#d99a00;--r:#d33;--brand:#14361f;--bnav-h:64px}
 @media (prefers-color-scheme:dark){:root{--bg:#0e1712;--card:#16261d;--ink:#e9f2ec;--mut:#93a89b;--line:#274233;--brand:#0a1f12}}
@@ -89,7 +89,7 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
 </style></head><body>
 <!-- ── Header ─────────────────────────────────────── -->
 <header>
-  <span class="logo">🌴 Fruver El Oasis</span>
+  <span class="logo" style="display:flex;align-items:center;gap:6px"><img src="/oasis-logo.png" alt="Oasis" style="height:28px;width:auto;border-radius:4px;object-fit:contain" onerror="this.style.display='none'"><b>Fruver El Oasis</b></span>
   <div class="hactions">
     <span id="printerBadge" title="Impresora activa según horario">🖨️ OFICINA</span>
     <span class="cnt" id="cnt"></span>
@@ -287,7 +287,9 @@ async function showTicket(saleId){try{const t=await api(`/api/sales/${saleId}/ti
 async function showTicketByOrder(orderId){try{const t=await api(`/api/orders/${orderId}/ticket`);showTicketModal(t)}catch(e){toast(e.message)}}
 
 const emptyMsg=h('p',{class:'mut'},'Sin pedidos pendientes. Cuando llegue uno aparece aquí solo.');
-const doneTitle=h('h3',{},'Facturados hoy (Comandas)');
+const doneTitle=h('h3',{},'Confirmados hoy');
+/** Seleccion multiple para reimprimir */
+const reprintSel=new Set();
 /** Reconciliación con llave: solo se crean/reemplazan las tarjetas que cambiaron; las demás no se tocan. */
 function renderOps(){
   const rank={RED:0,YELLOW:1,GREEN:2};
@@ -296,7 +298,7 @@ function renderOps(){
   done.sort((a,b)=>b.id-a.id);
   const c={GREEN:0,YELLOW:0,RED:0};active.forEach(o=>c[o.reviewStatus]!==undefined&&c[o.reviewStatus]++);
   $('#cnt').textContent=`Pedidos: ${active.length}  🟢 ${c.GREEN}  🟡 ${c.YELLOW}  🔴 ${c.RED}`;
-  for(const id of Object.keys(S.draft))if(!S.orders.some(o=>String(o.id)===id))delete S.draft[id]; // borradores de pedidos que ya no existen
+  for(const id of Object.keys(S.draft))if(!S.orders.some(o=>String(o.id)===id))delete S.draft[id];
   const m=$('#main');
   const existing=new Map([...m.children].filter(n=>n.classList.contains('card')).map(n=>[n.dataset.id,n]));
 
@@ -315,21 +317,48 @@ function renderOps(){
     if(at) at.textContent = `⚠️ ¡ATENCIÓN! Hay ${failedCount} pedido(s) sin imprimir`;
   }
 
+  // Toolbar con acciones colapsables
+  let toolbarExpanded = false;
+  const actionsPanel = h('div',{style:'display:none;border-top:1px solid var(--line);padding-top:10px;margin-top:10px;display:none'},
+    h('div',{style:'display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px'},
+      h('button',{class:'b main',style:'font-size:14.5px;padding:9px 16px;background:#7c3aed;border-color:#6d28d9;font-weight:700',onclick:()=>triggerCameraUpload()},'📷 Subir Foto de Lista'),
+      h('button',{class:'b',style:'font-size:13.5px;padding:9px 14px;border:1px solid var(--g);color:var(--g)',onclick:()=>openManualOrderModal(true)},'⚡ Venta Rápida (Local)'),
+      h('button',{class:'b',style:'font-size:13.5px;padding:9px 14px',onclick:()=>openManualOrderModal(false)},'➕ Nuevo Pedido (Llamada / Tienda)')
+    )
+  );
+  const toggleBtn = h('button',{class:'b',style:'font-size:22px;padding:6px 14px;font-weight:700;line-height:1',title:'Nuevos pedidos / foto',onclick:()=>{
+    toolbarExpanded=!toolbarExpanded;
+    actionsPanel.style.display=toolbarExpanded?'block':'none';
+    toggleBtn.textContent=toolbarExpanded?'✕':'➕';
+  }},'➕');
+
+  // Multi-select para reimprimir varios
+  const reprintSelBtn = h('button',{class:'b',style:'height:38px;font-size:13.5px;font-weight:700;background:#f59e0b;color:#000;border-color:#f59e0b;display:none',id:'reprintSelBtn',onclick:async()=>{
+    if(!reprintSel.size){toast('Marca los pedidos a reimprimir');return}
+    const ids=[...reprintSel];
+    toast(`Reimprimiendo ${ids.length} pedido(s)... ⏳`);
+    for(const id of ids){
+      try{await api(`/api/orders/${id}/reprint`,{method:'POST'})}catch(e){toast('Error pedido #'+id+': '+e.message)}
+    }
+    reprintSel.clear();document.querySelectorAll('.reprint-chk').forEach(c=>{c.checked=false});
+    reprintSelBtn.style.display='none';reprintSelBtn.textContent='🖨️ Reimprimir seleccionados (0)';
+    await updatePrinterStatus();await loadOrders();
+  }},'🖨️ Reimprimir seleccionados (0)');
+
   const opsBar = existing.get('toolbar') || h('div',{class:'card',dataset:{id:'toolbar'},style:'padding:12px 14px;margin-bottom:12px;border-left:6px solid var(--g);background:var(--card)'},
-    h('div',{style:'display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px'},
+    h('div',{style:'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px'},
       h('div',{},
-        h('b',{style:'font-size:17px'},'Control Mayorista · Comandas'),
-        h('span',{class:'mut',id:'toolbarStats',style:'margin-left:10px;font-size:13px'},`Activos: ${active.length} · Facturados hoy: ${done.length}`)
+        h('b',{style:'font-size:17px'},'🌴 Fruver El Oasis'),
+        h('span',{class:'mut',id:'toolbarStats',style:'margin-left:10px;font-size:13px'},`Activos: ${active.length} · Confirmados hoy: ${done.length}`)
       ),
-      h('div',{style:'display:flex;gap:8px;flex-wrap:wrap;align-items:center'},
-        h('button',{class:'b main',style:'font-size:14.5px;padding:9px 16px;background:#7c3aed;border-color:#6d28d9;font-weight:700',onclick:()=>triggerCameraUpload()},'📷 Subir Foto de Lista'),
-        h('button',{class:'b',style:'font-size:13.5px;padding:9px 14px;border:1px solid var(--g);color:var(--g)',onclick:()=>openManualOrderModal(true)},'⚡ Venta Rápida (Local)'),
-        h('button',{class:'b',style:'font-size:13.5px;padding:9px 14px',onclick:()=>openManualOrderModal(false)},'➕ Nuevo Pedido (Llamada / Tienda)')
+      h('div',{style:'display:flex;gap:8px;align-items:center'},
+        toggleBtn
       )
     ),
+    actionsPanel,
     h('div',{style:'display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap'},
-      h('span',{style:'font-size:13px;font-weight:700;color:var(--mut)'},'🔍 Buscar Factura:'),
-      h('input',{id:'quickReprintId',type:'number',placeholder:'# Pedido',style:'width:120px;height:38px;font-size:15px;font-weight:700;text-align:center'}),
+      h('span',{style:'font-size:13px;font-weight:700;color:var(--mut)'},'🔍 Buscar:'),
+      h('input',{id:'quickReprintId',type:'number',placeholder:'# Pedido',style:'width:110px;height:38px;font-size:15px;font-weight:700;text-align:center'}),
       h('button',{class:'b',style:'height:38px;font-size:13.5px;font-weight:700;background:#1e3a5f;color:#93c5fd;border-color:#1e3a5f',onclick:async()=>{
         const idInput=$('#quickReprintId');
         const val=idInput?.value?.trim();
@@ -337,8 +366,7 @@ function renderOps(){
         try{
           await api(`/api/orders/${val}/reprint`,{method:'POST'});
           toast(`✓ Pedido #${val} enviado a reimprimir`);
-          await updatePrinterStatus();
-          await loadOrders();
+          await updatePrinterStatus();await loadOrders();
         }catch(e){toast('Error al reimprimir: '+e.message)}
       }},'🖨️ Reimprimir #'),
       h('button',{class:'b',style:'height:38px;font-size:13.5px',onclick:()=>{
@@ -346,15 +374,16 @@ function renderOps(){
         const val=idInput?.value?.trim();
         if(!val){toast('Digita el número de pedido');return}
         showTicketByOrder(val);
-      }},'🧾 Ver Comanda')
+      }},'🧾 Ver Comanda'),
+      reprintSelBtn
     )
   );
   if(existing.get('toolbar')){
-    const mutEl=opsBar.querySelector('#toolbarStats');if(mutEl)mutEl.textContent=`Activos: ${active.length} · Facturados hoy: ${done.length}`;
+    const mutEl=opsBar.querySelector('#toolbarStats');if(mutEl)mutEl.textContent=`Activos: ${active.length} · Confirmados hoy: ${done.length}`;
   }
   const wanted=[...(alertBanner?[alertBanner]:[]),opsBar,...(active.length?[]:[emptyMsg]),...active.map(o=>cardFor(o,existing)),...(done.length?[doneTitle]:[]),...done.map(o=>cardFor(o,existing))];
   const keep=new Set(wanted);[...m.children].forEach(n=>{if(!keep.has(n))n.remove()});
-  let ref=m.firstElementChild;                       // coloca en orden moviendo solo lo necesario
+  let ref=m.firstElementChild;
   for(const el of wanted){if(el===ref)ref=ref.nextElementSibling;else m.insertBefore(el,ref)}}
 function cardFor(o,existing){
   if(o.status==='APPROVED')delete S.draft[o.id];
@@ -389,13 +418,22 @@ function doneCard(o){
 
   const verifPill = o.requiresVerification
     ? h('span',{class:'pill YELLOW',style:'font-size:12.5px;padding:3px 9px;font-weight:700'},'⚠️ DUDOSO / REVISAR' + (o.verificationReason ? ': ' + o.verificationReason : ''))
-    : h('span',{class:'pill GREEN'},'✅ FACTURADO');
+    : null;
+
+  const chk=h('input',{type:'checkbox',class:'reprint-chk',style:'width:22px;height:22px;cursor:pointer;flex-shrink:0',title:'Seleccionar para reimprimir',onchange:e=>{
+    if(e.target.checked)reprintSel.add(o.id);else reprintSel.delete(o.id);
+    const btn=$('#reprintSelBtn');
+    if(btn){
+      btn.style.display=reprintSel.size>0?'inline-flex':'none';
+      btn.textContent=`🖨️ Reimprimir seleccionados (${reprintSel.size})`;
+    }
+  }});
 
   const convBox=h('div',{class:'conv',dataset:{convFor:o.id},style:S.openConvs.has(o.id)?'margin-top:8px':'display:none'});
   const convBtn=h('button',{class:'b'+(S.openConvs.has(o.id)?' active':''),onclick:()=>{
     if(S.openConvs.has(o.id)){S.openConvs.delete(o.id);convBox.style.display='none';convBtn.classList.remove('active')}
     else{S.openConvs.add(o.id);convBox.style.display='block';convBtn.classList.add('active');refreshConv(o.id,convBox)}
-  }},`💬 Chat (${o.messageCount||0})`);
+  }},`💬 (${o.messageCount||0})`);
   if(S.openConvs.has(o.id)) refreshConv(o.id, convBox);
 
   const itemsSummary = (o.items && o.items.length)
@@ -409,7 +447,7 @@ function doneCard(o){
   const mediaAudioBox = h('div');
   const tools = h('div',{class:'row',style:'gap:8px;margin-top:8px'});
 
-  if(o.saleId) tools.append(h('button',{class:'b main',style:'font-size:14px;padding:9px 15px',onclick:()=>showTicket(o.saleId)},'🧾 Ver factura'));
+  if(o.saleId) tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>showTicket(o.saleId)},'🧾 Ver comanda'));
   tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',onclick:async()=>{
     try{
       await api(`/api/orders/${o.id}/reprint`,{method:'POST'});
@@ -420,39 +458,29 @@ function doneCard(o){
   }},ps==='PRINT_FAILED'?'🔴 REINTENTAR IMPRESIÓN':'🖨️ REIMPRIMIR'));
 
   if(o.hasImage){
-    tools.append(h('button',{class:'b',style:'background:#7c3aed;color:#fff;font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>showImageModal(o.id)},'🖼️ Ver Foto de Lista'));
+    tools.append(h('button',{class:'b',style:'background:#7c3aed;color:#fff;font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>showImageModal(o.id)},'🖼️ Ver Foto'));
   }
   if(o.hasAudio){
     tools.append(h('button',{class:'b',style:'background:#0284c7;color:#fff;font-size:13.5px;padding:9px 14px',onclick:()=>{
       mediaAudioBox.replaceChildren(h('audio',{controls:true,autoplay:true,src:`/api/orders/${o.id}/audio`,style:'height:36px;vertical-align:middle;margin-left:6px'}));
-    }},'▶ Escuchar Audio'));
+    }},'▶ Escuchar'));
     tools.append(mediaAudioBox);
-  }
-
-  if(!o.dispatchedAt&&o.saleId){
-    tools.append(h('button',{class:'b',style:'background:#1e40af;color:#fff;font-size:13.5px;padding:9px 14px',onclick:async()=>{
-      if(!confirm(`¿Marcar Pedido #${o.id} como despachado y avisar al cliente por WhatsApp?`))return;
-      try{await api(`/api/sales/${o.saleId}/dispatch`,{method:'POST'});toast('✓ Pedido marcado como despachado');await loadOrders()}catch(e){toast(e.message)}
-    }},'🚚 Despachar'));
-  }
-  if(o.saleId){
-    tools.append(h('button',{class:'b',style:'font-size:13px;padding:8px 12px',onclick:async()=>{
-      try{await api(`/api/sales/${o.saleId}/send-whatsapp`,{method:'POST'});toast('✓ Factura enviada al cliente por WhatsApp');await loadOrders()}catch(e){toast(e.message)}
-    }},'📱 Factura WhatsApp'));
   }
   tools.append(convBtn);
 
+  const phoneStr = o.customer?.phone || o.customer?.phoneMasked || '';
+  const custLabel = (o.customer?.name ? o.customer.name + ' · ' : '') + phoneStr;
+
   cardEl.append(
-    h('div',{class:'top',style:'gap:6px'},
-      h('b',{style:'font-size:17px'},'#'+o.id),
+    h('div',{class:'top',style:'gap:8px;align-items:center'},
+      chk,
+      h('b',{style:'font-size:22px;color:var(--g);font-weight:900'},'#'+o.id),
       inputPill,
-      h('span',{style:'font-weight:700'},o.customer?.name||o.customer?.phoneMasked||'Cliente'),
+      h('span',{style:'font-weight:700;font-size:15px'},custLabel||'Cliente'),
       o.deliveryPersonName ? h('span',{class:'pill',style:'background:rgba(59,130,246,0.15);color:#60a5fa'},'🛵 '+o.deliveryPersonName) : null,
       h('span',{class:'sp'}),
-      o.total && o.total > 0 ? h('b',{},cop(o.total)) : null,
       verifPill,
       printPill,
-      o.dispatchedAt ? h('span',{class:'pill GREEN'},'🚚 DESPACHADO '+ago(o.dispatchedAt)) : h('span',{class:'pill YELLOW'},'📦 PENDIENTE DESPACHO'),
       h('span',{class:'mut',style:'font-size:12px'},ago(o.receivedAt))
     ),
     o.address ? h('div',{style:'font-size:13px;color:var(--mut);margin:4px 0'}, '📍 ' + o.address) : null,
@@ -522,13 +550,13 @@ function card(o){
     ? h('span',{class:'pill YELLOW',style:'font-size:12.5px;padding:3px 9px;font-weight:700'},'⚠️ DUDOSO / REVISAR' + (o.verificationReason ? ': ' + o.verificationReason : ''))
     : null;
 
-  el.append(h('div',{class:'top'},
+  el.append(h('div',{class:'top',style:'align-items:center;gap:8px'},
     inputPill,
-    h('b',{},'PEDIDO #'+o.id),
+    h('b',{style:'font-size:22px;font-weight:900'},'#'+o.id),
     statusPill(o),
     verifPill,
     h('span',{class:'sp'}),
-    h('span',{class:'mut'}, custNameEl, ' · ' + (o.customer?.phoneMasked || '') + (o.customer?.type==='WHOLESALE'?' · MAYORISTA':'') + ' · hace ', h('span',{class:'ago',dataset:{t:o.receivedAt}},ago(o.receivedAt)))
+    h('span',{class:'mut'}, custNameEl, ' · ' + (o.customer?.phone || o.customer?.phoneMasked || '') + (o.customer?.type==='WHOLESALE'?' · MAYORISTA':'') + ' · hace ', h('span',{class:'ago',dataset:{t:o.receivedAt}},ago(o.receivedAt)))
   ));
 
   if(o.pendingDispatchOrderId){
@@ -679,7 +707,6 @@ function card(o){
   el.append(h('div',{class:'row'},h('button',{class:'b',onclick:addRow},'+ Producto'),
     h('button',{class:'b',onclick:async()=>{try{await save(o,view);delete S.draft[o.id];toast('Guardado');loadOrders()}catch(e){toast((e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message));if(e.code==='ORDER_CONFLICT'){delete S.draft[o.id];loadOrders()}}}},'Guardar'),
     h('button',{class:'b',onclick:()=>replyPanel(el,o,o.suggestedReply?'ASK':'INFO',o.suggestedReply||'')},'💬 Mensaje al cliente'),
-    o.confirmationDraft?h('button',{class:'b',onclick:()=>replyPanel(el,o,'CONFIRM',o.confirmationDraft)},'Enviar confirmación'):null,
     h('button',{class:'b danger',onclick:async()=>{if(confirm('¿Cancelar el pedido #'+o.id+'?')){try{await api(`/api/orders/${o.id}/cancel`,{method:'POST',body:{version:o.version}});delete S.draft[o.id];loadOrders()}catch(e){toast((e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message))}}}},'Cancelar'),
     h('span',{class:'sp',style:'flex:1'}),deliveryPersonSelect,h('span',{},'Total '),totalEl,approve));
   upd();return el}

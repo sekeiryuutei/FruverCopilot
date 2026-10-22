@@ -56,7 +56,8 @@ public class ProductCatalogService implements ProductLookup {
         }
         List<Resolution> ids = jdbc.sql(sql.toString()).params(params)
                 .query((rs, i) -> new Resolution(rs.getLong(1), 1, rs.getString(2))).list();
-        return ids.size() == 1 ? ids.get(0) : new Resolution(null, ids.size(), null);
+        if (!ids.isEmpty()) return ids.get(0);
+        return new Resolution(null, 0, null);
     }
 
     /** Nombres reales del catalogo relacionados con el mensaje: contexto de solo lectura para el LLM. */

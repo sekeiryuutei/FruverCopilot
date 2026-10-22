@@ -65,6 +65,6 @@ public record OrderView(
                 messageCount, pendingDispatchOrderId, deliveryPersonId, deliveryPersonName, false, null, null, null);
     }
 
-    /** Telefono enmascarado: la pantalla no necesita el numero completo. */
-    public record CustomerInfo(Long id, String name, String phoneMasked, String type) {}
+    /** Telefono enmascarado para pantallas generales; phone expone el número completo para operaciones internas. */
+    public record CustomerInfo(Long id, String name, String phoneMasked, String phone, String type) {}
 }
