@@ -1,9 +1,11 @@
 # 🥑 FruverCopilot
 
-Automatización de pedidos de WhatsApp (texto y audio) para un Fruver.
+Automatización de pedidos de WhatsApp (texto, audio y fotos de libretas manuscritas), comanda física e impresión térmica para Fruvers y distribuidores mayoristas.
 
-> **La IA ahorra digitación, pero nunca reemplaza el control humano.**
-> La IA propone → el backend valida → el humano corrige y aprueba → el backend calcula → el sistema guarda → la impresora imprime.
+> 📖 **Para la documentación técnica, manual de operador y configuración completa, consulta [DOCUMENTACION.md](DOCUMENTACION.md).**
+
+> **La IA ahorra digitación, pero nunca reemplaza el control humano.**  
+> El sistema es un receptor ágil de pedidos sin interrogar clientes: la IA extrae → el backend valida → el operario supervisa → la impresora emite la comanda con espacios manuales.
 
 ## Requisitos
 - Docker y Docker Compose v2 (no necesitas Java ni Maven instalados: se compila dentro de Docker).
