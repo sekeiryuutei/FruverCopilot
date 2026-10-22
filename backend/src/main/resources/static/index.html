@@ -286,6 +286,67 @@ function showTicketModal(t){
 async function showTicket(saleId){try{const t=await api(`/api/sales/${saleId}/ticket`);showTicketModal(t)}catch(e){toast(e.message)}}
 async function showTicketByOrder(orderId){try{const t=await api(`/api/orders/${orderId}/ticket`);showTicketModal(t)}catch(e){toast(e.message)}}
 
+async function validateOrderQuick(orderId, cardElement){
+  if(cardElement){
+    cardElement.style.transition='all 0.25s ease-out';
+    cardElement.style.transform='translateX(100%)';
+    cardElement.style.opacity='0';
+  }
+  try{
+    await api(`/api/orders/${orderId}/validate`,{method:'POST'});
+    toast(`✓ Pedido #${orderId} validado y facturado exitosamente`);
+    await updatePrinterStatus();
+    await loadOrders();
+  }catch(e){
+    toast('Error al validar: '+e.message);
+    if(cardElement){
+      cardElement.style.transform='';
+      cardElement.style.opacity='';
+    }
+  }
+}
+
+function makeSwipeable(el, orderId, onValidate){
+  let startX=0, startY=0, distX=0, isSwiping=false;
+  el.addEventListener('touchstart', e=>{
+    if(!e.touches||!e.touches[0])return;
+    const touch=e.touches[0];
+    startX=touch.clientX;
+    startY=touch.clientY;
+    distX=0;
+    isSwiping=false;
+  },{passive:true});
+
+  el.addEventListener('touchmove', e=>{
+    if(!e.touches||!e.touches[0])return;
+    const touch=e.touches[0];
+    distX=touch.clientX-startX;
+    const distY=Math.abs(touch.clientY-startY);
+    if(distX>25 && distY<45){
+      isSwiping=true;
+      el.style.transform=`translateX(${Math.min(distX,130)}px)`;
+      el.style.opacity=`${Math.max(1-distX/260,0.45)}`;
+      el.style.borderLeftColor='#22c55e';
+    }
+  },{passive:true});
+
+  el.addEventListener('touchend', async()=>{
+    if(isSwiping && distX>85){
+      el.style.transition='all 0.25s ease-out';
+      el.style.transform='translateX(100%)';
+      el.style.opacity='0';
+      setTimeout(async()=>{
+        await onValidate();
+      },180);
+    } else if(isSwiping){
+      el.style.transition='all 0.2s ease-out';
+      el.style.transform='';
+      el.style.opacity='';
+      setTimeout(()=>{el.style.transition=''},200);
+    }
+  });
+}
+
 const emptyMsg=h('p',{class:'mut'},'Sin pedidos pendientes. Cuando llegue uno aparece aquí solo.');
 const doneTitle=h('h3',{},'Facturas de hoy');
 /** Seleccion multiple para reimprimir */
@@ -417,7 +478,10 @@ function doneCard(o){
         : h('span',{class:'pill gray'},'📝 TEXTO');
 
   const verifPill = o.requiresVerification
-    ? h('span',{class:'pill YELLOW',style:'font-size:12.5px;padding:3px 9px;font-weight:700'},'⚠️ DUDOSO / REVISAR' + (o.verificationReason ? ': ' + o.verificationReason : ''))
+    ? h('span',{class:'pill YELLOW',style:'font-size:12px;padding:3px 9px;font-weight:700;display:inline-flex;align-items:center;gap:6px'},
+        '⚠️ DUDOSO / REVISAR' + (o.verificationReason ? ': ' + o.verificationReason : ''),
+        h('button',{class:'b',style:'padding:2px 7px;font-size:11px;background:#16a34a;color:#fff;border-color:#16a34a',title:'Marcar como revisado',onclick:()=>validateOrderQuick(o.id,cardEl)},'✓ Validar')
+      )
     : null;
 
   const chk=h('input',{type:'checkbox',class:'reprint-chk',style:'width:22px;height:22px;cursor:pointer;flex-shrink:0',title:'Seleccionar para reimprimir',onchange:e=>{
@@ -489,6 +553,9 @@ function doneCard(o){
     tools,
     convBox
   );
+  if(o.requiresVerification){
+    makeSwipeable(cardEl, o.id, () => validateOrderQuick(o.id, cardEl));
+  }
   return cardEl;
 }
 function flash(tr){tr.classList.remove('flash');void tr.offsetWidth;tr.classList.add('flash')}
@@ -546,8 +613,13 @@ function card(o){
         ? h('span',{class:'pill gray'},'🏪 MANUAL / LLAMADA')
         : h('span',{class:'pill gray'},'📝 TEXTO');
 
+  const validateBtn = h('button',{class:'b main',style:'background:#16a34a;border-color:#15803d;font-size:14px;padding:6px 14px;font-weight:800;white-space:nowrap',title:'Validar pedido y facturar',onclick:()=>validateOrderQuick(o.id,el)},'✅ VALIDAR');
+
   const verifPill = o.requiresVerification
-    ? h('span',{class:'pill YELLOW',style:'font-size:12.5px;padding:3px 9px;font-weight:700'},'⚠️ DUDOSO / REVISAR' + (o.verificationReason ? ': ' + o.verificationReason : ''))
+    ? h('span',{class:'pill YELLOW',style:'font-size:12px;padding:3px 9px;font-weight:700;display:inline-flex;align-items:center;gap:6px'},
+        '⚠️ DUDOSO / REVISAR' + (o.verificationReason ? ': ' + o.verificationReason : ''),
+        h('button',{class:'b',style:'padding:2px 7px;font-size:11px;background:#16a34a;color:#fff;border-color:#16a34a',title:'Marcar como revisado',onclick:()=>validateOrderQuick(o.id,el)},'✓ Validar')
+      )
     : null;
 
   el.append(h('div',{class:'top',style:'align-items:center;gap:8px'},
@@ -555,6 +627,7 @@ function card(o){
     h('b',{style:'font-size:22px;font-weight:900'},'#'+o.id),
     statusPill(o),
     verifPill,
+    validateBtn,
     h('span',{class:'sp'}),
     h('span',{class:'mut'}, custNameEl, ' · ' + (o.customer?.phone || o.customer?.phoneMasked || '') + (o.customer?.type==='WHOLESALE'?' · MAYORISTA':'') + ' · hace ', h('span',{class:'ago',dataset:{t:o.receivedAt}},ago(o.receivedAt)))
   ));
@@ -708,7 +781,9 @@ function card(o){
     h('button',{class:'b',onclick:async()=>{try{await save(o,view);delete S.draft[o.id];toast('Guardado');loadOrders()}catch(e){toast((e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message));if(e.code==='ORDER_CONFLICT'){delete S.draft[o.id];loadOrders()}}}},'Guardar'),
     h('button',{class:'b',onclick:()=>replyPanel(el,o,o.suggestedReply?'ASK':'INFO',o.suggestedReply||'')},'💬 Mensaje al cliente'),
     h('button',{class:'b danger',onclick:async()=>{if(confirm('¿Cancelar el pedido #'+o.id+'?')){try{await api(`/api/orders/${o.id}/cancel`,{method:'POST',body:{version:o.version}});delete S.draft[o.id];loadOrders()}catch(e){toast((e.details&&e.details.length?e.message+': '+e.details.join('; '):e.message))}}}},'Cancelar'),
-    h('span',{class:'sp',style:'flex:1'}),deliveryPersonSelect,h('span',{},'Total '),totalEl,approve));
+    h('span',{class:'sp',style:'flex:1'}),deliveryPersonSelect,h('span',{},'Total '),totalEl,approve,
+    h('button',{class:'b main',style:'background:#16a34a;border-color:#15803d;font-size:15px;padding:9px 18px;font-weight:800',onclick:()=>validateOrderQuick(o.id,el)},'✅ VALIDAR Y FACTURAR')));
+  makeSwipeable(el, o.id, () => validateOrderQuick(o.id, el));
   upd();return el}
 
 async function save(o,d){
@@ -1107,6 +1182,122 @@ function openNewCustomerModal(onDone) {
 
   overlay.append(modal);
   document.body.append(overlay);
+}
+
+/* ---------- Configuración de Impresoras ---------- */
+async function renderPrinterConfig(){
+  const m=$('#main');
+  m.replaceChildren(h('div',{class:'card',style:'text-align:center;padding:24px'},'Cargando configuración de impresoras... ⏳'));
+  try{
+    const cfg = await api('/api/printer/config');
+    const locName = cfg.activePrinter==='OFICINA'?'🏢 OFICINA (4am-7pm)':'🏠 CASA (7pm-4am)';
+
+    const officeHostInput = h('input',{value:cfg.officeHost||'127.0.0.1',placeholder:'IP Impresora Oficina',style:'font-size:15px;font-weight:700;width:100%'});
+    const officePortInput = h('input',{type:'number',value:cfg.officePort||9100,placeholder:'Puerto',style:'font-size:15px;font-weight:700;width:100px'});
+
+    const homeHostInput = h('input',{value:cfg.homeHost||'127.0.0.1',placeholder:'IP Impresora Casa',style:'font-size:15px;font-weight:700;width:100%'});
+    const homePortInput = h('input',{type:'number',value:cfg.homePort||9100,placeholder:'Puerto',style:'font-size:15px;font-weight:700;width:100px'});
+
+    const modeSelect = h('select',{style:'font-size:15px;padding:9px;font-weight:700;width:100%'},
+      h('option',{value:'AUTO',selected:cfg.mode==='AUTO'},'⏱️ Horario Automático (Oficina 4am-7pm / Casa 7pm-4am)'),
+      h('option',{value:'OFICINA',selected:cfg.mode==='OFICINA'},'🏢 Forzar SIEMPRE Oficina'),
+      h('option',{value:'CASA',selected:cfg.mode==='CASA'},'🏠 Forzar SIEMPRE Casa')
+    );
+
+    const enabledChk = h('input',{type:'checkbox',checked:cfg.enabled,style:'width:22px;height:22px;cursor:pointer'});
+
+    const saveBtn = h('button',{class:'b main',style:'font-size:16px;padding:12px 24px;font-weight:800;background:var(--g);border-color:var(--g)',onclick:async()=>{
+      saveBtn.disabled = true;
+      try{
+        await api('/api/printer/config',{
+          method:'PUT',
+          body:{
+            officeHost: officeHostInput.value.trim(),
+            officePort: Number(officePortInput.value)||9100,
+            homeHost: homeHostInput.value.trim(),
+            homePort: Number(homePortInput.value)||9100,
+            enabled: enabledChk.checked,
+            mode: modeSelect.value
+          }
+        });
+        toast('✓ Configuración de impresoras guardada correctamente');
+        await updatePrinterStatus();
+        renderPrinterConfig();
+      }catch(e){toast('Error al guardar: '+e.message)}
+      finally{saveBtn.disabled=false}
+    }},'💾 GUARDAR CONFIGURACIÓN');
+
+    const testOfficeBtn = h('button',{class:'b',style:'font-size:13.5px;padding:8px 14px;font-weight:700;background:#1e3a5f;color:#93c5fd',onclick:async()=>{
+      testOfficeBtn.disabled=true;
+      toast('Enviando ticket de prueba a Oficina... ⏳');
+      try{
+        const r=await api('/api/printer/test',{method:'POST',body:{location:'OFICINA'}});
+        toast('✓ '+r.message);
+      }catch(e){toast('🔴 Error Oficina: '+e.message)}
+      finally{testOfficeBtn.disabled=false}
+    }},'🖨️ Probar Oficina');
+
+    const testHomeBtn = h('button',{class:'b',style:'font-size:13.5px;padding:8px 14px;font-weight:700;background:#1e3a5f;color:#93c5fd',onclick:async()=>{
+      testHomeBtn.disabled=true;
+      toast('Enviando ticket de prueba a Casa... ⏳');
+      try{
+        const r=await api('/api/printer/test',{method:'POST',body:{location:'CASA'}});
+        toast('✓ '+r.message);
+      }catch(e){toast('🔴 Error Casa: '+e.message)}
+      finally{testHomeBtn.disabled=false}
+    }},'🖨️ Probar Casa');
+
+    const card = h('div',{class:'card',style:'max-width:640px;margin:12px auto;padding:18px'},
+      h('div',{style:'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px'},
+        h('b',{style:'font-size:18px'},'🖨️ Configuración de Impresoras'),
+        h('span',{class:'pill '+(cfg.failedCount>0?'RED':'GREEN'),style:'font-size:13px;font-weight:700'},
+          `Activa: ${locName}`
+        )
+      ),
+      h('div',{class:'banner',style:'background:#1e293b;border-left:4px solid var(--g);margin-bottom:16px;font-size:13px'},
+        'Configura las IP locales de las impresoras térmicas ESC/POS (puerto RAW 9100). El sistema enruta pedidos automáticamente entre la Oficina y la Casa.'
+      ),
+      h('div',{style:'display:flex;flex-direction:column;gap:14px'},
+        h('div',{style:'background:rgba(255,255,255,0.03);padding:14px;border-radius:8px;border:1px solid var(--line)'},
+          h('div',{style:'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'},
+            h('b',{style:'font-size:15px;color:#93c5fd'},'🏢 Impresora Oficina / Fruver (04:00 - 19:00)'),
+            testOfficeBtn
+          ),
+          h('div',{style:'display:flex;gap:10px'},
+            h('div',{style:'flex:1'},h('span',{class:'mut',style:'font-size:12px'},'IP / Host LAN'),officeHostInput),
+            h('div',{},h('span',{class:'mut',style:'font-size:12px'},'Puerto'),officePortInput)
+          )
+        ),
+        h('div',{style:'background:rgba(255,255,255,0.03);padding:14px;border-radius:8px;border:1px solid var(--line)'},
+          h('div',{style:'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'},
+            h('b',{style:'font-size:15px;color:#fcd34d'},'🏠 Impresora Casa (19:00 - 04:00)'),
+            testHomeBtn
+          ),
+          h('div',{style:'display:flex;gap:10px'},
+            h('div',{style:'flex:1'},h('span',{class:'mut',style:'font-size:12px'},'IP / Host LAN'),homeHostInput),
+            h('div',{},h('span',{class:'mut',style:'font-size:12px'},'Puerto'),homePortInput)
+          )
+        ),
+        h('div',{style:'background:rgba(255,255,255,0.03);padding:14px;border-radius:8px;border:1px solid var(--line)'},
+          h('b',{style:'font-size:14px;display:block;margin-bottom:6px'},'⏱️ Enrutamiento de Impresión'),
+          modeSelect
+        ),
+        h('div',{style:'display:flex;align-items:center;gap:12px;background:rgba(255,255,255,0.03);padding:14px;border-radius:8px;border:1px solid var(--line)'},
+          enabledChk,
+          h('div',{},
+            h('b',{style:'font-size:14px'},'Habilitar Impresión Térmica Automática'),
+            h('div',{class:'mut',style:'font-size:12px'},'Si se desmarca, los pedidos se aprueban pero no intentan abrir conexión de red a la impresora.')
+          )
+        ),
+        h('div',{style:'display:flex;justify-content:flex-end;margin-top:6px'},
+          saveBtn
+        )
+      )
+    );
+    m.replaceChildren(card);
+  }catch(e){
+    m.replaceChildren(h('div',{class:'card danger'},'Error al cargar configuración: '+e.message));
+  }
 }
 
 /* ---------- Ventas ---------- */
@@ -1583,27 +1774,47 @@ window.addEventListener('resize',applyNavLayout);
 function fillDl(){$('#dl').replaceChildren(...S.products.filter(p=>p.active).map(p=>h('option',{value:p.name})))}
 
 /* Iconos y etiquetas para el bottom nav mobile */
-const TAB_ICONS={ops:['📋','Pedidos'],sales:['🧾','Ventas'],customers:['👥','Clientes'],'delivery-persons':['🚴','Repartos'],users:['👤','Usuarios'],prices:['💲','Precios'],zones:['📍','Zonas'],reports:['📊','Reportes']};
+const TAB_ICONS={ops:['📋','Pedidos'],sales:['🧾','Ventas'],config:['🖨️','Impresoras'],customers:['👥','Clientes'],'delivery-persons':['🚴','Repartos'],users:['👤','Usuarios'],prices:['💲','Precios'],zones:['📍','Zonas'],reports:['📊','Reportes']};
+const DISABLED_TABS=new Set(['customers','users','prices']);
 
 function nav(){
-  const tabs=[['ops','Operación'],['sales','Ventas'],['customers','Clientes']];
+  const tabs=[['ops','Operación'],['sales','Ventas'],['config','Impresoras'],['customers','Clientes']];
   if(S.me.role==='ADMIN')tabs.push(['delivery-persons','Repartidores'],['users','Usuarios'],['prices','Precios'],['zones','Zonas Domicilio'],['reports','Reportes']);
   // Desktop nav (tabs horizontales)
-  $('#desktopNav').replaceChildren(...tabs.map(([k,l])=>h('button',{class:S.tab===k?'on':'',onclick:()=>{S.tab=k;nav();show()}},l)));
+  $('#desktopNav').replaceChildren(...tabs.map(([k,l])=>{
+    const disabled=DISABLED_TABS.has(k);
+    return h('button',{
+      class:S.tab===k?'on':'',
+      style:disabled?'opacity:0.42;cursor:not-allowed;filter:grayscale(0.85);':'',
+      title:disabled?'Módulo temporalmente desactivado':'',
+      onclick:()=>{
+        if(disabled){toast('Módulo temporalmente desactivado');return}
+        S.tab=k;nav();show();
+      }
+    },l);
+  }));
   // Mobile bottom nav
-  const mobileCore=[['ops','Pedidos'],['sales','Ventas'],['customers','Clientes']];
+  const mobileCore=[['ops','Pedidos'],['sales','Ventas'],['config','Impresoras'],['customers','Clientes']];
   const mobileAdmin=[['users','Usuarios'],['prices','Precios']];
   const mobileTabs=S.me.role==='ADMIN'?[...mobileCore,...mobileAdmin]:mobileCore;
   $('#bnav').replaceChildren(...mobileTabs.map(([k])=>{
     const [ico,lbl]=TAB_ICONS[k]||['⚙️',k];
-    return h('button',{class:S.tab===k?'on':'',onclick:()=>{S.tab=k;nav();show()}},
-      h('span',{class:'ico'},ico),lbl);
+    const disabled=DISABLED_TABS.has(k);
+    return h('button',{
+      class:S.tab===k?'on':'',
+      style:disabled?'opacity:0.42;cursor:not-allowed;filter:grayscale(0.85);':'',
+      title:disabled?'Módulo temporalmente desactivado':'',
+      onclick:()=>{
+        if(disabled){toast('Módulo temporalmente desactivado');return}
+        S.tab=k;nav();show();
+      }
+    },h('span',{class:'ico'},ico),lbl);
   }));
   // Ajustar columnas del grid según cantidad de tabs mobile
   const n=mobileTabs.length;
   $('#bnav').style.gridTemplateColumns=`repeat(${n},1fr)`;
 }
-function show(){({ops:()=>{renderOps()},sales:renderSales,'delivery-persons':renderDeliveryPersons,users:renderUsers,prices:renderPrices,customers:renderCustomers,zones:renderDeliveryZones,reports:renderReports})[S.tab]()}
+function show(){({ops:()=>{renderOps()},sales:renderSales,config:renderPrinterConfig,'delivery-persons':renderDeliveryPersons,users:renderUsers,prices:renderPrices,customers:renderCustomers,zones:renderDeliveryZones,reports:renderReports})[S.tab]?.()}
 $('#logoutBtn').onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'X-XSRF-TOKEN':csrf()}});location='/login.html'};
 (async()=>{
   S.me=await api('/api/me');

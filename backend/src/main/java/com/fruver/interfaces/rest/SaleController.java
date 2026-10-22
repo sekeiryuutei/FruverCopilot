@@ -28,12 +28,14 @@ public class SaleController {
     private final DeliveryZoneService deliveryZones;
     private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
     private final PrintService printService;
+    private final com.fruver.application.service.PrinterConfigService printerConfig;
 
     public SaleController(SalesQueryService salesQuery, SaleService sales, ReportService reports, CustomerService customers,
                           SseHub hub, TicketService tickets, com.fruver.config.AppProperties props,
                           org.springframework.jdbc.core.simple.JdbcClient jdbc,
                           DeliveryZoneService deliveryZones,
-                          PrintService printService) {
+                          PrintService printService,
+                          com.fruver.application.service.PrinterConfigService printerConfig) {
         this.salesQuery = salesQuery;
         this.sales = sales;
         this.reports = reports;
@@ -44,6 +46,7 @@ public class SaleController {
         this.jdbc = jdbc;
         this.deliveryZones = deliveryZones;
         this.printService = printService;
+        this.printerConfig = printerConfig;
     }
 
     @GetMapping("/sales")
@@ -72,22 +75,66 @@ public class SaleController {
         return Map.of("status", "PRINT_PENDING");
     }
 
+    public record PrinterConfigUpdateRequest(
+            String officeHost,
+            Integer officePort,
+            String homeHost,
+            Integer homePort,
+            Boolean enabled,
+            String mode
+    ) {}
+
+    public record TestPrinterRequest(String location) {}
+
     /** Estado de impresoras duales (OFICINA vs CASA) y conteo de fallos */
     @GetMapping("/printer/status")
     @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
-    public Map<String, Object> printerStatus() {
-        String current = props.printing().currentTargetPrinter(props.timezone());
-        int failedCount = jdbc.sql("SELECT count(*) FROM sale WHERE print_status = 'PRINT_FAILED'").query(Integer.class).single();
-        int pendingCount = jdbc.sql("SELECT count(*) FROM print_job WHERE status = 'PENDING'").query(Integer.class).single();
-        return Map.of(
-                "activePrinter", current,
-                "schedule", "04:00 - 19:00 OFICINA / 19:00 - 04:00 CASA",
-                "failedCount", failedCount,
-                "pendingCount", pendingCount,
-                "officeHost", props.printing().officeHost() + ":" + props.printing().officePort(),
-                "homeHost", props.printing().homeHost() + ":" + props.printing().homePort(),
-                "enabled", props.printing().enabled()
-        );
+    public com.fruver.application.service.PrinterConfigService.PrinterConfig printerStatus() {
+        return printerConfig.get();
+    }
+
+    @GetMapping("/printer/config")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public com.fruver.application.service.PrinterConfigService.PrinterConfig getPrinterConfig() {
+        return printerConfig.get();
+    }
+
+    @PutMapping("/printer/config")
+    @PreAuthorize("hasRole('ADMIN')")
+    public com.fruver.application.service.PrinterConfigService.PrinterConfig updatePrinterConfig(@RequestBody PrinterConfigUpdateRequest req) {
+        return printerConfig.update(req.officeHost(), req.officePort(), req.homeHost(), req.homePort(), req.enabled(), req.mode());
+    }
+
+    @PostMapping("/printer/test")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public Map<String, Object> testPrinter(@RequestBody(required = false) TestPrinterRequest req) {
+        String loc = (req != null && req.location() != null) ? req.location() : null;
+        try {
+            printerConfig.testPrint(loc);
+            return Map.of("status", "OK", "message", "Impresión de prueba enviada exitosamente");
+        } catch (Exception e) {
+            throw new ApiException(502, "PRINTER_TEST_FAILED", e.getMessage());
+        }
+    }
+
+    /** Valida y confirma un pedido pendiente o quita la marca de duda con 1 clic */
+    @PostMapping("/orders/{orderId}/validate")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public Map<String, Object> validateOrder(@PathVariable long orderId) {
+        var opt = jdbc.sql("SELECT status, requires_verification FROM orders WHERE id = :id").param("id", orderId)
+                .query((rs, n) -> new Object[]{rs.getString(1), rs.getBoolean(2)}).optional();
+        if (opt.isEmpty()) throw new ApiException(404, "ORDER_NOT_FOUND", "Pedido no encontrado");
+        String status = (String) opt.get()[0];
+        if (!"APPROVED".equals(status)) {
+            sales.autoApproveWholesale(orderId, false, null, Actor.name());
+        } else {
+            jdbc.sql("UPDATE orders SET requires_verification = FALSE, verification_reason = NULL, version = version + 1 WHERE id = :id")
+                    .param("id", orderId).update();
+            jdbc.sql("UPDATE sale SET requires_verification = FALSE, verification_reason = NULL WHERE order_id = :id")
+                    .param("id", orderId).update();
+        }
+        hub.orderChanged(orderId);
+        return Map.of("status", "VALIDATED", "orderId", orderId);
     }
 
     /** Reintenta mandar a imprimir todos los pedidos que hayan fallado por red o papel */

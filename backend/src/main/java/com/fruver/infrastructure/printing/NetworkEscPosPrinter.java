@@ -1,6 +1,7 @@
 package com.fruver.infrastructure.printing;
 
 import com.fruver.application.port.ThermalPrinterService;
+import com.fruver.application.service.PrinterConfigService;
 import com.fruver.config.AppProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,22 +26,24 @@ public class NetworkEscPosPrinter implements ThermalPrinterService {
     private static final Logger log = LoggerFactory.getLogger(NetworkEscPosPrinter.class);
 
     private final AppProperties props;
+    private final PrinterConfigService printerConfig;
 
-    public NetworkEscPosPrinter(AppProperties props) {
+    public NetworkEscPosPrinter(AppProperties props, PrinterConfigService printerConfig) {
         if (!"ESC_POS".equalsIgnoreCase(props.printing().type())) {
             throw new IllegalStateException("PRINTER_TYPE no soportado: " + props.printing().type() + " (solo ESC_POS)");
         }
         this.props = props;
+        this.printerConfig = printerConfig;
     }
 
     @Override
     public void print(byte[] payload, String targetLocation) {
         String loc = (targetLocation != null && !targetLocation.isBlank())
                 ? targetLocation.toUpperCase()
-                : props.printing().currentTargetPrinter(props.timezone());
+                : printerConfig.get().activePrinter();
 
-        String host = props.printing().hostFor(loc);
-        int port = props.printing().portFor(loc);
+        String host = printerConfig.hostFor(loc);
+        int port = printerConfig.portFor(loc);
 
         log.info("Enviando impresión ({}) a {}:{}", loc, host, port);
         try (Socket socket = new Socket()) {

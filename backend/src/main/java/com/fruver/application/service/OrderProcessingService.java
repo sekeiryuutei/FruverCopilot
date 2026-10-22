@@ -199,9 +199,10 @@ public class OrderProcessingService {
         metrics.review(io.review().name());
 
         if (props.printing().autoPrintWholesale()) {
-            boolean requiresVerification = io.review() == ReviewStatus.YELLOW
-                    || io.review() == ReviewStatus.RED
-                    || io.items().stream().anyMatch(InterpretedOrder.Item::aiAmbiguous);
+            boolean hasTrulyDoubtfulLines = io.items().isEmpty()
+                    || io.items().stream().anyMatch(it -> (it.quantity() == null && it.aiQuantity() == null)
+                    || (it.aiAmbiguous() && ((it.aiProductName() == null || it.aiProductName().isBlank()) && (it.mentioned() == null || it.mentioned().isBlank()))));
+            boolean requiresVerification = hasTrulyDoubtfulLines;
             String reason = requiresVerification ? (io.note() != null ? io.note() : "Líneas con duda en pedido") : null;
             sales.autoApproveWholesale(r.orderId(), requiresVerification, reason, "ia_wholesale");
             return;
