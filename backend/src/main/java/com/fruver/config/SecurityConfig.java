@@ -57,7 +57,7 @@ public class SecurityConfig {
                     .maximumSessions(2)
                     .maxSessionsPreventsLogin(false))
             .authorizeHttpRequests(a -> a
-                    .requestMatchers("/login.html", "/favicon.ico", "/actuator/health/**", "/webhook/**").permitAll()
+                    .requestMatchers("/login.html", "/favicon.ico", "/manifest.json", "/sw.js", "/*.svg", "/*.png", "/actuator/health/**", "/webhook/**").permitAll()
                     .requestMatchers("/actuator/info", "/actuator/metrics").hasRole("ADMIN")
                     .anyRequest().authenticated())
             .formLogin(f -> f.loginPage("/login.html").loginProcessingUrl("/login")

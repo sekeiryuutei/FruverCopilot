@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#14361f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="El Oasis">
-<title>Fruver El Oasis · Control Mayorista</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E🌴%3C/text%3E%3C/svg%3E">
+<title>Fruver El Oasis · Control Mayorista</title><link rel="icon" href="/icon-192.svg"><link rel="manifest" href="/manifest.json"><link rel="apple-touch-icon" href="/icon-192.svg">
 <style>
 :root{--bg:#f4f6f4;--card:#fff;--ink:#14231a;--mut:#607066;--line:#dbe3dd;--g:#1f9d55;--y:#d99a00;--r:#d33;--brand:#14361f}
 @media (prefers-color-scheme:dark){:root{--bg:#0e1712;--card:#16261d;--ink:#e9f2ec;--mut:#93a89b;--line:#274233;--brand:#0a1f12}}
@@ -52,7 +52,7 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
   .modal-card{height:100vh;max-height:100vh;border-radius:0;border:none;padding:12px}
 }
 </style></head><body>
-<header><div style="display:flex;align-items:center;gap:8px"><b style="font-size:18px;letter-spacing:-0.3px">🌴 Fruver El Oasis</b><span id="printerBadge" class="pill" style="font-size:11.5px;background:#1e3a5f;color:#93c5fd;font-weight:600;padding:3px 9px;border-radius:6px;cursor:pointer" title="Impresora activa según horario">🖨️ OFICINA</span></div><nav id="nav"></nav><span class="cnt" id="cnt"></span><button class="b" style="padding:5px 10px" id="logout">Salir</button></header>
+<header><div style="display:flex;align-items:center;gap:8px"><b style="font-size:18px;letter-spacing:-0.3px">🌴 Fruver El Oasis</b><span id="printerBadge" class="pill" style="font-size:11.5px;background:#1e3a5f;color:#93c5fd;font-weight:600;padding:3px 9px;border-radius:6px;cursor:pointer" title="Impresora activa según horario">🖨️ OFICINA</span></div><nav id="nav"></nav><span class="cnt" id="cnt"></span><button id="btnInstall" class="b" style="display:none;background:#22c55e;color:#fff;border-color:#16a34a;font-weight:700;padding:5px 10px;font-size:13px" title="Instalar en pantalla de inicio">📲 Instalar</button><button class="b" style="padding:5px 10px" id="logout">Salir</button></header>
 <main id="main"></main><div id="toast"></div><datalist id="dl"></datalist>
 <script>
 const $=s=>document.querySelector(s);
@@ -1450,7 +1450,37 @@ async function renderUsers(){
   load();
 }
 
-/* ---------- Arranque ---------- */
+/* ---------- Arranque & PWA ---------- */
+let deferredPrompt=null;
+if(typeof navigator!=='undefined'&&'serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/sw.js').catch(e=>console.warn('SW:',e));
+  });
+}
+if(typeof window!=='undefined'){
+  window.addEventListener('beforeinstallprompt',e=>{
+    e.preventDefault();
+    deferredPrompt=e;
+    const btn=$('#btnInstall');
+    if(btn){
+      btn.style.display='inline-flex';
+      btn.onclick=async()=>{
+        btn.style.display='none';
+        if(deferredPrompt){
+          deferredPrompt.prompt();
+          await deferredPrompt.userChoice;
+          deferredPrompt=null;
+        }
+      };
+    }
+  });
+  window.addEventListener('appinstalled',()=>{
+    const btn=$('#btnInstall');
+    if(btn)btn.style.display='none';
+    toast('¡App Fruver El Oasis instalada en tu celular!');
+  });
+}
+
 function fillDl(){$('#dl').replaceChildren(...S.products.filter(p=>p.active).map(p=>h('option',{value:p.name})))}
 function nav(){const tabs=[['ops','Operación'],['sales','Ventas'],['customers','Clientes']];
   if(S.me.role==='ADMIN')tabs.push(['delivery-persons','Repartidores'],['users','Usuarios'],['prices','Precios'],['zones','Zonas Domicilio'],['reports','Reportes']);
