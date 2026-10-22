@@ -84,16 +84,17 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
   .modal-overlay{padding:0}
   .modal-card{height:100dvh;max-height:100dvh;border-radius:0;border:none;padding:12px;padding-bottom:calc(var(--bnav-h) + env(safe-area-inset-bottom,0) + 8px)}
   input,select,textarea{font-size:16px;/* previene zoom en iOS */}
-  #logoutBtn{display:none}/* solo en mobile se oculta, está en bottom nav */
+  #logoutBtn{display:inline-flex;align-items:center;padding:5px 9px;font-size:12px;min-height:32px;background:#1b3824;border:1px solid #ffffff44;border-radius:6px;color:#fff}
 }
 </style></head><body>
 <!-- ── Header ─────────────────────────────────────── -->
 <header>
   <span class="logo" style="display:flex;align-items:center;gap:6px"><img src="/oasis-logo.png" alt="Oasis" style="height:28px;width:auto;border-radius:4px;object-fit:contain" onerror="this.style.display='none'"><b>Fruver El Oasis</b></span>
   <div class="hactions">
+    <button id="btnHeaderInstall" class="b" style="display:none;padding:5px 9px;font-size:12px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-weight:700" title="Instalar app en tu pantalla de inicio">📲 Instalar</button>
     <span id="printerBadge" title="Impresora activa según horario">🖨️ OFICINA</span>
     <span class="cnt" id="cnt"></span>
-    <button class="b" style="padding:6px 11px;font-size:13px" id="logoutBtn">Salir</button>
+    <button class="b" style="padding:6px 11px;font-size:13px;background:#1b3824;color:#fff;border:1px solid #ffffff44;display:inline-flex;align-items:center;gap:4px" id="logoutBtn" title="Cerrar sesión">🚪 Salir</button>
   </div>
   <!-- Nav solo en escritorio -->
   <div id="desktopNav"></div>
@@ -1378,7 +1379,39 @@ async function renderPrinterConfig(){
         )
       )
     );
-    m.replaceChildren(card);
+
+    const isStandalone = (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) || (typeof window !== 'undefined' && window.navigator && window.navigator.standalone === true);
+
+    const pwaCard = h('div',{class:'card',style:'max-width:640px;margin:14px auto;padding:18px'},
+      h('div',{style:'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px'},
+        h('b',{style:'font-size:16px'},'📱 Aplicación en Celular (PWA)'),
+        h('span',{class:'pill '+(isStandalone?'GREEN':'YELLOW'),style:'font-size:12px;font-weight:700'},
+          isStandalone ? '✅ App Instalada (Modo Nativo)' : '🌐 Modo Navegador Web'
+        )
+      ),
+      h('p',{class:'mut',style:'font-size:13px;margin:0 0 12px 0;line-height:1.4'},
+        isStandalone
+          ? 'Estás usando la aplicación instalada en tu dispositivo. Abre a pantalla completa y recibe notificaciones.'
+          : 'Instala esta aplicación en la pantalla de inicio de tu celular para acceder rápido sin barras de navegador.'
+      ),
+      h('div',{style:'display:flex;gap:8px;flex-wrap:wrap'},
+        h('button',{class:'b main',style:'font-size:13.5px;padding:9px 16px',onclick:installPwaOrShowHelp},'📲 Instalar en este Celular'),
+        h('button',{class:'b',style:'font-size:13.5px;padding:9px 16px',onclick:showPwaHelpModal},'❓ ¿Cómo Instalar / Reinstalar?')
+      )
+    );
+
+    const sessionCard = h('div',{class:'card',style:'max-width:640px;margin:14px auto;padding:18px;border:1px solid rgba(239,68,68,0.2)'},
+      h('div',{style:'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px'},
+        h('b',{style:'font-size:16px'},'👤 Sesión de Usuario'),
+        h('span',{class:'pill GREEN',style:'font-size:12px;font-weight:700'},S.me?.role==='ADMIN'?'Administrador':'Operador')
+      ),
+      h('p',{class:'mut',style:'font-size:13px;margin:0 0 14px 0'},
+        `Conectado como: ${S.me?.username || 'usuario'}`
+      ),
+      h('button',{class:'b danger',style:'font-size:14px;padding:9px 18px;font-weight:700',onclick:doLogout},'🚪 Cerrar Sesión')
+    );
+
+    m.replaceChildren(card, pwaCard, sessionCard);
   }catch(e){
     m.replaceChildren(h('div',{class:'card danger'},'Error al cargar configuración: '+e.message));
   }
@@ -1814,7 +1847,71 @@ async function renderUsers(){
 }
 
 /* ---------- Arranque & PWA ---------- */
-let deferredPrompt=null;
+let deferredPrompt = null;
+const isStandalone = () => (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) || (typeof window !== 'undefined' && window.navigator && window.navigator.standalone === true);
+
+function showPwaHelpModal(){
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const overlay = h('div',{class:'modal-overlay',onclick:e=>{if(e.target===overlay)overlay.remove()}});
+  const modal = h('div',{class:'modal-card',style:'max-width:480px;padding:20px;border-radius:14px;background:var(--card)'},
+    h('div',{style:'display:flex;justify-content:space-between;align-items:center;margin-bottom:14px'},
+      h('b',{style:'font-size:17px;color:var(--ink)'},'📲 Cómo Instalar la App en tu Celular'),
+      h('button',{class:'b',style:'padding:4px 10px',onclick:()=>overlay.remove()},'✕')
+    ),
+    h('div',{style:'font-size:14px;line-height:1.5;color:var(--ink)'},
+      isIos ? [
+        h('p',{style:'font-weight:700;margin-bottom:8px'},'En iPhone / iPad (Safari):'),
+        h('ol',{style:'padding-left:20px;margin:8px 0;display:flex;flex-direction:column;gap:8px'},
+          h('li',{},'Toca el botón ',h('b',{},'Compartir (📤)'),' en la barra inferior de Safari.'),
+          h('li',{},'Desliza hacia abajo y selecciona ',h('b',{},'➕ Agregar a pantalla de inicio'),'.'),
+          h('li',{},'Toca ',h('b',{},'Agregar'),' en la esquina superior derecha.')
+        )
+      ] : [
+        h('p',{style:'font-weight:700;margin-bottom:8px'},'En Android / Google Chrome:'),
+        h('ol',{style:'padding-left:20px;margin:8px 0;display:flex;flex-direction:column;gap:8px'},
+          h('li',{},'Toca el menú de ',h('b',{},'tres puntos (⋮)'),' arriba a la derecha en Chrome.'),
+          h('li',{},'Toca ',h('b',{},'📲 Instalar aplicación'),' o ',h('b',{},'Agregar a la pantalla principal'),'.'),
+          h('li',{},'Confirma la instalación y se agregará el ícono en tu pantalla de inicio.')
+        )
+      ],
+      h('div',{class:'banner',style:'background:#1e293b;border-left:4px solid var(--g);margin-top:14px;font-size:12.5px;color:#94a3b8'},
+        '💡 Si eliminaste la app antes, Google Chrome pausa el aviso automático por unas horas, pero el menú (⋮) de Chrome te permite reinstalarla siempre que quieras.'
+      )
+    ),
+    h('div',{style:'display:flex;justify-content:flex-end;margin-top:16px'},
+      h('button',{class:'b main',style:'padding:9px 20px',onclick:()=>overlay.remove()},'Entendido')
+    )
+  );
+  overlay.append(modal);
+  document.body.append(overlay);
+}
+
+async function installPwaOrShowHelp(){
+  if(deferredPrompt){
+    try{
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if(choice && choice.outcome === 'accepted'){
+        toast('✓ Instalando App Fruver El Oasis...');
+        $('#installBanner') && ($('#installBanner').style.display='none');
+        $('#btnHeaderInstall') && ($('#btnHeaderInstall').style.display='none');
+      }
+    }catch(e){console.warn('PWA prompt error:',e)}
+    deferredPrompt=null;
+  }else{
+    showPwaHelpModal();
+  }
+}
+
+async function doLogout(){
+  if(confirm('¿Seguro que deseas salir y cerrar la sesión?')){
+    try{
+      await fetch('/logout',{method:'POST',headers:{'X-XSRF-TOKEN':csrf()}});
+    }catch(e){}
+    location='/login.html';
+  }
+}
+
 if(typeof navigator!=='undefined'&&'serviceWorker' in navigator){
   window.addEventListener('load',()=>{
     navigator.serviceWorker.register('/sw.js').catch(e=>console.warn('SW:',e));
@@ -1825,26 +1922,33 @@ if(typeof window!=='undefined'){
     e.preventDefault();
     deferredPrompt=e;
     const banner=$('#installBanner');
-    if(banner)banner.style.display='flex';
-    const btn=$('#btnInstall');
-    if(btn){
-      btn.onclick=async()=>{
-        if(banner)banner.style.display='none';
-        if(deferredPrompt){
-          deferredPrompt.prompt();
-          await deferredPrompt.userChoice;
-          deferredPrompt=null;
-        }
-      };
-    }
-    const closeBtn=$('#btnInstallClose');
-    if(closeBtn)closeBtn.onclick=()=>{if(banner)banner.style.display='none'};
+    if(banner && !sessionStorage.getItem('dismiss_install')) banner.style.display='flex';
+    const headerBtn=$('#btnHeaderInstall');
+    if(headerBtn) headerBtn.style.display='inline-flex';
   });
   window.addEventListener('appinstalled',()=>{
     const banner=$('#installBanner');
     if(banner)banner.style.display='none';
-    toast('✅ App Fruver El Oasis instalada en tu celular!');
+    const headerBtn=$('#btnHeaderInstall');
+    if(headerBtn)headerBtn.style.display='none';
+    toast('✅ ¡App Fruver El Oasis instalada en tu celular!');
   });
+}
+
+// Botones de instalación
+const btnInst = $('#btnInstall');
+if(btnInst) btnInst.onclick = installPwaOrShowHelp;
+const btnHdrInst = $('#btnHeaderInstall');
+if(btnHdrInst) btnHdrInst.onclick = installPwaOrShowHelp;
+const closeBtn = $('#btnInstallClose');
+if(closeBtn) closeBtn.onclick = () => {
+  sessionStorage.setItem('dismiss_install', '1');
+  const banner = $('#installBanner');
+  if(banner) banner.style.display = 'none';
+};
+if(!isStandalone()){
+  const hb = $('#btnHeaderInstall');
+  if(hb) hb.style.display = 'inline-flex';
 }
 
 /* Detecta mobile (<=640) para activar bottom nav */
@@ -1858,11 +1962,11 @@ window.addEventListener('resize',applyNavLayout);
 function fillDl(){$('#dl').replaceChildren(...S.products.filter(p=>p.active).map(p=>h('option',{value:p.name})))}
 
 /* Iconos y etiquetas para el bottom nav mobile */
-const TAB_ICONS={ops:['📋','Pedidos'],sales:['🧾','Ventas'],config:['🖨️','Impresoras'],customers:['👥','Clientes'],'delivery-persons':['🚴','Repartos'],users:['👤','Usuarios'],prices:['💲','Precios'],zones:['📍','Zonas'],reports:['📊','Reportes']};
+const TAB_ICONS={ops:['📋','Pedidos'],sales:['🧾','Ventas'],config:['⚙️','Ajustes'],customers:['👥','Clientes'],'delivery-persons':['🚴','Repartos'],users:['👤','Usuarios'],prices:['💲','Precios'],zones:['📍','Zonas'],reports:['📊','Reportes']};
 const DISABLED_TABS=new Set(['customers','users','prices']);
 
 function nav(){
-  const tabs=[['ops','Operación'],['sales','Ventas'],['config','Impresoras'],['customers','Clientes']];
+  const tabs=[['ops','Operación'],['sales','Ventas'],['config','Ajustes'],['customers','Clientes']];
   if(S.me.role==='ADMIN')tabs.push(['delivery-persons','Repartidores'],['users','Usuarios'],['prices','Precios'],['zones','Zonas Domicilio'],['reports','Reportes']);
   // Desktop nav (tabs horizontales)
   $('#desktopNav').replaceChildren(...tabs.map(([k,l])=>{
@@ -1878,7 +1982,7 @@ function nav(){
     },l);
   }));
   // Mobile bottom nav
-  const mobileCore=[['ops','Pedidos'],['sales','Ventas'],['config','Impresoras'],['customers','Clientes']];
+  const mobileCore=[['ops','Pedidos'],['sales','Ventas'],['config','Ajustes'],['customers','Clientes']];
   const mobileAdmin=[['users','Usuarios'],['prices','Precios']];
   const mobileTabs=S.me.role==='ADMIN'?[...mobileCore,...mobileAdmin]:mobileCore;
   $('#bnav').replaceChildren(...mobileTabs.map(([k])=>{
@@ -1899,7 +2003,7 @@ function nav(){
   $('#bnav').style.gridTemplateColumns=`repeat(${n},1fr)`;
 }
 function show(){({ops:()=>{renderOps()},sales:renderSales,config:renderPrinterConfig,'delivery-persons':renderDeliveryPersons,users:renderUsers,prices:renderPrices,customers:renderCustomers,zones:renderDeliveryZones,reports:renderReports})[S.tab]?.()}
-$('#logoutBtn').onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'X-XSRF-TOKEN':csrf()}});location='/login.html'};
+$('#logoutBtn').onclick=doLogout;
 (async()=>{
   S.me=await api('/api/me');
   S.products=await api('/api/products');
