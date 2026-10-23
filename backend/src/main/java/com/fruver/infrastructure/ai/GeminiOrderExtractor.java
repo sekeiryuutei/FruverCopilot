@@ -50,9 +50,23 @@ public class GeminiOrderExtractor implements OrderExtractor {
         this.http = builder.baseUrl(props.ai().gemini().baseUrl()).build();
         java.util.List<String> list = new java.util.ArrayList<>();
         if (props.ai().gemini().model() != null && !props.ai().gemini().model().isBlank()) {
-            list.add(props.ai().gemini().model().strip());
+            for (String m : props.ai().gemini().model().split("[,;|]")) {
+                String trimmed = m.strip();
+                if (!trimmed.isEmpty() && !list.contains(trimmed)) {
+                    list.add(trimmed);
+                }
+            }
         }
-        for (String m : java.util.List.of("gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.7-flash")) {
+        // Modelos de respaldo estándar en orden de capacidad/velocidad a más estables
+        for (String m : java.util.List.of(
+                "gemini-2.5-flash",
+                "gemini-2.5-flash-lite",
+                "gemini-2.0-flash",
+                "gemini-1.5-flash",
+                "gemini-flash-latest",
+                "gemini-3.8-flash",
+                "gemini-3.5-flash-lite"
+        )) {
             if (!list.contains(m)) list.add(m);
         }
         this.candidateModels = java.util.List.copyOf(list);
@@ -225,17 +239,18 @@ public class GeminiOrderExtractor implements OrderExtractor {
 
                     keyPool.onSuccess(keyEntry.index());
                     modelSucceeded = true;
+                    log.info("✓ Gemini respondió exitosamente con modelo '{}' usando Key #{}", candidateModel, keyEntry.index() + 1);
                     break;
                 } catch (org.springframework.web.client.RestClientResponseException e) {
                     lastException = e;
                     int status = e.getStatusCode().value();
                     if (status == 429) {
                         keyPool.onFailure(keyEntry.index(), 429, Duration.ofSeconds(60));
-                        log.warn("Gemini Key #{} con rate limit (HTTP 429), cambiando a siguiente key...", keyEntry.index() + 1);
+                        log.warn("Gemini Key #{} con rate limit (HTTP 429) en modelo '{}', probando siguiente key...", keyEntry.index() + 1, candidateModel);
                         continue;
                     }
                     if (status == 404) {
-                        log.warn("Gemini modelo '{}' no encontrado (HTTP 404), cambiando al modelo de respaldo...", candidateModel);
+                        log.warn("Gemini modelo '{}' no existe o no disponible (HTTP 404), saltando a modelo de respaldo...", candidateModel);
                         break;
                     }
                     if (status == 503 && attempt < 2) {
@@ -243,7 +258,7 @@ public class GeminiOrderExtractor implements OrderExtractor {
                         try { Thread.sleep(1200L); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                         continue;
                     }
-                    log.warn("Gemini modelo '{}' falló (HTTP {}): {}", candidateModel, status, e.getMessage());
+                    log.warn("Gemini modelo '{}' falló (HTTP {}): {}, probando siguiente modelo...", candidateModel, status, e.getMessage());
                     break;
                 } catch (org.springframework.web.client.ResourceAccessException e) {
                     lastException = e;
