@@ -32,6 +32,10 @@ const body=new El('body');const doc={activeElement:null,cookie:'',body,
   createElement:t=>new El(t),createTextNode:t=>new TextN(t),
   querySelector:s=>body.querySelector(s),querySelectorAll:s=>body.querySelectorAll(s)};
 for(const id of ['main','toast','cnt','dl','desktopNav','bnav','logoutBtn','installBanner','btnInstall','btnInstallClose','printerBadge']){const e=new El('div');e.id=id;body.append(e)}
+const offBarEl=new El('div');offBarEl.id='offlineBar';
+const offSpan=new El('span');offBarEl.append(offSpan);
+const offCountEl=new El('span');offCountEl.id='offlineCount';offBarEl.append(offCountEl);
+body.append(offBarEl);
 /* ---------- datos ---------- */
 const products=[{id:1,name:'Papa criolla',unit:'LB',active:true,prices:{RETAIL:3000,WHOLESALE:2610}},
   {id:2,name:'Aguacate Hass',unit:'UNIDAD',active:true,prices:{RETAIL:4500,WHOLESALE:3920}},
@@ -42,9 +46,17 @@ const mkOrder=(id,version=1)=>({id,version,status:'REVIEW',conversationStatus:'R
   items:[{id:101,productId:2,productName:'Aguacate Hass',mentioned:'aguacates',quantity:2,unit:'UNIDAD',manualPrice:null,aiSummary:'Aguacate Hass 2 UNIDAD'},
          {id:102,productId:1,productName:'Papa criolla',mentioned:'papa criolla',quantity:4,unit:'LB',manualPrice:null,aiSummary:'Papa criolla 4 LB'}]});
 let serverOrders=[mkOrder(10005)];const puts=[],calls=[];
+const storage={};
+const fakeLocalStorage={
+  getItem:k=>storage[k]??null,
+  setItem:(k,v)=>{storage[k]=String(v)},
+  removeItem:k=>{delete storage[k]},
+  clear:()=>{for(const k in storage)delete storage[k]}
+};
 const ctx={document:doc,console,setTimeout,clearTimeout,setInterval:()=>0,scrollTo(){},confirm:()=>true,location:{},Intl,Date,JSON,Math,Object,Map,Set,Array,Promise,Error,Number,String,
   window:{innerWidth:1024,addEventListener:()=>{}},
-  navigator:{serviceWorker:{register:()=>Promise.resolve()}},
+  localStorage:fakeLocalStorage,
+  navigator:{onLine:true,serviceWorker:{register:()=>Promise.resolve()}},
   EventSource:class{addEventListener(){}},
   fetch:async(url,o={})=>{calls.push({url,method:o.method||'GET',body:o.body?JSON.parse(o.body):null});let data=null;
     if(url==='/api/me')data={username:'admin',role:'ADMIN'};else if(url.startsWith('/api/products')&&(o.method||'GET')==='GET')data=products;
@@ -54,6 +66,7 @@ const ctx={document:doc,console,setTimeout,clearTimeout,setInterval:()=>0,scroll
     }
     else if(url==='/api/sales/reprint-all-pending')data={status:'enqueued',count:2};
     else if(url.includes('/reprint'))data={status:'PRINT_PENDING',saleId:501,orderId:10008};
+    else if(url==='/api/orders/manual'&&o.method==='POST')data={id:10020,version:1,status:'PENDING_APPROVAL',reviewStatus:'DRAFT',total:15000,...(o.body?JSON.parse(o.body):{})};
     else if(url==='/api/orders')data=serverOrders;else if(o.method==='PUT'&&url.startsWith('/api/orders/')){puts.push(JSON.parse(o.body));data=mkOrder(10005,2)}
     return{status:200,ok:true,json:async()=>data}}};
 vm.createContext(ctx);
@@ -267,6 +280,38 @@ const rows=c=>c.querySelector('tbody').kids;const btn=(c,t)=>c.querySelectorAll(
   ok('Guardar envía orderGraceSeconds en segundos (3 min = 180s)',lastPut&&lastPut.body.orderGraceSeconds===180,JSON.stringify(lastPut&&lastPut.body));
   ok('Guardar envía printTimeoutSeconds (8s)',lastPut&&lastPut.body.printTimeoutSeconds===8);
   ok('Guardar envía autoPrintWholesale (true)',lastPut&&lastPut.body.autoPrintWholesale===true);
+
+  // ---- Modo Offline (Sin conexión) y Sincronización
+  ev("setOfflineState(true)");
+  const offBar=doc.querySelector('#offlineBar');
+  ok('Modo offline: banner visible',offBar.style.display==='flex');
+  ok('Modo offline: texto de advertencia claro',offBar.textContent.includes('MODO SIN CONEXIÓN'));
+
+  // Crear pedido localmente
+  ev(`saveOfflineOrder({
+    id: 'LOCAL-9999',
+    rawPayload: { customerName: 'Restaurante El Oasis', items: [{ productId: 1, quantity: 5, unit: 'LB' }] },
+    andApprove: false,
+    total: 15000,
+    createdAt: new Date().toISOString()
+  })`);
+  ok('Pedido guardado en cola local',JSON.parse(storage['oasis_offline_orders']||'[]').length===1);
+  const offCount=doc.querySelector('#offlineCount');
+  ok('Contador de pendientes en banner muestra 1',offCount.textContent.includes('1 pendiente'));
+
+  // Cargar órdenes con el pedido offline encolado
+  ev("S.tab='ops'");
+  await ev('loadOrders()');
+  const localCard=cardOf('LOCAL-9999');
+  ok('Pedido offline se muestra en el tablero',!!localCard);
+  ok('Pedido offline muestra badge de SIN CONEXIÓN',localCard&&localCard.textContent.includes('SIN CONEXIÓN'));
+
+  // Restablecer conexión y sincronizar
+  ev("setOfflineState(false)");
+  await ev('syncOfflineOrders()');
+  ok('Sincronización envía pedido por POST a /api/orders/manual',calls.some(c=>c.url==='/api/orders/manual'&&c.method==='POST'));
+  ok('Cola de pedidos offline se vació tras sincronización exitosa',JSON.parse(storage['oasis_offline_orders']||'[]').length===0);
+  ok('Banner se oculta tras sincronizar',offBar.style.display==='none');
 
   console.log(fails?`\nFALLAS: ${fails}`:'\nTODO OK');process.exit(fails?1:0)
 })();

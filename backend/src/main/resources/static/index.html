@@ -107,6 +107,12 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
   <div id="desktopNav"></div>
 </header>
 
+<!-- ── Barra de Modo Sin Conexión (Offline Banner) ──── -->
+<div id="offlineBar" style="display:none;background:#b45309;color:#fff;padding:8px 14px;font-size:13.5px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;position:sticky;top:52px;z-index:24;box-shadow:0 2px 8px rgba(0,0,0,0.25);text-align:center">
+  <span>⚡ MODO SIN CONEXIÓN — Puedes seguir creando pedidos; se guardarán localmente y se sincronizarán al volver internet</span>
+  <span id="offlineCount" class="pill" style="background:#78350f;color:#fef3c7;font-size:12px;font-weight:800;display:none">0 pendientes</span>
+</div>
+
 <!-- ── Banner de instalación PWA (bottom, mobile) ──── -->
 <div id="installBanner">
   <div class="ibtext">
@@ -132,10 +138,123 @@ function h(tag,attrs={},...kids){const e=document.createElement(tag);for(const[k
   for(const c of kids.flat()){if(c==null||c===false)continue;e.append(c.nodeType?c:document.createTextNode(String(c)))}return e}
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',4500)}
 function csrf(){return decodeURIComponent((document.cookie.match(/XSRF-TOKEN=([^;]+)/)||[])[1]||'')}
-async function api(path,opt={}){const o={method:'GET',headers:{},...opt};if(o.body&&typeof o.body!=='string'){o.body=JSON.stringify(o.body);o.headers['Content-Type']='application/json'}
+
+let isOffline = (typeof navigator !== 'undefined' && navigator.onLine === false);
+
+function getOfflineOrders(){
+  try{ return JSON.parse(localStorage.getItem('oasis_offline_orders') || '[]'); }catch(e){ return []; }
+}
+function saveOfflineOrder(order){
+  try{
+    const q = getOfflineOrders();
+    q.push(order);
+    localStorage.setItem('oasis_offline_orders', JSON.stringify(q));
+    updateOfflineUI();
+  }catch(e){}
+}
+function removeOfflineOrder(orderId){
+  try{
+    let q = getOfflineOrders();
+    q = q.filter(o => o.id !== orderId);
+    localStorage.setItem('oasis_offline_orders', JSON.stringify(q));
+    updateOfflineUI();
+  }catch(e){}
+}
+function updateOfflineUI(){
+  const bar = $('#offlineBar');
+  const countEl = $('#offlineCount');
+  if(!bar) return;
+  const q = getOfflineOrders();
+  if(isOffline){
+    bar.style.display = 'flex';
+    bar.style.background = '#b45309';
+    const msgSpan = bar.querySelector('span');
+    if(msgSpan) msgSpan.textContent = '⚡ MODO SIN CONEXIÓN — Puedes seguir creando pedidos; se guardarán localmente y se sincronizarán al volver internet';
+    else bar.textContent = '⚡ MODO SIN CONEXIÓN — Puedes seguir creando pedidos; se guardarán localmente y se sincronizarán al volver internet';
+    if(countEl){
+      countEl.style.display = q.length > 0 ? 'inline-block' : 'none';
+      countEl.textContent = `${q.length} pendiente${q.length === 1 ? '' : 's'}`;
+    }
+  } else {
+    if(q.length > 0){
+      bar.style.display = 'flex';
+      bar.style.background = '#065f46';
+      const msgSpan = bar.querySelector('span');
+      if(msgSpan) msgSpan.textContent = '🟢 Conexión restablecida — Sincronizando pedidos guardados...';
+      if(countEl){
+        countEl.style.display = 'inline-block';
+        countEl.textContent = `${q.length} sincronizando`;
+      }
+    } else {
+      bar.style.display = 'none';
+    }
+  }
+}
+function setOfflineState(state){
+  const changed = isOffline !== state;
+  isOffline = state;
+  updateOfflineUI();
+  return changed;
+}
+
+let isSyncing = false;
+async function syncOfflineOrders(){
+  if(isSyncing || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
+  const q = getOfflineOrders();
+  if(!q.length) return;
+  isSyncing = true;
+  updateOfflineUI();
+  let synced = 0;
+  try{
+    for(const off of [...q]){
+      try{
+        const order = await api('/api/orders/manual', { method: 'POST', body: off.rawPayload });
+        if(off.andApprove){
+          try{
+            await api(`/api/orders/${order.id}/approve`, {
+              method: 'POST',
+              body: { version: order.version, deliveryPersonId: off.rawPayload.deliveryPersonId }
+            });
+          }catch(x){}
+        }
+        removeOfflineOrder(off.id);
+        synced++;
+      }catch(err){
+        if(err.isOffline || (typeof navigator !== 'undefined' && !navigator.onLine)) break;
+      }
+    }
+    if(synced > 0){
+      toast(`✓ ¡Conexión restablecida! Se sincronizaron ${synced} pedido(s) guardados localmente.`);
+      await loadOrders();
+    }
+  }finally{
+    isSyncing = false;
+    updateOfflineUI();
+  }
+}
+
+async function api(path,opt={}){
+  const o={method:'GET',headers:{},...opt};
+  if(o.body&&typeof o.body!=='string'){o.body=JSON.stringify(o.body);o.headers['Content-Type']='application/json'}
   if(o.method!=='GET')o.headers['X-XSRF-TOKEN']=csrf();
-  const r=await fetch(path,o);if(r.status===401){location='/login.html';throw new Error('401')}
-  const j=r.status===204?null:await r.json().catch(()=>null);if(!r.ok){const e=new Error(j?.message||'Error '+r.status);e.code=j?.code;e.details=j?.details;throw e}return j}
+  let r;
+  try{
+    r=await fetch(path,o);
+    if(setOfflineState(false)){
+      syncOfflineOrders();
+    }
+  }catch(fetchErr){
+    setOfflineState(true);
+    const customErr = new Error('Sin conexión a internet. Los datos se guardarán localmente.');
+    customErr.code = 'OFFLINE';
+    customErr.isOffline = true;
+    throw customErr;
+  }
+  if(r.status===401){location='/login.html';throw new Error('401')}
+  const j=r.status===204?null:await r.json().catch(()=>null);
+  if(!r.ok){const e=new Error(j?.message||'Error '+r.status);e.code=j?.code;e.details=j?.details;throw e}
+  return j;
+}
 const S={me:null,products:[],orders:[],deliveryPersons:[],draft:{},open:{},openConvs:new Set(),tab:'ops'};
 const byName=n=>S.products.find(p=>p.name.toLowerCase()===String(n).trim().toLowerCase());
 const ago=t=>{const s=Math.max(0,(Date.now()-new Date(t))/1000);return s<60?Math.round(s)+' s':s<3600?Math.round(s/60)+' min':Math.round(s/3600)+' h'};
@@ -186,7 +305,45 @@ const setBad=(el,on)=>{on?el.classList.add('bad'):el.classList.remove('bad')};
 let loading=false,again=false;
 /** Carga el tablero. Si llega otro aviso mientras carga, repite una sola vez (sin peticiones solapadas). */
 async function loadOrders(){if(loading){again=true;return}loading=true;
-  try{S.orders=await api('/api/orders');if(S.tab==='ops')renderOps()}finally{loading=false;if(again){again=false;loadOrders()}}}
+  try{
+    let orders=[];
+    try{
+      orders=await api('/api/orders');
+      try{localStorage.setItem('oasis_cached_orders',JSON.stringify(orders))}catch(e){}
+    }catch(err){
+      if(err.isOffline||isOffline){
+        try{orders=JSON.parse(localStorage.getItem('oasis_cached_orders')||'[]')}catch(e){orders=[]}
+      }else{throw err}
+    }
+    const offList=getOfflineOrders().map(off=>({
+      id:off.id,
+      version:1,
+      status:off.andApprove?'COMPLETED':'PENDING_APPROVAL',
+      reviewStatus:off.andApprove?'CONFIRMED':'DRAFT',
+      conversationStatus:'DONE',
+      aiStatus:'NONE',
+      printStatus:off.andApprove?'PRINTED':'NOT_PRINTED',
+      saleId:null,
+      total:off.total||0,
+      customer:{name:off.rawPayload.customerName||'Cliente mostrador',type:'RESTAURANTE'},
+      address:off.rawPayload.address||'',
+      notes:off.rawPayload.notes||'',
+      items:(off.rawPayload.items||[]).map((it,idx)=>({
+        id:'off-it-'+idx,
+        productId:it.productId,
+        productName:it.productName||(S.products.find(p=>p.id===it.productId)?.name)||'Producto',
+        quantity:it.quantity,
+        unit:it.unit||'LB',
+        manualPrice:it.manualPrice
+      })),
+      isOffline:true,
+      rawPayload:off.rawPayload,
+      andApprove:off.andApprove,
+      receivedAt:off.createdAt||new Date().toISOString()
+    }));
+    S.orders=[...offList,...orders.filter(o=>!offList.some(off=>off.id===o.id))];
+    if(S.tab==='ops')renderOps();
+  }finally{loading=false;if(again){again=false;loadOrders()}}}
 function draftOf(o){return S.draft[o.id]||null}
 function buildDraft(o){return S.draft[o.id]||{version:o.version,customerName:o.customer.name||'',address:o.address||'',notes:o.notes||'',deliveryPersonId:o.deliveryPersonId||null,
   items:o.items.map(i=>({id:i.id,name:i.productName||i.mentioned||'',productId:i.productId,quantity:i.quantity,unit:i.unit||'LB',manualPrice:i.manualPrice,reason:i.priceChangeReason}))}}
@@ -517,11 +674,13 @@ function doneCard(o){
   const ps=o.printStatus;
   const cardEl=h('div',{class:'card GREEN',dataset:{id:o.id}});
   const printerLoc = o.printedPrinter || o.targetPrinter || (S.printerStatus?.activePrinter || 'OFICINA');
-  const printPill = ps==='PRINTED'
-    ? h('span',{class:'pill GREEN',style:'font-weight:800;font-size:12.5px;background:#15803d;color:#fff'},`✅ VENDIDA (🖨️ IMPRESO EN ${printerLoc})`)
-    : ps==='PRINT_FAILED'
-      ? h('span',{class:'pill RED',style:'font-weight:800'},`🔴 FALLÓ IMPRESIÓN (${printerLoc})`)
-      : h('span',{class:'pill YELLOW'},`🖨️ EN COLA (${printerLoc})`);
+  const printPill = o.isOffline
+    ? h('span',{class:'pill',style:'font-weight:800;font-size:12.5px;background:#b45309;color:#fff'},'⚡ GUARDADO LOCAL (SIN CONEXIÓN)')
+    : (ps==='PRINTED'
+      ? h('span',{class:'pill GREEN',style:'font-weight:800;font-size:12.5px;background:#15803d;color:#fff'},`✅ VENDIDA (🖨️ IMPRESO EN ${printerLoc})`)
+      : ps==='PRINT_FAILED'
+        ? h('span',{class:'pill RED',style:'font-weight:800'},`🔴 FALLÓ IMPRESIÓN (${printerLoc})`)
+        : h('span',{class:'pill YELLOW'},`🖨️ EN COLA (${printerLoc})`));
 
   const inputPill = o.inputType==='IMAGE'
     ? h('span',{class:'pill',style:'background:#7c3aed;color:#fff'},'📷 FOTO')
@@ -565,24 +724,28 @@ function doneCard(o){
   const mediaAudioBox = h('div');
   const tools = h('div',{class:'row',style:'gap:8px;margin-top:8px'});
 
-  tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>o.saleId?showTicket(o.saleId):showTicketByOrder(o.id)},'🧾 Ver Factura'));
-  tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',onclick:async()=>{
-    try{
-      await api(`/api/orders/${o.id}/reprint`,{method:'POST'});
-      toast(`✓ Reimpresión encolada para Pedido #${o.id}`);
-      await updatePrinterStatus();
-      await loadOrders();
-    }catch(e){toast(e.message)}
-  }},ps==='PRINT_FAILED'?'🔴 REINTENTAR IMPRESIÓN':'🖨️ REIMPRIMIR'));
+  if(o.isOffline){
+    tools.append(h('button',{class:'b main',style:'background:#b45309;border-color:#b45309;color:#fff;font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>syncOfflineOrders()},'⚡ Sincronizar con Servidor'));
+  }else{
+    tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>o.saleId?showTicket(o.saleId):showTicketByOrder(o.id)},'🧾 Ver Factura'));
+    tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',onclick:async()=>{
+      try{
+        await api(`/api/orders/${o.id}/reprint`,{method:'POST'});
+        toast(`✓ Reimpresión encolada para Pedido #${o.id}`);
+        await updatePrinterStatus();
+        await loadOrders();
+      }catch(e){toast(e.message)}
+    }},ps==='PRINT_FAILED'?'🔴 REINTENTAR IMPRESIÓN':'🖨️ REIMPRIMIR'));
 
-  tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700;background:rgba(59,130,246,0.15);color:#60a5fa;border:1px solid rgba(59,130,246,0.3)',title:'Reabrir la orden para agregar o modificar productos',onclick:async()=>{
-    if(!confirm(`¿Deseas agregar más cosas al Pedido #${o.id}? La comanda volverá al tablero para que puedas ajustar productos y volver a imprimirla.`))return;
-    try{
-      await api(`/api/orders/${o.id}/reopen`,{method:'POST'});
-      toast(`✓ Pedido #${o.id} reabierto para agregar más cosas`);
-      await loadOrders();
-    }catch(e){toast(e.message)}
-  }},'➕ Agregar más cosas'));
+    tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700;background:rgba(59,130,246,0.15);color:#60a5fa;border:1px solid rgba(59,130,246,0.3)',title:'Reabrir la orden para agregar o modificar productos',onclick:async()=>{
+      if(!confirm(`¿Deseas agregar más cosas al Pedido #${o.id}? La comanda volverá al tablero para que puedas ajustar productos y volver a imprimirla.`))return;
+      try{
+        await api(`/api/orders/${o.id}/reopen`,{method:'POST'});
+        toast(`✓ Pedido #${o.id} reabierto para agregar más cosas`);
+        await loadOrders();
+      }catch(e){toast(e.message)}
+    }},'➕ Agregar más cosas'));
+  }
 
   if(o.hasImage){
     tools.append(h('button',{class:'b',style:'background:#7c3aed;color:#fff;font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>showImageModal(o.id)},'🖼️ Ver Foto'));
@@ -752,7 +915,11 @@ function card(o){
         ? h('span',{class:'pill gray'},'🏪 MANUAL / LLAMADA')
         : h('span',{class:'pill gray'},'📝 TEXTO');
 
-  const validateBtn = busy ? null : h('button',{class:'b main',style:'background:#16a34a;border-color:#15803d;font-size:14px;padding:6px 14px;font-weight:800;white-space:nowrap',title:'Validar pedido y facturar',onclick:()=>validateOrderQuick(o.id,el)},'✅ VALIDAR');
+  const validateBtn = (busy || o.isOffline) ? null : h('button',{class:'b main',style:'background:#16a34a;border-color:#15803d;font-size:14px;padding:6px 14px;font-weight:800;white-space:nowrap',title:'Validar pedido y facturar',onclick:()=>validateOrderQuick(o.id,el)},'✅ VALIDAR');
+
+  const offlinePill = o.isOffline
+    ? h('span',{class:'pill',style:'background:#b45309;color:#fff;font-weight:800;font-size:12px'},'⚡ SIN CONEXIÓN')
+    : null;
 
   const verifPill = (!busy && o.requiresVerification)
     ? h('span',{class:'pill YELLOW',style:'font-size:12px;padding:3px 9px;font-weight:700;display:inline-flex;align-items:center;gap:6px'},
@@ -763,6 +930,7 @@ function card(o){
 
   el.append(h('div',{class:'top',style:'align-items:center;gap:8px'},
     inputPill,
+    offlinePill,
     h('b',{style:'font-size:22px;font-weight:900'},'#'+o.id),
     statusPill(o),
     verifPill,
@@ -809,13 +977,23 @@ function card(o){
     const graceTxt = graceSec >= 60 ? `${Math.round(graceSec/60)} min` : `${graceSec} seg`;
     el.append(h('div',{class:'banner',style:'background:#064e3b;border-left:4px solid #10b981;color:#ecfdf5;font-weight:600;margin-bottom:8px'},`⏳ Esperando si el cliente manda más cosas (${graceTxt} de margen). Se imprimirá y marcará como vendida automáticamente, o pulsa "MARCAR COMO VENDIDO" ya mismo`));
   }
+  if(o.isOffline){
+    el.append(h('div',{class:'banner',style:'background:#78350f;border-left:4px solid #f59e0b;color:#fef3c7;font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center'},
+      h('span',{},'⚡ Pedido guardado en este dispositivo. Se registrará en la base de datos al volver la conexión.'),
+      h('button',{class:'b',style:'background:#f59e0b;color:#000;font-size:12px;font-weight:700',onclick:()=>syncOfflineOrders()},'↻ Sincronizar ahora')
+    ));
+  }
   const tools=h('div',{class:'row',style:'gap:8px;flex-wrap:wrap;align-items:center'});
-  tools.append(h('button',{class:'b main',style:'background:#16a34a;border-color:#15803d;color:#fff;font-size:14px;padding:8px 16px;font-weight:800;cursor:pointer',title:'Marcar como vendido y generar factura',onclick:()=>{
-    validateOrderQuick(o.id,el);
-  }},'✅ MARCAR COMO VENDIDO'));
-  tools.append(h('button',{class:'b',style:'font-size:14px;padding:8px 16px;font-weight:700;cursor:pointer',title:'Ver vista previa de la factura',onclick:()=>{
-    showTicketByOrder(o.id);
-  }},'🧾 VER FACTURA'));
+  if(o.isOffline){
+    tools.append(h('button',{class:'b main',style:'background:#b45309;border-color:#b45309;color:#fff;font-size:14px;padding:8px 16px;font-weight:800',onclick:()=>syncOfflineOrders()},'⚡ Sincronizar con Servidor'));
+  }else{
+    tools.append(h('button',{class:'b main',style:'background:#16a34a;border-color:#15803d;color:#fff;font-size:14px;padding:8px 16px;font-weight:800;cursor:pointer',title:'Marcar como vendido y generar factura',onclick:()=>{
+      validateOrderQuick(o.id,el);
+    }},'✅ MARCAR COMO VENDIDO'));
+    tools.append(h('button',{class:'b',style:'font-size:14px;padding:8px 16px;font-weight:700;cursor:pointer',title:'Ver vista previa de la factura',onclick:()=>{
+      showTicketByOrder(o.id);
+    }},'🧾 VER FACTURA'));
+  }
   if(o.hasAudio){const box=h('div');tools.append(h('button',{class:'b',style:'background:#0284c7;color:#fff;font-size:13.5px;padding:8px 14px',onclick:()=>{box.replaceChildren(h('audio',{controls:true,autoplay:true,src:`/api/orders/${o.id}/audio`}))}},'▶ ESCUCHAR'),box)}
   if(o.hasImage){tools.append(h('button',{class:'b',style:'background:#7c3aed;color:#fff;font-size:13.5px;padding:8px 14px;font-weight:700',onclick:()=>showImageModal(o.id)},'🖼️ VER FOTO DE LISTA'))}
   
@@ -1202,6 +1380,9 @@ function openManualOrderModal(isQuickSale = false){
     };
 
     try {
+      if (isOffline) {
+        throw Object.assign(new Error('OFFLINE'), { isOffline: true });
+      }
       const order = await api('/api/orders/manual', { method: 'POST', body: payload });
       toast(`✓ Pedido manual #${order.id} creado`);
       closeModal();
@@ -1218,7 +1399,26 @@ function openManualOrderModal(isQuickSale = false){
         }
       }
     } catch(e) {
-      toast(e.message);
+      if (e.isOffline || isOffline) {
+        const localId = 'LOCAL-' + Date.now().toString().slice(-4);
+        const estTotal = validItems.reduce((acc, it) => {
+          const p = S.products.find(x => x.id === it.productId);
+          const pr = it.manualPrice != null ? it.manualPrice : (p ? (p.prices['RESTAURANTE'] || 0) : 0);
+          return acc + (it.quantity * pr);
+        }, 0);
+        saveOfflineOrder({
+          id: localId,
+          rawPayload: payload,
+          andApprove: andApprove,
+          total: estTotal,
+          createdAt: new Date().toISOString()
+        });
+        toast(`⚡ Guardado localmente (#${localId}). Se sincronizará automáticamente al volver internet.`);
+        closeModal();
+        await loadOrders();
+      } else {
+        toast(e.message);
+      }
     }
   };
 
@@ -2148,10 +2348,44 @@ function nav(){
 function show(){({ops:()=>{renderOps()},sales:renderSales,config:renderPrinterConfig,'delivery-persons':renderDeliveryPersons,users:renderUsers,prices:renderPrices,customers:renderCustomers,zones:renderDeliveryZones,reports:renderReports})[S.tab]?.()}
 $('#logoutBtn').onclick=doLogout;
 (async()=>{
-  S.me=await api('/api/me');
-  S.products=await api('/api/products');
-  try{S.deliveryPersons=await api('/api/delivery-persons')}catch(e){S.deliveryPersons=[]}
-  fillDl();nav();applyNavLayout();await updatePrinterStatus();await loadOrders();
+  if(typeof window !== 'undefined'){
+    window.addEventListener('online', ()=>{
+      setOfflineState(false);
+      toast('🟢 Conexión restablecida. Sincronizando datos...');
+      syncOfflineOrders();
+      loadOrders();
+    });
+    window.addEventListener('offline', ()=>{
+      setOfflineState(true);
+      toast('⚡ Sin conexión a internet. Los pedidos se guardarán localmente.');
+    });
+  }
+  updateOfflineUI();
+
+  try{
+    S.me=await api('/api/me');
+    try{localStorage.setItem('oasis_cached_me',JSON.stringify(S.me))}catch(e){}
+  }catch(e){
+    try{S.me=JSON.parse(localStorage.getItem('oasis_cached_me')||'{"username":"operador","role":"OPERATOR"}')}catch(x){S.me={username:'operador',role:'OPERATOR'}}
+  }
+
+  try{
+    S.products=await api('/api/products');
+    try{localStorage.setItem('oasis_cached_products',JSON.stringify(S.products))}catch(e){}
+  }catch(e){
+    try{S.products=JSON.parse(localStorage.getItem('oasis_cached_products')||'[]')}catch(x){S.products=[]}
+  }
+
+  try{
+    S.deliveryPersons=await api('/api/delivery-persons');
+    try{localStorage.setItem('oasis_cached_delivery_persons',JSON.stringify(S.deliveryPersons))}catch(e){}
+  }catch(e){
+    try{S.deliveryPersons=JSON.parse(localStorage.getItem('oasis_cached_delivery_persons')||'[]')}catch(x){S.deliveryPersons=[]}
+  }
+
+  fillDl();nav();applyNavLayout();
+  try{await updatePrinterStatus()}catch(e){}
+  await loadOrders();
   let t;
   const connectSse=()=>{
     try{
