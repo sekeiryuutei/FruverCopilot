@@ -11,13 +11,12 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Cliente de contingencia multi-proveedor (OpenCode Zen / OpenRouter / Ollama local).
- * Se activa automáticamente si todas las keys de Gemini sufren saturación o caída.
+ * Cliente de contingencia multi-proveedor en la nube (OpenCode Zen / OpenRouter / Groq / OpenAI).
+ * Se activa automáticamente si todas las keys de Gemini sufren saturación o caída de red.
  */
 @Component
 public class FallbackAiClient {
@@ -35,11 +34,11 @@ public class FallbackAiClient {
     }
 
     public AIOrderResponse tryFallback(String systemPrompt, String userPrompt) {
-        // 1. Probar OpenCode Zen / OpenRouter si hay clave configurada
+        // 1. Respaldo 1: OpenCode Zen (DeepSeek gratuito)
         String opencodeKey = props.ai().opencode().apiKey();
-        if (opencodeKey != null && !opencodeKey.isBlank() && !opencodeKey.startsWith("#") && opencodeKey.length() > 6) {
+        if (isValidKey(opencodeKey)) {
             try {
-                log.info("Activando fallback con OpenCode Zen (modelo: {})...", props.ai().opencode().model());
+                log.info("Activando Respaldo 1: OpenCode Zen ({}, modelo: {})...", props.ai().opencode().baseUrl(), props.ai().opencode().model());
                 AIOrderResponse res = callOpenAiCompatible(
                         props.ai().opencode().baseUrl(),
                         opencodeKey,
@@ -48,30 +47,82 @@ public class FallbackAiClient {
                         userPrompt
                 );
                 if (res != null) {
-                    log.info("✓ Fallback con OpenCode Zen exitoso");
+                    log.info("✓ Respaldo 1 (OpenCode Zen) exitoso");
                     return res;
                 }
             } catch (Exception e) {
-                log.warn("Fallback OpenCode falló: {}", e.getMessage());
+                log.warn("Respaldo 1 (OpenCode) falló: {}", e.getMessage());
             }
         }
 
-        // 2. Probar Ollama local si está disponible
-        String ollamaUrl = props.ai().ollama().baseUrl();
-        if (ollamaUrl != null && !ollamaUrl.isBlank()) {
+        // 2. Respaldo 2: OpenRouter (Multi-modelo: Gemini, DeepSeek, Llama en la nube)
+        String openrouterKey = props.ai().openrouter().apiKey();
+        if (isValidKey(openrouterKey)) {
             try {
-                log.info("Activando fallback con Ollama local ({}, modelo: {})...", ollamaUrl, props.ai().ollama().model());
-                AIOrderResponse res = callOllama(ollamaUrl, props.ai().ollama().model(), systemPrompt, userPrompt);
+                log.info("Activando Respaldo 2: OpenRouter (modelo: {})...", props.ai().openrouter().model());
+                AIOrderResponse res = callOpenAiCompatible(
+                        props.ai().openrouter().baseUrl(),
+                        openrouterKey,
+                        props.ai().openrouter().model(),
+                        systemPrompt,
+                        userPrompt
+                );
                 if (res != null) {
-                    log.info("✓ Fallback con Ollama local exitoso");
+                    log.info("✓ Respaldo 2 (OpenRouter) exitoso");
                     return res;
                 }
             } catch (Exception e) {
-                log.warn("Fallback Ollama no disponible: {}", e.getMessage());
+                log.warn("Respaldo 2 (OpenRouter) falló: {}", e.getMessage());
+            }
+        }
+
+        // 3. Respaldo 3: Groq (Ultra rápido)
+        String groqKey = props.ai().groq().apiKey();
+        if (isValidKey(groqKey)) {
+            try {
+                log.info("Activando Respaldo 3: Groq (modelo: {})...", props.ai().groq().model());
+                AIOrderResponse res = callOpenAiCompatible(
+                        props.ai().groq().baseUrl(),
+                        groqKey,
+                        props.ai().groq().model(),
+                        systemPrompt,
+                        userPrompt
+                );
+                if (res != null) {
+                    log.info("✓ Respaldo 3 (Groq) exitoso");
+                    return res;
+                }
+            } catch (Exception e) {
+                log.warn("Respaldo 3 (Groq) falló: {}", e.getMessage());
+            }
+        }
+
+        // 4. Respaldo 4: OpenAI
+        String openaiKey = props.ai().openai().apiKey();
+        if (isValidKey(openaiKey) && !openaiKey.contains("not-configured")) {
+            try {
+                log.info("Activando Respaldo 4: OpenAI (modelo: {})...", props.ai().openai().model());
+                AIOrderResponse res = callOpenAiCompatible(
+                        props.ai().openai().baseUrl(),
+                        openaiKey,
+                        props.ai().openai().model(),
+                        systemPrompt,
+                        userPrompt
+                );
+                if (res != null) {
+                    log.info("✓ Respaldo 4 (OpenAI) exitoso");
+                    return res;
+                }
+            } catch (Exception e) {
+                log.warn("Respaldo 4 (OpenAI) falló: {}", e.getMessage());
             }
         }
 
         return null;
+    }
+
+    private boolean isValidKey(String key) {
+        return key != null && !key.isBlank() && !key.startsWith("#") && key.strip().length() > 6;
     }
 
     private AIOrderResponse callOpenAiCompatible(String baseUrl, String apiKey, String model, String systemPrompt, String userPrompt) throws Exception {
@@ -106,40 +157,6 @@ public class FallbackAiClient {
         }
 
         String content = root.path("choices").get(0).path("message").path("content").asText("");
-        if (content.isBlank()) return null;
-
-        String clean = GeminiOrderExtractor.stripMarkdownFences(content);
-        return mapper.readValue(clean, AIOrderResponse.class);
-    }
-
-    private AIOrderResponse callOllama(String baseUrl, String model, String systemPrompt, String userPrompt) throws Exception {
-        String url = baseUrl.strip();
-        if (url.endsWith("/")) url = url.substring(0, url.length() - 1);
-        String chatUrl = url + "/api/chat";
-
-        RestClient client = restBuilder.build();
-        Map<String, Object> body = Map.of(
-                "model", model,
-                "stream", false,
-                "format", "json",
-                "messages", List.of(
-                        Map.of("role", "system", "content", systemPrompt),
-                        Map.of("role", "user", "content", userPrompt)
-                )
-        );
-
-        JsonNode root = client.post()
-                .uri(chatUrl)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body)
-                .retrieve()
-                .body(JsonNode.class);
-
-        if (root == null || !root.has("message")) {
-            return null;
-        }
-
-        String content = root.path("message").path("content").asText("");
         if (content.isBlank()) return null;
 
         String clean = GeminiOrderExtractor.stripMarkdownFences(content);

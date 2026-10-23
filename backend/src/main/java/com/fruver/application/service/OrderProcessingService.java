@@ -84,134 +84,189 @@ public class OrderProcessingService {
                                   ConversationService conversation, SseHub hub, AppMetrics metrics, AppProperties props,
                                   DeliveryZoneService zones, SaleService sales,
                                   org.springframework.jdbc.core.simple.JdbcClient jdbc) {
-        this(extractor, stt, storage, media, catalog, interpreter, writer, orders, quotes, conversation, hub, metrics, props, zones, sales, jdbc, null);
+        this(extractor, stt, storage, media, catalog, interpreter, writer, orders, quotes, conversation, hub, metrics, props, zones, sales, jdbc, (PrinterConfigService) null);
     }
 
     @Async("aiExecutor")
     public void process(IntakeResult r) {
-        try {
-            doProcess(r);
-        } catch (Exception e) {
-            log.error("Fallo inesperado procesando pedido {}", r.orderId(), e);
-            metrics.aiError("unexpected");
-            writer.markFailed(r.orderId(), "FAILED", "Error inesperado; digitar manualmente");
-        }
-        hub.orderChanged(r.orderId());
+        processBatch(r.orderId(), r);
     }
 
-    private void doProcess(IntakeResult r) {
-        String text = r.text();
-        byte[] imageData = null;
-        String imageMime = null;
+    @Async("aiExecutor")
+    public void processBatch(long orderId, IntakeResult r) {
+        try {
+            doProcessBatch(orderId, r);
+        } catch (Exception e) {
+            log.error("Fallo inesperado procesando pedido {}", orderId, e);
+            metrics.aiError("unexpected");
+            writer.markFailed(orderId, "FAILED", "Error inesperado; digitar manualmente");
+        }
+        hub.orderChanged(orderId);
+    }
 
-        if (r.audio()) {
-            text = transcribe(r);
-            if (text == null) return;
-        } else if (r.image()) {
-            try {
-                String key = r.storageKey();
-                if (key == null) {
-                    MediaDownloader.MediaFile f = media.download(r.mediaId());
-                    imageMime = f.mime();
-                    key = storage.save(f.data(), imageMime);
-                    writer.attachImage(r.messageId(), key, r.mediaId(), imageMime, r.text());
-                    imageData = f.data();
-                } else {
-                    imageData = storage.load(key);
-                    imageMime = r.mime();
+    private void doProcessBatch(long orderId, IntakeResult r) {
+        // 1. Procesar y transcribir todos los audios acumulados en el pedido
+        record AudioItem(long messageId, String mediaRef, String key, String mime) {}
+        List<AudioItem> audios = jdbc.sql("SELECT message_id, media_ref, storage_key, mime_type FROM audio WHERE order_id = :id ORDER BY id ASC")
+                .param("id", orderId)
+                .query((rs, i) -> new AudioItem(rs.getLong("message_id"), rs.getString("media_ref"), rs.getString("storage_key"), rs.getString("mime_type")))
+                .list();
+
+        boolean hasAudio = !audios.isEmpty();
+        for (AudioItem a : audios) {
+            String existingText = jdbc.sql("SELECT content FROM conversation_message WHERE id = :mid")
+                    .param("mid", a.messageId()).query(String.class).optional().orElse(null);
+            if (existingText == null || existingText.isBlank()) {
+                try {
+                    byte[] audioBytes = null;
+                    if (a.key() != null) {
+                        audioBytes = storage.load(a.key());
+                    } else if (a.mediaRef() != null) {
+                        MediaDownloader.MediaFile f = media.download(a.mediaRef());
+                        String savedKey = storage.save(f.data(), a.mime());
+                        writer.attachAudio(a.messageId(), savedKey);
+                        audioBytes = f.data();
+                    }
+                    if (audioBytes != null && audioBytes.length > 0) {
+                        String tr = stt.transcribe(audioBytes, a.mime());
+                        if (tr != null && !tr.isBlank()) {
+                            jdbc.sql("UPDATE conversation_message SET content = :c WHERE id = :mid")
+                                    .param("c", tr).param("mid", a.messageId()).update();
+                        }
+                    }
+                } catch (Exception ex) {
+                    log.warn("Fallo transcribiendo audio msg {} pedido {}: {}", a.messageId(), orderId, ex.getMessage());
                 }
-            } catch (Exception e) {
-                log.warn("Fallo cargando imagen del pedido {}: {}", r.orderId(), e.getMessage());
-                metrics.aiError("image");
-                writer.markFailed(r.orderId(), "FAILED", "No se pudo cargar la imagen; digitar manualmente");
-                return;
             }
         }
 
-        // 1. Si es solo un saludo sin productos previos en el pedido:
-        if (!r.image() && !r.reply() && isGreetingOnly(text)) {
-            boolean hasHistory = writer.hasPriorMessages(r.orderId());
-            String greeting = hasHistory
-                    ? "Buenas, ¿en qué te podemos colaborar hoy? Puedes dejarnos tu lista de mercado o preguntarnos lo que necesites."
-                    : "¡Hola! Buenas 👋 ¿En qué te colaboramos hoy? Puedes enviarnos tu lista de mercado (por texto o nota de voz) o preguntarnos precios y lo que necesites.";
-            conversation.send(r.orderId(), greeting, ConversationService.Kind.INFO, "ia");
-            writer.markInquiryHandled(r.orderId(), "Saludo recibido y respondido.");
+        // 2. Cargar todas las imágenes acumuladas en el pedido (soporta múltiples fotos de listas)
+        record ImgItem(long messageId, String mediaRef, String key, String mime, String caption) {}
+        List<ImgItem> imgRows = jdbc.sql("SELECT message_id, media_ref, storage_key, mime_type, caption FROM media_image WHERE order_id = :id ORDER BY id ASC")
+                .param("id", orderId)
+                .query((rs, i) -> new ImgItem(rs.getLong("message_id"), rs.getString("media_ref"), rs.getString("storage_key"), rs.getString("mime_type"), rs.getString("caption")))
+                .list();
+
+        List<byte[]> images = new java.util.ArrayList<>();
+        List<String> imageMimes = new java.util.ArrayList<>();
+        for (ImgItem img : imgRows) {
+            try {
+                byte[] data = null;
+                if (img.key() != null) {
+                    data = storage.load(img.key());
+                } else if (img.mediaRef() != null) {
+                    MediaDownloader.MediaFile f = media.download(img.mediaRef());
+                    String savedKey = storage.save(f.data(), img.mime());
+                    writer.attachImage(img.messageId(), savedKey, img.mediaRef(), img.mime(), img.caption());
+                    data = f.data();
+                }
+                if (data != null && data.length > 0) {
+                    images.add(data);
+                    imageMimes.add(img.mime());
+                }
+            } catch (Exception ex) {
+                log.warn("Fallo cargando imagen msg {} pedido {}: {}", img.messageId(), orderId, ex.getMessage());
+            }
+        }
+
+        // 3. Unir todo el texto acumulado del cliente (transcripciones + mensajes de texto + notas de fotos)
+        List<String> texts = jdbc.sql("""
+                SELECT content FROM conversation_message
+                WHERE order_id = :id AND direction = 'INBOUND' AND content IS NOT NULL AND TRIM(content) <> ''
+                ORDER BY id ASC
+                """).param("id", orderId).query(String.class).list();
+
+        String combinedText = String.join("\n", texts).strip();
+        if (combinedText.isBlank() && images.isEmpty()) {
             return;
         }
 
-        // 2. Si es una consulta directa de disponibilidad o precios de catálogo (solo si no es un pedido activo):
-        if (!r.image() && !r.reply() && isPriceOrInventoryInquiry(text)) {
-            String reply = buildCatalogOrPriceReply(text);
-            conversation.send(r.orderId(), reply, ConversationService.Kind.INFO, "ia");
-            writer.markInquiryHandled(r.orderId(), "Consulta sobre disponibilidad/precios respondida automáticamente.");
+        // 1. Si es solo un saludo sin productos previos en el pedido y sin imágenes:
+        if (images.isEmpty() && !r.reply() && isGreetingOnly(combinedText)) {
+            boolean hasHistory = writer.hasPriorMessages(orderId);
+            String greeting = hasHistory
+                    ? "Buenas, ¿en qué te podemos colaborar hoy? Puedes dejarnos tu lista de mercado o preguntarnos lo que necesites."
+                    : "¡Hola! Buenas 👋 ¿En qué te colaboramos hoy? Puedes enviarnos tu lista de mercado (por texto o nota de voz) o preguntarnos precios y lo que necesites.";
+            conversation.send(orderId, greeting, ConversationService.Kind.INFO, "ia");
+            writer.markInquiryHandled(orderId, "Saludo recibido y respondido.");
+            return;
+        }
+
+        // 2. Si es una consulta directa de disponibilidad o precios de catálogo (solo si no es un pedido activo y sin imágenes):
+        if (images.isEmpty() && !r.reply() && isPriceOrInventoryInquiry(combinedText)) {
+            String reply = buildCatalogOrPriceReply(combinedText);
+            conversation.send(orderId, reply, ConversationService.Kind.INFO, "ia");
+            writer.markInquiryHandled(orderId, "Consulta sobre disponibilidad/precios respondida automáticamente.");
             return;
         }
 
         // 3. Si solicitan foto o imagen de un producto:
-        if (!r.image() && isProductPhotoRequest(text)) {
-            handleProductPhotoRequest(r, text);
+        if (images.isEmpty() && isProductPhotoRequest(combinedText)) {
+            handleProductPhotoRequest(r, combinedText);
             return;
         }
 
         // 4. Si el cliente pregunta cosas como tiempo de entrega / demora:
-        if (!r.image() && isDeliveryTimeInquiry(text)) {
-            handleDeliveryTimeInquiry(r, text);
+        if (images.isEmpty() && isDeliveryTimeInquiry(combinedText)) {
+            handleDeliveryTimeInquiry(r, combinedText);
             return;
         }
 
         // Extraer nombre y método de pago (con cambio si es efectivo) de forma determinística
-        var currentRow = orders.find(r.orderId()).orElse(null);
-        String lastOutbound = conversation.messages(r.orderId()).stream()
+        var currentRow = orders.find(orderId).orElse(null);
+        String lastOutbound = conversation.messages(orderId).stream()
                 .filter(m -> "OUTBOUND".equals(m.direction()))
                 .reduce((first, second) -> second)
                 .map(ConversationService.MessageView::content)
                 .orElse(null);
 
-        String extractedName = extractCustomerName(text, lastOutbound);
+        String extractedName = extractCustomerName(combinedText, lastOutbound);
         if (extractedName != null) {
-            writer.updateCustomerName(r.orderId(), extractedName);
+            writer.updateCustomerName(orderId, extractedName);
         }
 
         Quote currentQuote = null;
         if (currentRow != null) {
-            var currentItems = orders.items(r.orderId());
+            var currentItems = orders.items(orderId);
             if (!currentItems.isEmpty()) {
                 currentQuote = quotes.quote(currentItems, PriceType.forCustomer(CustomerType.valueOf(currentRow.customerType())));
             }
         }
         BigDecimal currentTotal = currentQuote != null ? currentQuote.total() : null;
 
-        PaymentInfo extractedPayment = extractPaymentMethod(text, currentTotal);
+        PaymentInfo extractedPayment = extractPaymentMethod(combinedText, currentTotal);
         if (extractedPayment != null) {
-            writer.updatePaymentNote(r.orderId(), extractedPayment.note());
+            writer.updatePaymentNote(orderId, extractedPayment.note());
         }
 
-        ExtractionRequest req = new ExtractionRequest(text,
-                writer.recentTurns(r.orderId(), r.messageId()),
-                r.reply() ? writer.currentItems(r.orderId()) : java.util.List.of(),
-                catalog.candidates(text),
+        ExtractionRequest req = new ExtractionRequest(combinedText,
+                writer.recentTurns(orderId, r.messageId()),
+                r.reply() ? writer.currentItems(orderId) : java.util.List.of(),
+                catalog.candidates(combinedText),
                 zones.formatForPrompt(),
-                writer.customerFavorites(r.orderId()));
+                writer.customerFavorites(orderId));
 
         long t0 = System.nanoTime();
         AIOrderResponse ai;
         try {
-            if (imageData != null) {
-                ai = extractor.extractImage(imageData, imageMime, req);
+            if (images.size() > 1) {
+                ai = extractor.extractBatch(images, imageMimes, req);
+            } else if (images.size() == 1) {
+                ai = extractor.extractImage(images.get(0), imageMimes.get(0), req);
             } else {
                 ai = extractor.extract(req);
             }
         } catch (ExtractionUnavailableException e) {
-            log.warn("IA no disponible para pedido {}: {}", r.orderId(), e.getMessage());
+            log.warn("IA no disponible para pedido {}: {}", orderId, e.getMessage());
             metrics.aiError("unavailable");
-            writer.markFailed(r.orderId(), "FAILED", "IA no disponible; digitar el pedido manualmente");
+            writer.markFailed(orderId, "FAILED", "IA no disponible; digitar el pedido manualmente");
             return;
         } finally {
             metrics.extractionTime(Duration.ofNanos(System.nanoTime() - t0));
         }
 
         InterpretedOrder io = interpreter.interpret(ai);
-        if (!writer.applyExtraction(r.orderId(), io)) return;
+        if (!writer.applyExtraction(orderId, io)) return;
         metrics.review(io.review().name());
 
         boolean autoPrint = (printerConfig != null)
@@ -229,19 +284,19 @@ public class OrderProcessingService {
                     ? printerConfig.get().orderGraceSeconds()
                     : (props.printing() != null ? props.printing().wholesaleGraceSeconds() : 300);
             if (graceSec <= 0) {
-                sales.autoApproveWholesale(r.orderId(), requiresVerification, reason, "ia_wholesale");
+                sales.autoApproveWholesale(orderId, requiresVerification, reason, "ia_wholesale");
                 return;
             }
             jdbc.sql("""
                     UPDATE orders SET requires_verification = :rv, verification_reason = :vr,
                            conversation_status = 'WAITING_FOR_MORE', version = version + 1
                     WHERE id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW')
-                    """).param("rv", requiresVerification).param("vr", reason).param("id", r.orderId()).update();
-            hub.orderChanged(r.orderId());
+                    """).param("rv", requiresVerification).param("vr", reason).param("id", orderId).update();
+            hub.orderChanged(orderId);
             return;
         }
 
-        autoActions(r.orderId(), io, text, r.audio());
+        autoActions(orderId, io, combinedText, hasAudio);
     }
 
     /** Tarea programada que aprueba e imprime facturas mayoristas una vez vencido el margen de espera por adiciones */
@@ -339,7 +394,7 @@ public class OrderProcessingService {
 
                     IntakeResult recoveryResult = new IntakeResult(oId, msgId, reply, isAudio, isImage, content, null, storageKey, mime);
                     log.info("Auto-recuperando procesamiento pendiente de IA para orden #{} (mensaje #{})", oId, msgId);
-                    doProcess(recoveryResult);
+                    doProcessBatch(oId, recoveryResult);
                 } catch (Exception e) {
                     log.warn("Fallo auto-recuperar orden #{}: {}", oId, e.getMessage());
                 }

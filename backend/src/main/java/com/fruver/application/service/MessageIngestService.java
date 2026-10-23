@@ -22,14 +22,23 @@ public class MessageIngestService {
     private final AudioStorageService storage;
     private final SseHub hub;
     private final AppMetrics metrics;
+    private final OrderBatchingCoordinator coordinator;
 
     public MessageIngestService(OrderIntakeService intake, OrderProcessingService processing,
                                 AudioStorageService storage, SseHub hub, AppMetrics metrics) {
+        this(intake, processing, storage, hub, metrics, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public MessageIngestService(OrderIntakeService intake, OrderProcessingService processing,
+                                AudioStorageService storage, SseHub hub, AppMetrics metrics,
+                                OrderBatchingCoordinator coordinator) {
         this.intake = intake;
         this.processing = processing;
         this.storage = storage;
         this.hub = hub;
         this.metrics = metrics;
+        this.coordinator = coordinator;
     }
 
     public void ingestText(String phone, String name, String externalId, String text) {
@@ -81,6 +90,10 @@ public class MessageIngestService {
         }
         metrics.orderReceived(type.name());
         hub.orderChanged(result.orderId());
-        processing.process(result);
+        if (coordinator != null) {
+            coordinator.scheduleProcessing(result);
+        } else {
+            processing.process(result);
+        }
     }
 }

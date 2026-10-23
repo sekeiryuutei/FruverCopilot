@@ -64,6 +64,8 @@ app:
   conversation:
     ai-auto-reply: ${AI_AUTO_REPLY:false}
     auto-confirm-clear-orders: ${AUTO_CONFIRM_CLEAR_ORDERS:false}
+    debounce-seconds: ${CUSTOMER_DEBOUNCE_SECONDS:20}
+    debounce-max-seconds: ${CUSTOMER_DEBOUNCE_MAX_SECONDS:90}
   printing:
     enabled: ${PRINTER_ENABLED:false}
     type: ${PRINTER_TYPE:ESC_POS}
@@ -100,6 +102,18 @@ app:
       api-key: ${OPENCODE_API_KEY:}
       model: ${OPENCODE_MODEL:deepseek-v4.1-flash-free}
       base-url: ${OPENCODE_BASE_URL:https://opencode.ai/inference}
+    openrouter:
+      api-key: ${OPENROUTER_API_KEY:}
+      model: ${OPENROUTER_MODEL:google/gemini-2.5-flash}
+      base-url: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
+    groq:
+      api-key: ${GROQ_API_KEY:}
+      model: ${GROQ_MODEL:llama-3.3-70b-versatile}
+      base-url: ${GROQ_BASE_URL:https://api.groq.com/openai/v1}
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      model: ${OPENAI_MODEL:gpt-4o-mini}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
     ollama:
       base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
       model: ${OLLAMA_MODEL:llama3.2}

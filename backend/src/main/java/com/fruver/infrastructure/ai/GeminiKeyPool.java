@@ -11,22 +11,31 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Pool de API Keys de Gemini para balancear carga (Round-Robin) entre múltiples cuentas de Google Cloud.
+ * Pool de API Keys de Gemini para balancear carga en ráfagas tolerables (ej. 5 llamadas seguidas por key).
  * Al usar cuentas separadas, cada una cuenta con sus propios 15 RPM y 1.500 RPD en free tier.
+ * Ejecuta 5 llamadas seguidas en Key #1, luego 5 en Key #2, luego 5 en Key #3 para mantener una carga
+ * estable y predecible en cada canal sin saturar ninguno.
  * Si alguna key recibe 429 (Rate Limit), entra en enfriamiento automático (cooldown de 60s)
  * y el pool salta inmediatamente a la siguiente key disponible sin afectar la operación.
  */
 public class GeminiKeyPool {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiKeyPool.class);
+    public static final int DEFAULT_BATCH_SIZE = 5;
 
     public record KeyEntry(String key, int index, String masked) {}
 
     private final List<String> keys;
     private final Instant[] cooldowns;
     private final AtomicInteger counter = new AtomicInteger(0);
+    private final int batchSize;
 
     public GeminiKeyPool(String rawKeys, String fallbackSingleKey) {
+        this(rawKeys, fallbackSingleKey, DEFAULT_BATCH_SIZE);
+    }
+
+    public GeminiKeyPool(String rawKeys, String fallbackSingleKey, int batchSize) {
+        this.batchSize = Math.max(1, batchSize);
         List<String> list = new ArrayList<>();
         if (rawKeys != null && !rawKeys.isBlank()) {
             Arrays.stream(rawKeys.split("[,;\n]"))
@@ -48,7 +57,8 @@ public class GeminiKeyPool {
         if (this.keys.isEmpty()) {
             log.warn("GeminiKeyPool inicializado sin keys válidas.");
         } else {
-            log.info("GeminiKeyPool inicializado con {} API key(s) de Gemini para balanceo y tolerancia a 429.", this.keys.size());
+            log.info("GeminiKeyPool inicializado con {} API key(s) de Gemini ({} llamadas seguidas por key) para balanceo y tolerancia a 429.",
+                    this.keys.size(), this.batchSize);
             for (int i = 0; i < this.keys.size(); i++) {
                 log.info("  -> Key #{}: {}", i + 1, mask(this.keys.get(i)));
             }
@@ -62,11 +72,20 @@ public class GeminiKeyPool {
         Instant now = Instant.now();
         int size = keys.size();
 
-        // 1. Intentar encontrar una key que NO esté en enfriamiento
-        for (int i = 0; i < size; i++) {
-            int idx = Math.floorMod(counter.getAndIncrement(), size);
-            if (!cooldowns[idx].isAfter(now)) {
-                return new KeyEntry(keys.get(idx), idx, mask(keys.get(idx)));
+        // 1. Determinar key según ráfagas consecutivas (ej: 5 a la key 1, luego 5 a la key 2...)
+        int callNum = counter.getAndIncrement();
+        int baseIndex = Math.floorMod(callNum / batchSize, size);
+
+        // Si la key base asignada no está en enfriamiento, usarla
+        if (!cooldowns[baseIndex].isAfter(now)) {
+            return new KeyEntry(keys.get(baseIndex), baseIndex, mask(keys.get(baseIndex)));
+        }
+
+        // Si la key base está en cooldown por un 429 previo, rotar a la siguiente sana
+        for (int i = 1; i < size; i++) {
+            int altIndex = Math.floorMod(baseIndex + i, size);
+            if (!cooldowns[altIndex].isAfter(now)) {
+                return new KeyEntry(keys.get(altIndex), altIndex, mask(keys.get(altIndex)));
             }
         }
 

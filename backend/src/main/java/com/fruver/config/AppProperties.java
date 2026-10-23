@@ -19,14 +19,17 @@ public record AppProperties(
         if (ai == null) ai = new Ai("gemini", new Gemini("", "", "gemini-3.5-flash-lite", "https://generativelanguage.googleapis.com"));
     }
 
-    public record Ai(String provider, Gemini gemini, OpenCode opencode, Ollama ollama) {
+    public record Ai(String provider, Gemini gemini, OpenCode opencode, OpenRouter openrouter, Groq groq, OpenAiConfig openai, Ollama ollama) {
         public Ai(String provider, Gemini gemini) {
-            this(provider, gemini, null, null);
+            this(provider, gemini, null, null, null, null, null);
         }
         public Ai {
             if (provider == null || provider.isBlank()) provider = "gemini";
             if (gemini == null) gemini = new Gemini("", "", "gemini-3.5-flash-lite", "https://generativelanguage.googleapis.com");
             if (opencode == null) opencode = new OpenCode("", "deepseek-v4.1-flash-free", "https://opencode.ai/inference");
+            if (openrouter == null) openrouter = new OpenRouter("", "google/gemini-2.5-flash", "https://openrouter.ai/api/v1");
+            if (groq == null) groq = new Groq("", "llama-3.3-70b-versatile", "https://api.groq.com/openai/v1");
+            if (openai == null) openai = new OpenAiConfig("", "gpt-4o-mini", "https://api.openai.com/v1");
             if (ollama == null) ollama = new Ollama("http://localhost:11434", "llama3.2");
         }
     }
@@ -51,6 +54,30 @@ public record AppProperties(
         }
     }
 
+    public record OpenRouter(String apiKey, String model, String baseUrl) {
+        public OpenRouter {
+            if (apiKey == null) apiKey = "";
+            if (model == null || model.isBlank()) model = "google/gemini-2.5-flash";
+            if (baseUrl == null || baseUrl.isBlank()) baseUrl = "https://openrouter.ai/api/v1";
+        }
+    }
+
+    public record Groq(String apiKey, String model, String baseUrl) {
+        public Groq {
+            if (apiKey == null) apiKey = "";
+            if (model == null || model.isBlank()) model = "llama-3.3-70b-versatile";
+            if (baseUrl == null || baseUrl.isBlank()) baseUrl = "https://api.groq.com/openai/v1";
+        }
+    }
+
+    public record OpenAiConfig(String apiKey, String model, String baseUrl) {
+        public OpenAiConfig {
+            if (apiKey == null) apiKey = "";
+            if (model == null || model.isBlank()) model = "gpt-4o-mini";
+            if (baseUrl == null || baseUrl.isBlank()) baseUrl = "https://api.openai.com/v1";
+        }
+    }
+
     public record Ollama(String baseUrl, String model) {
         public Ollama {
             if (baseUrl == null || baseUrl.isBlank()) baseUrl = "http://localhost:11434";
@@ -58,7 +85,15 @@ public record AppProperties(
         }
     }
 
-    public record Conversation(boolean aiAutoReply, boolean autoConfirmClearOrders) {}
+    public record Conversation(boolean aiAutoReply, boolean autoConfirmClearOrders, int debounceSeconds, int debounceMaxSeconds) {
+        public Conversation(boolean aiAutoReply, boolean autoConfirmClearOrders) {
+            this(aiAutoReply, autoConfirmClearOrders, 20, 90);
+        }
+        public Conversation {
+            if (debounceSeconds < 0) debounceSeconds = 20;
+            if (debounceMaxSeconds < debounceSeconds) debounceMaxSeconds = Math.max(90, debounceSeconds);
+        }
+    }
 
     public record Printing(
             boolean enabled,

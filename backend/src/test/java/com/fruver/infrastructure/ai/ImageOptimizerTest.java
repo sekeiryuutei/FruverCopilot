@@ -49,3 +49,4 @@ class ImageOptimizerTest {
         assertSame(original, optimized);
     }
 }
+

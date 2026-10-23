@@ -148,6 +148,64 @@ public class GeminiOrderExtractor implements OrderExtractor {
         return executeGemini(payload, SystemPrompts.IMAGE_ORDER_EXTRACTION, contextPrompt);
     }
 
+    @Override
+    public AIOrderResponse extractBatch(List<byte[]> images, List<String> mimeTypes, ExtractionRequest request) {
+        if (images == null || images.isEmpty()) {
+            return extract(request);
+        }
+        if (images.size() == 1) {
+            String mime = (mimeTypes != null && !mimeTypes.isEmpty()) ? mimeTypes.get(0) : "image/jpeg";
+            return extractImage(images.get(0), mime, request);
+        }
+
+        List<Map<String, Object>> parts = new java.util.ArrayList<>();
+        for (int i = 0; i < images.size(); i++) {
+            byte[] img = images.get(i);
+            if (img == null || img.length == 0) continue;
+            byte[] opt = ImageOptimizer.optimizeForAi(img);
+            String b64 = Base64.getEncoder().encodeToString(opt);
+            String mime = (mimeTypes != null && i < mimeTypes.size()) ? sanitizeImageMime(mimeTypes.get(i)) : "image/jpeg";
+            parts.add(Map.of("inline_data", Map.of("mime_type", mime, "data", b64)));
+        }
+
+        String contextPrompt = """
+                <turnos_previos>%s</turnos_previos>
+                <pedido_actual>%s</pedido_actual>
+                <catalogo_candidato>%s</catalogo_candidato>
+                <zonas_domicilio>%s</zonas_domicilio>
+                <historial_cliente>%s</historial_cliente>
+                <nota_adicional_cliente>%s</nota_adicional_cliente>
+                Lee con precisión todas las imágenes y audios/textos adjuntos en este pedido. Si hay varias fotos o listas, consolida todos los productos sin omitir ninguno.
+                """.formatted(
+                join(request.recentTurns()),
+                join(request.currentItems()),
+                join(request.catalogCandidates()),
+                request.deliveryZones() == null ? "(No especificado)" : request.deliveryZones(),
+                request.customerHistory() == null ? "(Sin historial previo registrado)" : request.customerHistory(),
+                request.message() == null ? "" : request.message());
+
+        parts.add(Map.of("text", contextPrompt));
+
+        Map<String, Object> payload = Map.of(
+                "system_instruction", Map.of(
+                        "parts", List.of(Map.of("text", SystemPrompts.IMAGE_ORDER_EXTRACTION))
+                ),
+                "contents", List.of(
+                        Map.of(
+                                "role", "user",
+                                "parts", parts
+                        )
+                ),
+                "generationConfig", Map.of(
+                        "response_mime_type", "application/json",
+                        "temperature", 0.0,
+                        "maxOutputTokens", 4096
+                )
+        );
+
+        return executeGemini(payload, SystemPrompts.IMAGE_ORDER_EXTRACTION, contextPrompt);
+    }
+
     private AIOrderResponse executeGemini(Map<String, Object> payload, String systemPrompt, String userPrompt) {
         JsonNode root = null;
         Exception lastException = null;
