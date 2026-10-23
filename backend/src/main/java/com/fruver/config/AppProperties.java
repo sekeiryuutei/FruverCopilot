@@ -16,21 +16,45 @@ public record AppProperties(
         DemoSeed demoSeed) {
 
     public AppProperties {
-        if (ai == null) ai = new Ai("gemini", new Gemini("", "gemini-2.5-flash", "https://generativelanguage.googleapis.com"));
+        if (ai == null) ai = new Ai("gemini", new Gemini("", "", "gemini-3.5-flash-lite", "https://generativelanguage.googleapis.com"));
     }
 
-    public record Ai(String provider, Gemini gemini) {
+    public record Ai(String provider, Gemini gemini, OpenCode opencode, Ollama ollama) {
+        public Ai(String provider, Gemini gemini) {
+            this(provider, gemini, null, null);
+        }
         public Ai {
             if (provider == null || provider.isBlank()) provider = "gemini";
-            if (gemini == null) gemini = new Gemini("", "gemini-2.5-flash", "https://generativelanguage.googleapis.com");
+            if (gemini == null) gemini = new Gemini("", "", "gemini-3.5-flash-lite", "https://generativelanguage.googleapis.com");
+            if (opencode == null) opencode = new OpenCode("", "deepseek-v4.1-flash-free", "https://opencode.ai/inference");
+            if (ollama == null) ollama = new Ollama("http://localhost:11434", "llama3.2");
         }
     }
 
-    public record Gemini(String apiKey, String model, String baseUrl) {
+    public record Gemini(String apiKey, String apiKeys, String model, String baseUrl) {
+        public Gemini(String apiKey, String model, String baseUrl) {
+            this(apiKey, "", model, baseUrl);
+        }
         public Gemini {
-            if (model == null || model.isBlank()) model = "gemini-2.5-flash";
+            if (model == null || model.isBlank()) model = "gemini-3.5-flash-lite";
             if (baseUrl == null || baseUrl.isBlank()) baseUrl = "https://generativelanguage.googleapis.com";
             if (apiKey == null) apiKey = "";
+            if (apiKeys == null) apiKeys = "";
+        }
+    }
+
+    public record OpenCode(String apiKey, String model, String baseUrl) {
+        public OpenCode {
+            if (apiKey == null) apiKey = "";
+            if (model == null || model.isBlank()) model = "deepseek-v4.1-flash-free";
+            if (baseUrl == null || baseUrl.isBlank()) baseUrl = "https://opencode.ai/inference";
+        }
+    }
+
+    public record Ollama(String baseUrl, String model) {
+        public Ollama {
+            if (baseUrl == null || baseUrl.isBlank()) baseUrl = "http://localhost:11434";
+            if (model == null || model.isBlank()) model = "llama3.2";
         }
     }
 

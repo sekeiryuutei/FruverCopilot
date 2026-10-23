@@ -3,6 +3,7 @@ package com.fruver.infrastructure.audio;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fruver.application.port.SpeechToTextService;
 import com.fruver.config.AppProperties;
+import com.fruver.infrastructure.ai.GeminiKeyPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -10,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -17,17 +19,17 @@ import java.util.Map;
 /**
  * Adaptador de transcripción multimodal con Google Gemini (Gemini Flash).
  * Ingesta directa de tokens de audio con contexto fonético de fruver colombiano.
- * Incluye cadena de modelos candidatos de respaldo en caso de 503 o 429.
+ * Incluye pool de API Keys con cooldown ante 429 y cadena de modelos candidatos de respaldo.
  */
 @Service
-@ConditionalOnExpression("'${app.ai.provider:gemini}'.equalsIgnoreCase('gemini') && !'${app.ai.gemini.api-key:}'.trim().isEmpty() && !'${app.ai.gemini.api-key:}'.trim().startsWith('#') && '${app.ai.gemini.api-key:}'.trim().length() > 10 && !'${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock')")
+@ConditionalOnExpression("'${app.ai.provider:gemini}'.equalsIgnoreCase('gemini') && (('${app.ai.gemini.api-key:}'.trim().length() > 8 && !'${app.ai.gemini.api-key:}'.trim().startsWith('#')) || ('${app.ai.gemini.api-keys:}'.trim().length() > 8 && !'${app.ai.gemini.api-keys:}'.trim().startsWith('#'))) && !'${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock')")
 public class GeminiSpeechToText implements SpeechToTextService {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiSpeechToText.class);
 
     private final RestClient http;
     private final List<String> candidateModels;
-    private final String apiKey;
+    private final GeminiKeyPool keyPool;
 
     public GeminiSpeechToText(RestClient.Builder builder, AppProperties props) {
         this.http = builder.baseUrl(props.ai().gemini().baseUrl()).build();
@@ -39,7 +41,7 @@ public class GeminiSpeechToText implements SpeechToTextService {
             if (!list.contains(m)) list.add(m);
         }
         this.candidateModels = java.util.List.copyOf(list);
-        this.apiKey = props.ai().gemini().apiKey();
+        this.keyPool = new GeminiKeyPool(props.ai().gemini().apiKeys(), props.ai().gemini().apiKey());
     }
 
     @Override
@@ -73,21 +75,28 @@ public class GeminiSpeechToText implements SpeechToTextService {
         for (String candidateModel : candidateModels) {
             boolean modelSucceeded = false;
             for (int attempt = 1; attempt <= 2; attempt++) {
+                GeminiKeyPool.KeyEntry keyEntry = keyPool.next();
                 try {
                     root = http.post()
                             .uri("/v1beta/models/" + candidateModel + ":generateContent")
-                            .header("x-goog-api-key", apiKey)
+                            .header("x-goog-api-key", keyEntry.key())
                             .contentType(MediaType.APPLICATION_JSON)
                             .body(payload)
                             .retrieve()
                             .body(JsonNode.class);
+                    keyPool.onSuccess(keyEntry.index());
                     modelSucceeded = true;
                     break;
                 } catch (org.springframework.web.client.RestClientResponseException e) {
                     lastException = e;
                     int status = e.getStatusCode().value();
-                    if (status == 429 || status == 404) {
-                        log.warn("Gemini STT modelo '{}' no disponible (HTTP {}), cambiando al modelo de respaldo...", candidateModel, status);
+                    if (status == 429) {
+                        keyPool.onFailure(keyEntry.index(), 429, Duration.ofSeconds(60));
+                        log.warn("Gemini STT Key #{} con rate limit (HTTP 429), cambiando a siguiente key...", keyEntry.index() + 1);
+                        continue;
+                    }
+                    if (status == 404) {
+                        log.warn("Gemini STT modelo '{}' no disponible (HTTP 404), cambiando al modelo de respaldo...", candidateModel);
                         break;
                     }
                     if (status == 503 && attempt < 2) {

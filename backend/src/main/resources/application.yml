@@ -93,8 +93,16 @@ app:
     provider: ${AI_PROVIDER:gemini}
     gemini:
       api-key: ${GEMINI_API_KEY:}
+      api-keys: ${GEMINI_API_KEYS:}
       model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
       base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com}
+    opencode:
+      api-key: ${OPENCODE_API_KEY:}
+      model: ${OPENCODE_MODEL:deepseek-v4.1-flash-free}
+      base-url: ${OPENCODE_BASE_URL:https://opencode.ai/inference}
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      model: ${OLLAMA_MODEL:llama3.2}
   stt:
     model: ${STT_MODEL:whisper-1}
     api-key: ${OPENAI_API_KEY:sk-not-configured}

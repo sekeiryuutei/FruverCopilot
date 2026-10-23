@@ -7,35 +7,46 @@ import com.fruver.application.dto.ExtractionRequest;
 import com.fruver.application.port.ExtractionUnavailableException;
 import com.fruver.application.port.OrderExtractor;
 import com.fruver.config.AppProperties;
+import com.fruver.infrastructure.media.ImageOptimizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Adaptador de IA para Google Gemini (Gemini 2.5/2.0/1.5 Flash).
- * Consume la API de Gemini vía REST con salida estructurada JSON nativa.
- * Soporta tanto extracción de texto conversacional como OCR multimodal de imágenes (fotos de listas).
- * Su salida es UNTRUSTED: la valida determinísticamente ExtractionInterpreter.
+ * Adaptador de IA para Google Gemini (Gemini Flash-Lite / Flash).
+ * Cuenta con un pool de API Keys para balancear solicitudes entre múltiples cuentas
+ * y superar holgadamente la cuota de 15 RPM en picos de demanda.
+ * Si todas las keys de Gemini se saturan, activa fallback automático con OpenCode Zen u Ollama.
+ * Además, optimiza automáticamente fotos de listas a máx 768px para reducir drásticamente el consumo de tokens.
  */
 @Service
-@ConditionalOnExpression("'${app.ai.provider:gemini}'.equalsIgnoreCase('gemini') && !'${app.ai.gemini.api-key:}'.trim().isEmpty() && !'${app.ai.gemini.api-key:}'.trim().startsWith('#') && '${app.ai.gemini.api-key:}'.trim().length() > 10 && !'${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock')")
+@ConditionalOnExpression("'${app.ai.provider:gemini}'.equalsIgnoreCase('gemini') && (('${app.ai.gemini.api-key:}'.trim().length() > 8 && !'${app.ai.gemini.api-key:}'.trim().startsWith('#')) || ('${app.ai.gemini.api-keys:}'.trim().length() > 8 && !'${app.ai.gemini.api-keys:}'.trim().startsWith('#'))) && !'${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock')")
 public class GeminiOrderExtractor implements OrderExtractor {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiOrderExtractor.class);
 
     private final RestClient http;
     private final List<String> candidateModels;
-    private final String apiKey;
+    private final GeminiKeyPool keyPool;
     private final ObjectMapper mapper;
+    private final FallbackAiClient fallbackClient;
 
     public GeminiOrderExtractor(RestClient.Builder builder, AppProperties props, ObjectMapper mapper) {
+        this(builder, props, mapper, null);
+    }
+
+    @Autowired
+    public GeminiOrderExtractor(RestClient.Builder builder, AppProperties props, ObjectMapper mapper,
+                                @Autowired(required = false) FallbackAiClient fallbackClient) {
         this.http = builder.baseUrl(props.ai().gemini().baseUrl()).build();
         java.util.List<String> list = new java.util.ArrayList<>();
         if (props.ai().gemini().model() != null && !props.ai().gemini().model().isBlank()) {
@@ -45,8 +56,9 @@ public class GeminiOrderExtractor implements OrderExtractor {
             if (!list.contains(m)) list.add(m);
         }
         this.candidateModels = java.util.List.copyOf(list);
-        this.apiKey = props.ai().gemini().apiKey();
+        this.keyPool = new GeminiKeyPool(props.ai().gemini().apiKeys(), props.ai().gemini().apiKey());
         this.mapper = mapper;
+        this.fallbackClient = fallbackClient;
     }
 
     @Override
@@ -83,7 +95,7 @@ public class GeminiOrderExtractor implements OrderExtractor {
                 )
         );
 
-        return executeGemini(payload);
+        return executeGemini(payload, SystemPrompts.ORDER_EXTRACTION, userPrompt);
     }
 
     @Override
@@ -91,7 +103,10 @@ public class GeminiOrderExtractor implements OrderExtractor {
         if (imageBytes == null || imageBytes.length == 0) {
             return extract(request);
         }
-        String base64Image = Base64.getEncoder().encodeToString(imageBytes);
+
+        // Redimensionar foto si supera 768px para ahorrar tokens y acelerar respuesta
+        byte[] optimizedBytes = ImageOptimizer.optimizeForAi(imageBytes);
+        String base64Image = Base64.getEncoder().encodeToString(optimizedBytes);
         String cleanMime = sanitizeImageMime(mimeType);
 
         String contextPrompt = """
@@ -130,41 +145,44 @@ public class GeminiOrderExtractor implements OrderExtractor {
                 )
         );
 
-        return executeGemini(payload);
+        return executeGemini(payload, SystemPrompts.IMAGE_ORDER_EXTRACTION, contextPrompt);
     }
 
-    private AIOrderResponse executeGemini(Map<String, Object> payload) {
+    private AIOrderResponse executeGemini(Map<String, Object> payload, String systemPrompt, String userPrompt) {
         JsonNode root = null;
         Exception lastException = null;
 
         for (String candidateModel : candidateModels) {
             boolean modelSucceeded = false;
             for (int attempt = 1; attempt <= 2; attempt++) {
+                GeminiKeyPool.KeyEntry keyEntry = keyPool.next();
                 try {
                     root = http.post()
                             .uri("/v1beta/models/" + candidateModel + ":generateContent")
-                            .header("x-goog-api-key", apiKey)
+                            .header("x-goog-api-key", keyEntry.key())
                             .contentType(MediaType.APPLICATION_JSON)
                             .body(payload)
                             .retrieve()
                             .body(JsonNode.class);
+
+                    keyPool.onSuccess(keyEntry.index());
                     modelSucceeded = true;
                     break;
                 } catch (org.springframework.web.client.RestClientResponseException e) {
                     lastException = e;
                     int status = e.getStatusCode().value();
                     if (status == 429) {
-                        log.warn("Gemini modelo '{}' con rate limit (HTTP 429), pausando brevemente y cambiando al modelo de respaldo...", candidateModel);
-                        try { Thread.sleep(2500L); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-                        break;
+                        keyPool.onFailure(keyEntry.index(), 429, Duration.ofSeconds(60));
+                        log.warn("Gemini Key #{} con rate limit (HTTP 429), cambiando a siguiente key...", keyEntry.index() + 1);
+                        continue;
                     }
                     if (status == 404) {
-                        log.warn("Gemini modelo '{}' no encontrado (HTTP 404), cambiando inmediatamente al modelo de respaldo...", candidateModel);
+                        log.warn("Gemini modelo '{}' no encontrado (HTTP 404), cambiando al modelo de respaldo...", candidateModel);
                         break;
                     }
                     if (status == 503 && attempt < 2) {
                         log.warn("Gemini modelo '{}' con 503, reintentando...", candidateModel);
-                        try { Thread.sleep(1500L); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                        try { Thread.sleep(1200L); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
                         continue;
                     }
                     log.warn("Gemini modelo '{}' falló (HTTP {}): {}", candidateModel, status, e.getMessage());
@@ -186,7 +204,15 @@ public class GeminiOrderExtractor implements OrderExtractor {
             }
         }
 
+        // Si todos los modelos y keys de Gemini fallaron, activar fallback de contingencia
         if (root == null) {
+            if (fallbackClient != null) {
+                log.warn("Todos los modelos y keys de Gemini fallaron. Activando proveedores de contingencia (OpenCode/Ollama)...");
+                AIOrderResponse fallbackResponse = fallbackClient.tryFallback(systemPrompt, userPrompt);
+                if (fallbackResponse != null) {
+                    return fallbackResponse;
+                }
+            }
             String msg = lastException != null ? lastException.getClass().getSimpleName() : "sin respuesta";
             throw new ExtractionUnavailableException("Fallo la extracción con Gemini en todos los modelos: " + msg, lastException);
         }
@@ -216,7 +242,7 @@ public class GeminiOrderExtractor implements OrderExtractor {
         }
     }
 
-    static String stripMarkdownFences(String text) {
+    public static String stripMarkdownFences(String text) {
         String s = text.strip();
         if (s.startsWith("```json")) {
             s = s.substring(7);
@@ -244,4 +270,3 @@ public class GeminiOrderExtractor implements OrderExtractor {
         return String.join("\n", items);
     }
 }
-

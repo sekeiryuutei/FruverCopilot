@@ -26,7 +26,7 @@ import java.util.List;
  * NO es un modelo: no lee el pedido real. El sistema se niega a arrancar con mock en produccion.
  */
 @Service
-@ConditionalOnExpression("'${app.ai.provider:gemini}'.equalsIgnoreCase('mock') || '${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock') || ('${app.ai.provider:gemini}'.equalsIgnoreCase('gemini') && ('${app.ai.gemini.api-key:}'.trim().isEmpty() || '${app.ai.gemini.api-key:}'.trim().startsWith('#') || '${app.ai.gemini.api-key:}'.trim().length() <= 10))")
+@ConditionalOnExpression("'${app.ai.provider:gemini}'.equalsIgnoreCase('mock') || '${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock') || ('${app.ai.provider:gemini}'.equalsIgnoreCase('gemini') && ('${app.ai.gemini.api-key:}'.trim().length() <= 8 || '${app.ai.gemini.api-key:}'.trim().startsWith('#')) && ('${app.ai.gemini.api-keys:}'.trim().length() <= 8 || '${app.ai.gemini.api-keys:}'.trim().startsWith('#')))")
 public class MockOrderExtractor implements OrderExtractor {
 
     private static final Logger log = LoggerFactory.getLogger(MockOrderExtractor.class);

@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 
 /** Con AI_MODEL=mock o sin clave API tampoco se llama a proveedores externos para transcribir (offline). */
 @Service
-@ConditionalOnExpression("'${app.ai.provider:gemini}'.equalsIgnoreCase('mock') || '${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock') || ('${app.ai.provider:gemini}'.equalsIgnoreCase('gemini') && ('${app.ai.gemini.api-key:}'.trim().isEmpty() || '${app.ai.gemini.api-key:}'.trim().startsWith('#') || '${app.ai.gemini.api-key:}'.trim().length() <= 10))")
+@ConditionalOnExpression("'${app.ai.provider:gemini}'.equalsIgnoreCase('mock') || '${spring.ai.openai.chat.options.model:}'.equalsIgnoreCase('mock') || ('${app.ai.provider:gemini}'.equalsIgnoreCase('gemini') && ('${app.ai.gemini.api-key:}'.trim().length() <= 8 || '${app.ai.gemini.api-key:}'.trim().startsWith('#')) && ('${app.ai.gemini.api-keys:}'.trim().length() <= 8 || '${app.ai.gemini.api-keys:}'.trim().startsWith('#')))")
 public class MockSpeechToText implements SpeechToTextService {
 
     @Override
