@@ -4,7 +4,7 @@ const fs=require('fs'),vm=require('vm');
 /* ---------- DOM falso mínimo ---------- */
 class TextN{constructor(t){this.nodeType=3;this.textContent=String(t);this.parent=null}}
 class El{
-  constructor(tag){this.tag=tag;this.nodeType=1;this.kids=[];this.parent=null;this.attrs={};this.dataset=new Proxy({},{set(t,k,v){t[k]=String(v);return true}});this.className='';this.listeners={};this.value='';this.style={};this.disabled=false;this.id=''}
+  constructor(tag){this.tag=tag;this.nodeType=1;this.kids=[];this.parent=null;this.attrs={};this.dataset=new Proxy({},{set(t,k,v){t[k]=String(v);return true}});this.className='';this.listeners={};this.value='';this.style={};this.disabled=false;this.id='';this.checked=false}
   get classList(){const s=this;return{add:c=>{if(!s.className.split(' ').includes(c))s.className=(s.className+' '+c).trim()},remove:c=>{s.className=s.className.split(' ').filter(x=>x&&x!==c).join(' ')},contains:c=>s.className.split(' ').includes(c)}}
   get children(){return this.kids.filter(k=>k.nodeType===1)}
   get firstElementChild(){return this.children[0]||null}
@@ -12,7 +12,7 @@ class El{
   get offsetWidth(){return 0}
   get textContent(){return this.kids.map(k=>k.textContent).join('')}
   set textContent(v){this.kids=[];const t=new TextN(v);t.parent=this;this.kids.push(t)}
-  setAttribute(k,v){this.attrs[k]=v;if(k==='value')this.value=v;if(k==='id')this.id=v}
+  setAttribute(k,v){this.attrs[k]=v;this[k]=v;if(k==='value')this.value=v;if(k==='id')this.id=v;if(k==='checked')this.checked=v!==false}
   _detach(n){if(n.parent){const i=n.parent.kids.indexOf(n);if(i>=0)n.parent.kids.splice(i,1)}n.parent=this}
   append(...ns){for(let n of ns){if(typeof n==='string')n=new TextN(n);this._detach(n);this.kids.push(n)}}
   prepend(...ns){for(let n of ns){this._detach(n);this.kids.unshift(n)}}
@@ -48,7 +48,10 @@ const ctx={document:doc,console,setTimeout,clearTimeout,setInterval:()=>0,scroll
   EventSource:class{addEventListener(){}},
   fetch:async(url,o={})=>{calls.push({url,method:o.method||'GET',body:o.body?JSON.parse(o.body):null});let data=null;
     if(url==='/api/me')data={username:'admin',role:'ADMIN'};else if(url.startsWith('/api/products')&&(o.method||'GET')==='GET')data=products;
-    else if(url==='/api/printer/status')data={activePrinter:'OFICINA',schedule:'04:00 - 19:00 OFICINA',failedCount:0,pendingCount:0};
+    else if(url==='/api/printer/status'||url==='/api/printer/config'){
+      if(o.method==='PUT') data={...JSON.parse(o.body),activePrinter:'OFICINA',schedule:'04:00 - 19:00 OFICINA',failedCount:0,pendingCount:0};
+      else data={activePrinter:'OFICINA',schedule:'04:00 - 19:00 OFICINA',failedCount:0,pendingCount:0,orderGraceSeconds:300,printTimeoutSeconds:5,autoPrintWholesale:true,officeHost:'127.0.0.1',officePort:9100,homeHost:'127.0.0.1',homePort:9100,enabled:true,mode:'AUTO'};
+    }
     else if(url==='/api/sales/reprint-all-pending')data={status:'enqueued',count:2};
     else if(url.includes('/reprint'))data={status:'PRINT_PENDING',saleId:501,orderId:10008};
     else if(url==='/api/orders')data=serverOrders;else if(o.method==='PUT'&&url.startsWith('/api/orders/')){puts.push(JSON.parse(o.body));data=mkOrder(10005,2)}
@@ -229,6 +232,41 @@ const rows=c=>c.querySelector('tbody').kids;const btn=(c,t)=>c.querySelectorAll(
   ok('Al finalizar IA: spinner desaparece',!card10Done.querySelector('.spin-loader'));
   ok('Al finalizar IA: aparecen los botones de acción',card10Done.querySelectorAll('button').some(b=>b.textContent.includes('VALIDAR')));
   ok('Al finalizar IA: aparece la tabla con los productos extraídos',!!card10Done.querySelector('tbody'));
+  ok('Banner de espera muestra margen dinámico (5 min)',card10Done.textContent.includes('5 min de margen'));
+
+  // Cambiar tiempo de espera en estado y verificar que el banner se adapta
+  ev('S.printerStatus.orderGraceSeconds = 120');
+  ev('S.draft={}');
+  serverOrders=[{...serverOrders[0],version:3}];
+  await ev('loadOrders()');
+  ok('Banner de espera refleja 2 min dinámicamente',cardOf(10010).textContent.includes('2 min de margen'));
+
+  // ---- Pestaña Configuración: tiempos de espera del sistema
+  ev("S.tab='config'");
+  await ev('renderPrinterConfig()');
+  const cfgCard=main.children[0];
+  ok('Pantalla de configuración se dibuja',!!cfgCard);
+  ok('Muestra sección de Tiempos de Espera del Sistema',cfgCard.textContent.includes('Tiempos de Espera del Sistema'));
+  ok('Muestra etiqueta Tiempo de espera para hacer pedido',cfgCard.textContent.includes('Tiempo de espera para hacer pedido'));
+  ok('Muestra etiqueta Tiempo de espera para imprimir',cfgCard.textContent.includes('Tiempo de espera para imprimir'));
+
+  const inputs=cfgCard.querySelectorAll('input');
+  const graceIn=inputs.find(i=>String(i.min)==='0');
+  const timeoutIn=inputs.find(i=>String(i.min)==='1');
+  ok('Campo de margen de pedido presente',!!graceIn);
+  ok('Campo de timeout de impresión presente',!!timeoutIn);
+
+  if(graceIn) graceIn.value='3';
+  if(timeoutIn) timeoutIn.value='8';
+  const saveCfgBtn=cfgCard.querySelectorAll('button').find(b=>b.textContent.includes('GUARDAR CONFIGURACIÓN'));
+  ok('Botón de guardar configuración presente',!!saveCfgBtn);
+  const putCallsBefore=calls.filter(c=>c.method==='PUT'&&c.url==='/api/printer/config').length;
+  if(saveCfgBtn) await saveCfgBtn.dispatch('click');
+  await tick();await tick();
+  const lastPut=calls.filter(c=>c.method==='PUT'&&c.url==='/api/printer/config').pop();
+  ok('Guardar envía orderGraceSeconds en segundos (3 min = 180s)',lastPut&&lastPut.body.orderGraceSeconds===180,JSON.stringify(lastPut&&lastPut.body));
+  ok('Guardar envía printTimeoutSeconds (8s)',lastPut&&lastPut.body.printTimeoutSeconds===8);
+  ok('Guardar envía autoPrintWholesale (true)',lastPut&&lastPut.body.autoPrintWholesale===true);
 
   console.log(fails?`\nFALLAS: ${fails}`:'\nTODO OK');process.exit(fails?1:0)
 })();

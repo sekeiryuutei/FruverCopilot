@@ -49,13 +49,16 @@ public class OrderProcessingService {
     private final DeliveryZoneService zones;
     private final SaleService sales;
     private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
+    private final PrinterConfigService printerConfig;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public OrderProcessingService(OrderExtractor extractor, SpeechToTextService stt, AudioStorageService storage,
                                   MediaDownloader media, ProductCatalogService catalog, ExtractionInterpreter interpreter,
                                   OrderWriter writer, OrderRepository orders, QuoteService quotes,
                                   ConversationService conversation, SseHub hub, AppMetrics metrics, AppProperties props,
                                   DeliveryZoneService zones, SaleService sales,
-                                  org.springframework.jdbc.core.simple.JdbcClient jdbc) {
+                                  org.springframework.jdbc.core.simple.JdbcClient jdbc,
+                                  PrinterConfigService printerConfig) {
         this.extractor = extractor;
         this.stt = stt;
         this.storage = storage;
@@ -72,6 +75,16 @@ public class OrderProcessingService {
         this.zones = zones;
         this.sales = sales;
         this.jdbc = jdbc;
+        this.printerConfig = printerConfig;
+    }
+
+    public OrderProcessingService(OrderExtractor extractor, SpeechToTextService stt, AudioStorageService storage,
+                                  MediaDownloader media, ProductCatalogService catalog, ExtractionInterpreter interpreter,
+                                  OrderWriter writer, OrderRepository orders, QuoteService quotes,
+                                  ConversationService conversation, SseHub hub, AppMetrics metrics, AppProperties props,
+                                  DeliveryZoneService zones, SaleService sales,
+                                  org.springframework.jdbc.core.simple.JdbcClient jdbc) {
+        this(extractor, stt, storage, media, catalog, interpreter, writer, orders, quotes, conversation, hub, metrics, props, zones, sales, jdbc, null);
     }
 
     @Async("aiExecutor")
@@ -201,14 +214,20 @@ public class OrderProcessingService {
         if (!writer.applyExtraction(r.orderId(), io)) return;
         metrics.review(io.review().name());
 
-        if (props.printing().autoPrintWholesale()) {
+        boolean autoPrint = (printerConfig != null)
+                ? printerConfig.get().autoPrintWholesale()
+                : (props.printing() != null && props.printing().autoPrintWholesale());
+
+        if (autoPrint) {
             boolean hasTrulyDoubtfulLines = io.items().isEmpty()
                     || io.items().stream().anyMatch(it -> (it.quantity() == null && it.aiQuantity() == null)
                     || (it.aiAmbiguous() && it.productId() == null));
             boolean requiresVerification = hasTrulyDoubtfulLines;
             String reason = requiresVerification ? (io.note() != null ? io.note() : "Líneas con duda en pedido") : null;
 
-            int graceSec = props.printing().wholesaleGraceSeconds();
+            int graceSec = (printerConfig != null)
+                    ? printerConfig.get().orderGraceSeconds()
+                    : (props.printing() != null ? props.printing().wholesaleGraceSeconds() : 300);
             if (graceSec <= 0) {
                 sales.autoApproveWholesale(r.orderId(), requiresVerification, reason, "ia_wholesale");
                 return;
@@ -228,8 +247,14 @@ public class OrderProcessingService {
     /** Tarea programada que aprueba e imprime facturas mayoristas una vez vencido el margen de espera por adiciones */
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 10000)
     public void processPendingWholesaleAutoApprovals() {
-        if (!props.printing().autoPrintWholesale()) return;
-        int graceSec = props.printing().wholesaleGraceSeconds();
+        boolean autoPrint = (printerConfig != null)
+                ? printerConfig.get().autoPrintWholesale()
+                : (props.printing() != null && props.printing().autoPrintWholesale());
+        if (!autoPrint) return;
+
+        int graceSec = (printerConfig != null)
+                ? printerConfig.get().orderGraceSeconds()
+                : (props.printing() != null ? props.printing().wholesaleGraceSeconds() : 300);
         if (graceSec <= 0) return;
 
         List<Long> readyOrders = jdbc.sql("""

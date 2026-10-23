@@ -235,5 +235,33 @@ class WholesaleFlowIntegrationTest {
         assertTrue(items.contains("Cebolla Cabezona"));
         assertTrue(items.contains("Zanahoria"));
     }
+
+    @Test
+    void updatesSystemTimeoutsInConfiguration() {
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("admin", "pass",
+                        java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")))
+        );
+        try {
+            var updateReq = new com.fruver.interfaces.rest.SaleController.PrinterConfigUpdateRequest(
+                    "192.168.1.100", 9100, "192.168.1.200", 9100, true, "AUTO", 180, 8, true
+            );
+            var updated = saleController.updatePrinterConfig(updateReq);
+            assertEquals(180, updated.orderGraceSeconds());
+            assertEquals(8, updated.printTimeoutSeconds());
+            assertTrue(updated.autoPrintWholesale());
+
+            var fetched = saleController.getPrinterConfig();
+            assertEquals(180, fetched.orderGraceSeconds());
+            assertEquals(8, fetched.printTimeoutSeconds());
+            assertTrue(fetched.autoPrintWholesale());
+        } finally {
+            // Restaurar para no afectar otros tests que requieren auto-aprobación inmediata
+            saleController.updatePrinterConfig(new com.fruver.interfaces.rest.SaleController.PrinterConfigUpdateRequest(
+                    "127.0.0.1", 9100, "127.0.0.1", 9100, true, "AUTO", 0, 5, true
+            ));
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
 }
 

@@ -45,10 +45,12 @@ public class NetworkEscPosPrinter implements ThermalPrinterService {
         String host = printerConfig.hostFor(loc);
         int port = printerConfig.portFor(loc);
 
-        log.info("Enviando impresión ({}) a {}:{}", loc, host, port);
+        int timeoutSec = printerConfig.get().printTimeoutSeconds();
+        if (timeoutSec <= 0) timeoutSec = 5;
+        log.info("Enviando impresión ({}) a {}:{} (timeout: {}s)", loc, host, port, timeoutSec);
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(host, port), 3000);
-            socket.setSoTimeout(5000);
+            socket.connect(new InetSocketAddress(host, port), Math.min(3000, timeoutSec * 1000));
+            socket.setSoTimeout(timeoutSec * 1000);
             OutputStream out = socket.getOutputStream();
             out.write(payload);
             out.flush();

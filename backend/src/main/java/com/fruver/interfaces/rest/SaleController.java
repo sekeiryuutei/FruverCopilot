@@ -81,7 +81,10 @@ public class SaleController {
             String homeHost,
             Integer homePort,
             Boolean enabled,
-            String mode
+            String mode,
+            Integer orderGraceSeconds,
+            Integer printTimeoutSeconds,
+            Boolean autoPrintWholesale
     ) {}
 
     public record TestPrinterRequest(String location) {}
@@ -100,9 +103,13 @@ public class SaleController {
     }
 
     @PutMapping("/printer/config")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public com.fruver.application.service.PrinterConfigService.PrinterConfig updatePrinterConfig(@RequestBody PrinterConfigUpdateRequest req) {
-        return printerConfig.update(req.officeHost(), req.officePort(), req.homeHost(), req.homePort(), req.enabled(), req.mode());
+        return printerConfig.update(
+                req.officeHost(), req.officePort(), req.homeHost(), req.homePort(),
+                req.enabled(), req.mode(),
+                req.orderGraceSeconds(), req.printTimeoutSeconds(), req.autoPrintWholesale()
+        );
     }
 
     @PostMapping("/printer/test")
