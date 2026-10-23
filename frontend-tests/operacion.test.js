@@ -202,5 +202,33 @@ const rows=c=>c.querySelector('tbody').kids;const btn=(c,t)=>c.querySelectorAll(
   ok('Banner de alerta visible cuando hay pedidos sin imprimir',!!alertEl);
   ok('Banner tiene botón IMPRIMIR TODOS PENDIENTES',alertEl&&alertEl.querySelectorAll('button').some(b=>b.textContent==='🖨️ IMPRIMIR TODOS PENDIENTES'));
 
+  // ---- Pruebas de Spin / IA interpretando (sin botones prematuros)
+  serverOrders=[{
+    id:10010,version:1,status:'PROCESSING',conversationStatus:'WAITING_FOR_MORE',reviewStatus:'GRAY',inputType:'IMAGE',aiStatus:'PENDING',
+    customer:{id:4,name:'Doña Juana',phoneMasked:'****9999',type:'RETAIL'},address:'Calle 5',notes:'',
+    receivedAt:new Date().toISOString(),messageText:'Lista en foto',hasAudio:false,hasImage:true,total:null,items:[]
+  }];
+  ev('S.draft={}');await ev('loadOrders()');
+  const card10=cardOf(10010);
+  ok('Pedido 10010 con IA interpretando se dibuja',!!card10);
+  ok('Pedido 10010 muestra spinner animado .spin-loader',!!card10.querySelector('.spin-loader'));
+  ok('Pedido 10010 explica que la IA está interpretando',card10.textContent.includes('La Inteligencia Artificial está interpretando'));
+  ok('Pedido 10010 muestra pill de INTERPRETANDO',card10.textContent.includes('INTERPRETANDO'));
+  ok('Pedido 10010 NO tiene ningún botón mientras piensa (mejora UX/UI)',card10.querySelectorAll('button').length===0);
+  ok('Pedido 10010 NO muestra tabla de productos mientras piensa',!card10.querySelector('tbody'));
+
+  // Al terminar la IA, se actualiza a OK y se habilitan los botones y tabla
+  serverOrders=[{
+    id:10010,version:2,status:'REVIEW',conversationStatus:'WAITING_FOR_MORE',reviewStatus:'GREEN',inputType:'IMAGE',aiStatus:'OK',
+    customer:{id:4,name:'Doña Juana',phoneMasked:'****9999',type:'RETAIL'},address:'Calle 5',notes:'',
+    receivedAt:new Date().toISOString(),messageText:'Lista en foto',hasAudio:false,hasImage:true,total:15000,
+    items:[{id:203,productId:1,productName:'Papa criolla',quantity:3,unit:'LB'}]
+  }];
+  await ev('loadOrders()');
+  const card10Done=cardOf(10010);
+  ok('Al finalizar IA: spinner desaparece',!card10Done.querySelector('.spin-loader'));
+  ok('Al finalizar IA: aparecen los botones de acción',card10Done.querySelectorAll('button').some(b=>b.textContent.includes('VALIDAR')));
+  ok('Al finalizar IA: aparece la tabla con los productos extraídos',!!card10Done.querySelector('tbody'));
+
   console.log(fails?`\nFALLAS: ${fails}`:'\nTODO OK');process.exit(fails?1:0)
 })();
