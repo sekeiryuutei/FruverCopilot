@@ -29,10 +29,22 @@ public class DevController {
 
     private final MessageIngestService ingest;
     private final ObjectProvider<DemoDataSeeder> seeder;
+    private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
-    public DevController(MessageIngestService ingest, ObjectProvider<DemoDataSeeder> seeder) {
+    public DevController(MessageIngestService ingest, ObjectProvider<DemoDataSeeder> seeder,
+                         org.springframework.jdbc.core.simple.JdbcClient jdbc) {
         this.ingest = ingest;
         this.seeder = seeder;
+        this.jdbc = jdbc;
+    }
+
+    /** Restablece todas las tablas de pedidos y ventas y reinicia los contadores a 1. */
+    @PostMapping("/database/reset")
+    public Map<String, Object> resetDatabase() {
+        jdbc.sql("TRUNCATE TABLE print_job, sale_item, sale, order_item, conversation_message, audio, transcription, media_image, audit_log, orders RESTART IDENTITY CASCADE").update();
+        jdbc.sql("ALTER SEQUENCE order_number_seq RESTART WITH 1").update();
+        jdbc.sql("ALTER SEQUENCE sale_id_seq RESTART WITH 1").update();
+        return Map.of("status", "ok", "message", "Base de datos reiniciada. Próximo pedido #1.");
     }
 
     /** Restaura los pedidos demo 10003-10005 (p. ej. tras aprobar el 10005 en plena demostracion). */

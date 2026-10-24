@@ -60,7 +60,12 @@ public class GeminiKeyPool {
             log.info("GeminiKeyPool inicializado con {} API key(s) de Gemini ({} llamadas seguidas por key) para balanceo y tolerancia a 429.",
                     this.keys.size(), this.batchSize);
             for (int i = 0; i < this.keys.size(); i++) {
-                log.info("  -> Key #{}: {}", i + 1, mask(this.keys.get(i)));
+                String k = this.keys.get(i);
+                if (!k.startsWith("AIza")) {
+                    log.error("⚠️ [ADVERTENCIA CRÍTICA] La key #{} de Gemini ('{}') NO parece una clave válida de Google AI Studio (las claves de Gemini empiezan por 'AIzaSy...'). Si usas otro formato o un token de sesión, Google responderá con 403 Forbidden. Genera tu clave en https://aistudio.google.com/app/apikey", i + 1, mask(k));
+                } else {
+                    log.info("  -> Key #{}: {}", i + 1, mask(k));
+                }
             }
         }
     }

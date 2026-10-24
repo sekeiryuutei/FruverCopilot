@@ -319,5 +319,16 @@ public class SaleController {
         jdbc.sql("SELECT order_id FROM sale WHERE id = :id").param("id", id).query(Long.class).optional().ifPresent(hub::orderChanged);
         return Map.of("status", "SENT");
     }
+
+    // Reinicio seguro de datos de prueba (pedidos y ventas) restableciendo contadores a 1
+    @PostMapping("/sales/reset-test-data")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Map<String, Object> resetTestData() {
+        jdbc.sql("TRUNCATE TABLE print_job, sale_item, sale, order_item, conversation_message, audio, transcription, media_image, audit_log, orders RESTART IDENTITY CASCADE").update();
+        jdbc.sql("ALTER SEQUENCE order_number_seq RESTART WITH 1").update();
+        jdbc.sql("ALTER SEQUENCE sale_id_seq RESTART WITH 1").update();
+        hub.orderChanged(0L);
+        return Map.of("status", "ok", "message", "Datos de prueba eliminados. El próximo pedido comenzará en #1.");
+    }
 }
 

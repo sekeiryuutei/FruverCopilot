@@ -46,7 +46,7 @@ class AiProviderCascadeAndSaturationTest {
         AppProperties.Gemini geminiProps = new AppProperties.Gemini("key1", "key1", "gemini-2.5-flash", "https://mock.gemini");
         AppProperties props = new AppProperties(
                 "America/Bogota", false, null, null, null, null,
-                new AppProperties.Ai("gemini", geminiProps), null, null, null
+                new AppProperties.Ai("gemini", geminiProps, null, null, null, null, null), null, null, null
         );
 
         FallbackAiClient mockFallback = mock(FallbackAiClient.class);
@@ -77,7 +77,7 @@ class AiProviderCascadeAndSaturationTest {
         AppProperties.Gemini geminiProps = new AppProperties.Gemini("key1", "key1", "gemini-2.5-flash", "https://invalid.gemini.local");
         AppProperties props = new AppProperties(
                 "America/Bogota", false, null, null, null, null,
-                new AppProperties.Ai("gemini", geminiProps), null, null, null
+                new AppProperties.Ai("gemini", geminiProps, null, null, null, null, null), null, null, null
         );
 
         FallbackAiClient mockFallback = mock(FallbackAiClient.class);

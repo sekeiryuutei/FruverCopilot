@@ -109,7 +109,7 @@ public class GeminiOrderExtractor implements OrderExtractor {
                 )
         );
 
-        return executeGemini(payload, SystemPrompts.ORDER_EXTRACTION, userPrompt);
+        return executeGemini(payload, SystemPrompts.ORDER_EXTRACTION, userPrompt, null, null);
     }
 
     @Override
@@ -159,7 +159,7 @@ public class GeminiOrderExtractor implements OrderExtractor {
                 )
         );
 
-        return executeGemini(payload, SystemPrompts.IMAGE_ORDER_EXTRACTION, contextPrompt);
+        return executeGemini(payload, SystemPrompts.IMAGE_ORDER_EXTRACTION, contextPrompt, List.of(imageBytes), List.of(cleanMime));
     }
 
     @Override
@@ -217,10 +217,11 @@ public class GeminiOrderExtractor implements OrderExtractor {
                 )
         );
 
-        return executeGemini(payload, SystemPrompts.IMAGE_ORDER_EXTRACTION, contextPrompt);
+        return executeGemini(payload, SystemPrompts.IMAGE_ORDER_EXTRACTION, contextPrompt, images, mimeTypes);
     }
 
-    private AIOrderResponse executeGemini(Map<String, Object> payload, String systemPrompt, String userPrompt) {
+    private AIOrderResponse executeGemini(Map<String, Object> payload, String systemPrompt, String userPrompt,
+                                         List<byte[]> images, List<String> mimeTypes) {
         JsonNode root = null;
         Exception lastException = null;
 
@@ -280,8 +281,13 @@ public class GeminiOrderExtractor implements OrderExtractor {
         // Si todos los modelos y keys de Gemini fallaron, activar fallback de contingencia
         if (root == null) {
             if (fallbackClient != null) {
-                log.warn("Todos los modelos y keys de Gemini fallaron. Activando proveedores de contingencia (OpenCode/Ollama)...");
-                AIOrderResponse fallbackResponse = fallbackClient.tryFallback(systemPrompt, userPrompt);
+                log.warn("Todos los modelos y keys de Gemini fallaron. Activando contingencia multi-proveedor (Groq/OpenRouter/OpenCode/OpenAI)...");
+                AIOrderResponse fallbackResponse;
+                if (images != null && !images.isEmpty()) {
+                    fallbackResponse = fallbackClient.tryFallbackVision(images, mimeTypes, systemPrompt, userPrompt);
+                } else {
+                    fallbackResponse = fallbackClient.tryFallback(systemPrompt, userPrompt);
+                }
                 if (fallbackResponse != null) {
                     return fallbackResponse;
                 }
