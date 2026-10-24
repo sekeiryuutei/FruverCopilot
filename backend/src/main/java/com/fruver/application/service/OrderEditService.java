@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -285,6 +286,15 @@ public class OrderEditService {
         }
         if (target.dispatchedAt() != null) {
             throw new ApiException(409, "TARGET_ALREADY_DISPATCHED", "El pedido destino ya fue despachado y no admite modificaciones");
+        }
+
+        Integer graceSec = jdbc.sql("SELECT order_grace_seconds FROM printer_setting WHERE id = 'DEFAULT'")
+                .query(Integer.class).optional().orElse(300);
+        int maxMergeSec = Math.max(120, (graceSec != null ? graceSec : 300) * 2);
+        OffsetDateTime targetTime = target.approvedAt() != null ? target.approvedAt() : target.receivedAt();
+        if (targetTime != null && targetTime.plusSeconds(maxMergeSec).isBefore(OffsetDateTime.now())) {
+            throw new ApiException(409, "MERGE_WINDOW_EXPIRED",
+                    "Ha pasado más del doble del tiempo de espera (" + (maxMergeSec / 60) + " min). El pedido anterior ya está cerrado y no se puede anexar.");
         }
 
         // Si el pedido destino ya tenía venta generada (pero no despachada), se cancela la venta previa para que el operador re-apruebe el pedido consolidado

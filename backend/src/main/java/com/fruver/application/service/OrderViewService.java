@@ -73,11 +73,18 @@ public class OrderViewService {
         Map<Long, Long> pendingDispatchMap = new HashMap<>();
         List<Long> custIds = rows.stream().map(OrderRow::customerId).filter(Objects::nonNull).distinct().toList();
         if (!custIds.isEmpty()) {
+            Integer graceSec = jdbc.sql("SELECT order_grace_seconds FROM printer_setting WHERE id = 'DEFAULT'")
+                    .query(Integer.class).optional().orElse(300);
+            int maxMergeSec = Math.max(120, (graceSec != null ? graceSec : 300) * 2);
+
             jdbc.sql("""
                     SELECT customer_id, id FROM orders
-                    WHERE customer_id IN (:cids) AND status = 'APPROVED' AND dispatched_at IS NULL
+                    WHERE customer_id IN (:cids)
+                      AND status = 'APPROVED'
+                      AND dispatched_at IS NULL
+                      AND COALESCE(approved_at, received_at) >= NOW() - (:sec || ' seconds')::interval
                     ORDER BY id DESC
-                    """).param("cids", custIds).query((rs, n) -> {
+                    """).param("cids", custIds).param("sec", maxMergeSec).query((rs, n) -> {
                         pendingDispatchMap.putIfAbsent(rs.getLong(1), rs.getLong(2));
                         return 0;
                     }).list();
