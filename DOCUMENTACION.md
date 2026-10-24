@@ -59,51 +59,54 @@ flowchart TD
 
     subgraph Backend["Backend Spring Boot 3.4 (Java 21)"]
         WH["WhatsAppWebhookController\n(Firma HMAC-SHA256)"]
-        OIS["OrderIntakeService\n(Idempotencia y Fusión)"]
-        OPS["OrderProcessingService\n(Asíncrono @Async)"]
+        MIS["MessageIngestService\n(Persistencia inmediata y SSE)"]
+        OBC["OrderBatchingCoordinator\n(Ventana Debounce Dinámica)"]
+        OPS["OrderProcessingService\n(Batch Multimodal @Async)"]
         
-        subgraph MotorIA["Servicios IA y Medios"]
-            LLM["OrderExtractor\n(Gemini / OpenAI)"]
-            STT["Whisper Speech-to-Text"]
-            OCR["Gemini Vision (OCR Listas)"]
-            INTERP["ExtractionInterpreter\n(Validación UNTRUSTED)"]
+        subgraph MotorIA["Capa de IA Resiliente y Multi-Proveedor"]
+            GKP["GeminiKeyPool\n(Ráfagas de 5 llamadas por Key + Cooldown 429)"]
+            GEM["GeminiOrderExtractor\n(Multi-Modelo: 2.5-flash -> 2.5-flash-lite -> 1.5)"]
+            FALL["FallbackAiClient (Cascada de Contingencia)\n1. OpenCode Zen\n2. OpenRouter (Free Models)\n3. Groq (Ultra-rápido)\n4. OpenAI (Salvavidas final)"]
+            INTERP["ExtractionInterpreter\n(Validación de ítems y semáforo)"]
         end
 
         subgraph Nucleo["Núcleo de Negocio"]
-            OW["OrderWriter\n(Fusión inteligente de ítems)"]
-            SS["SaleService\n(Aprobación y Venta)"]
-            TF["TicketFormatter\n(Generador ESC/POS)"]
-            PS["PrintService\n(Worker SKIP LOCKED)"]
+            OW["OrderWriter\n(Fusión idempotente y transaccional)"]
+            SS["SaleService\n(Aprobación, Venta y Reenvío)"]
+            PCS["PrinterConfigService\n(Gestión dinámica de tiempos)"]
+            PS["PrintService\n(Worker SKIP LOCKED TCP 9100)"]
         end
 
         SSE["SseHub\n(Server-Sent Events)"]
     end
 
     subgraph Almacenamiento["Base de Datos y Archivos"]
-        PG[("PostgreSQL 16\n15 Migraciones Flyway")]
+        PG[("PostgreSQL 16\n17 Migraciones Flyway")]
         VOL["Volumen Local\n(/data/audio)"]
     end
 
     subgraph Salidas["Salidas y Clientes"]
-        PWA["PWA Frontend\n(HTML5 / JS Nativo / Responsive)"]
-        PRN["Impresoras Térmicas\n(ESC/POS TCP 9100)"]
+        PWA["PWA Frontend (Panel Operativo)\n(Soporte Offline + Modo Sin Conexión)"]
+        PRN["Impresoras Térmicas LAN\n(Oficina / Casa TCP 9100)"]
     end
 
     WA -->|POST Webhook| WH
-    SIM -->|POST API| OIS
-    WH --> OIS
-    OIS -->|Guarda Inbound| PG
-    OIS -->|Guarda Audio| VOL
-    OIS --> OPS
-    OPS --> STT
-    OPS --> OCR
-    OPS --> LLM
-    LLM --> INTERP
+    SIM -->|POST API| MIS
+    WH --> MIS
+    MIS -->|Guarda Inbound| PG
+    MIS -->|Notifica llegada| SSE
+    MIS --> OBC
+    OBC -->|Al expirar ventana de espera| OPS
+    OPS --> GKP
+    GKP --> GEM
+    GEM -.->|Si todas las keys/modelos fallan| FALL
+    GEM --> INTERP
+    FALL --> INTERP
     INTERP --> OW
     OW --> PG
     OW --> SSE
     SSE -->|Actualización en vivo| PWA
-    PWA -->|Aprobar / Editar| SS
+    PWA -->|Aprobar / Modificar| SS
     SS --> PG
     SS --> PS
     PS -->|Raw Socket 9100| PRN
@@ -111,8 +114,8 @@ flowchart TD
 
 ### Componentes Clave:
 - **Backend:** Java 21, Spring Boot 3.4, Spring Security, Spring Web, `JdbcClient` (SQL nativo optimizado sin sobrecarga de JPA/Hibernate).
-- **Base de Datos:** PostgreSQL 16 con extensiones `pg_trgm` (búsqueda difusa) y `unaccent` (búsqueda sin tildes). Migraciones gestionadas por **Flyway** (15 versiones).
-- **Frontend / PWA:** Single-Page Application ultra-ligera en JavaScript nativo (`index.html`, `sw.js`, `manifest.json`), sin bundlers pesados, con comunicación reactiva mediante Server-Sent Events (SSE).
+- **Base de Datos:** PostgreSQL 16 con extensiones `pg_trgm` (búsqueda difusa) y `unaccent` (búsqueda sin tildes). Migraciones gestionadas por **Flyway** (17 versiones).
+- **Frontend / PWA:** Single-Page Application ultra-ligera en JavaScript nativo (`index.html`, `sw.js`, `manifest.json`), con modo offline tolerante a fallos de conexión y Server-Sent Events (SSE).
 - **Seguridad:** Autenticación de sesiones con Cookies HTTP-Only, `SameSite=Lax`, CSRF con token rotativo, rate-limiting contra ataques de fuerza bruta (bloqueo tras 5 intentos fallidos en 10 minutos), headers CSP y firmas HMAC para webhooks de WhatsApp.
 
 ---
@@ -154,6 +157,57 @@ Cuando se opera en modo minorista (`AUTO_PRINT_WHOLESALE=false`):
 - **Mensajes de Texto:** Limpieza de caracteres, búsqueda difusa en catálogo e interpretación rápida.
 - **Notas de Voz (Audios):** Descarga segura de los servidores de WhatsApp, almacenamiento en `/data/audio`, transcripción con **Whisper** y vinculación del audio a la orden (el operario puede escucharlo directamente en la PWA con el reproductor integrado).
 - **Fotos de Listas/Libretas:** Descarga de la imagen, almacenamiento seguro y procesamiento con **Gemini Vision OCR** especializado en caligrafía colombiana de fruver. La foto se puede ampliar y revisar en cualquier momento desde el botón **"Ver Foto de Lista"**.
+
+### 3.4. Resiliencia de IA: Pool Multi-Clave, Debounce y Cascada de Contingencia
+
+Para blindar la operación contra caídas de proveedores o bloqueos por saturación (HTTP 429), el sistema opera con una arquitectura de alta disponibilidad:
+
+1. **Pool de Claves Gemini con Balanceo por Ráfagas (Batch Rotation):**
+   - Soporta $N$ claves de Google Gemini de cuentas diferentes (`GEMINI_API_KEYS=key1,key2,key3`).
+   - Realiza **5 llamadas seguidas por clave** (0-4 en Key #1, 5-9 en Key #2, 10-14 en Key #3) para balancear la carga de forma uniforme y tolerable.
+   - **Tolerancia a 429:** Si una clave recibe un límite de tasa (HTTP 429), entra inmediatamente en **cooldown de 60 segundos** y el sistema salta a la siguiente clave sana sin esperar.
+2. **Degradación Multi-Modelo en Cascada:**
+   - Si un modelo de Gemini devuelve `404` (no encontrado) o `503` (sobrecargado), el sistema desciende en automático al siguiente modelo de menor demanda:
+     $$\text{gemini-2.5-flash} \longrightarrow \text{gemini-2.5-flash-lite} \longrightarrow \text{gemini-2.0-flash} \longrightarrow \text{gemini-1.5-flash}$$
+3. **Cascada de 4 Proveedores Cloud de Respaldo (`FallbackAiClient`):**
+   - Si todas las claves y modelos de Gemini se agotan o Google sufre una caída global, la orden se redirige de inmediato a los siguientes respaldos en orden:
+     1. **OpenCode Zen:** Modelos libres (`deepseek-v4.1-flash-free`, `mimo-v2.6-flash-free`).
+     2. **OpenRouter:** Modelos gratuitos activos (`nvidia/nemotron-3.5-lightning:free`, `google/gemma-4-26b-a4b-it:free`).
+     3. **Groq Cloud:** Inferencia ultra-rápida en hardware LPU (`openai/gpt-oss-120b`, `qwen/qwen3.8-27b`).
+     4. **OpenAI:** Salvavidas pagado final (`gpt-4o-mini`).
+4. **Debounce y Batching Multimodal (Audio + Foto + Texto):**
+   - Si un cliente envía una ráfaga (ej: 1 audio, luego 1 foto de libreta, luego 1 texto aclaratorio, luego otra foto), el `OrderBatchingCoordinator` abre una ventana de espera (por defecto 20s).
+   - Todos los medios se consolidan y se envían en una **única llamada multimodal (`extractBatch`)**, consumiendo 1 solo token batch y manteniendo todo el contexto unificado.
+
+### 3.5. Capacidad Cuantitativa: ¿Cuánto aguantan realmente las IAs?
+
+| Proveedor / Mecanismo | Límite por Minuto (RPM) | Límite Diario (RPD) | Capacidad Máxima |
+|---|---|---|---|
+| **Gemini (Pool de 3 Claves Free)** | 15 RPM × 3 = **45 RPM** | 1.500 RPD × 3 = **4.500 pedidos/día** | ~135.000 pedidos/mes (Gratis) |
+| **Groq (Inferencia Ultra-Rápida)** | **30 RPM** | **14.400 pedidos/día** | ~432.000 pedidos/mes (Gratis) |
+| **OpenRouter (:free models)** | Variable (10-20 RPM) | Cuota dinámica comunitaria | Respaldo adicional |
+| **Total Combinado de Contingencia** | **75+ pedidos por minuto** | **> 18.000 pedidos diarios** | Alta escala |
+
+#### ¿Qué significa esto para una operación de 500 clientes/día?
+- Un fruver que atiende **500 clientes diarios** genera aproximadamente 500 llamadas de IA gracias a la consolidación de ráfagas (Debounce).
+- Con solo el pool de 3 claves de Gemini (**4.500 pedidos/día**), los 500 pedidos consumen apenas el **11.1% de la cuota diaria**.
+- En horas pico (ej: 7:00 AM a 9:00 AM, 150 clientes en 2 horas), la tasa promedio es de **1.25 pedidos por minuto**, muy por debajo del techo de **45 pedidos por minuto**.
+- Por lo tanto, el sistema cuenta con un margen de seguridad de **36x sobre el pico normal de operación**.
+
+### 3.6. ¿Qué ocurre si fallan TODAS las IAs (Apagón Total)?
+
+Si se cortara la conexión a Internet o todos los proveedores de IA cayeran simultáneamente:
+1. **Cero Pérdida de Datos:** Ni el audio, ni las fotos, ni los mensajes de texto se descartan. Todo queda persistido en PostgreSQL y en el disco local `/data/audio`.
+2. **Bandera de Revisión Inmediata:** La orden se marca con `status = 'REVIEW'`, `ai_status = 'FAILED'` y nota visible: *"IA no disponible; digitar el pedido manualmente"*.
+3. **Operación Continua:** En el tablero operativo de la PWA, la tarjeta del cliente aparece en color de advertencia con el botón **"Ver Foto de Lista"** y el reproductor de audio, permitiendo al cajero ingresar los productos manualmente en 10 segundos y facturar sin detener la venta.
+
+### 3.7. Gestión Dinámica de Tiempos de Espera desde la PWA
+
+Desde la pantalla de **Configuración** (`/configuracion`), el administrador puede ajustar en caliente y sin reiniciar el servidor:
+- **Tiempo de espera antes de enviar a la IA (Ráfagas):** Segundos que espera el sistema tras recibir un mensaje de WhatsApp para agrupar mensajes continuos (por defecto 20s).
+- **Tiempo de espera para hacer pedido / adición:** Margen en minutos para que el cliente mayorista agregue más cosas antes de cerrar la factura (por defecto 5 min).
+- **Tiempo de espera de impresora:** Segundos máximos de conexión LAN TCP 9100 (por defecto 5s).
+- **Impresión automática al vencer el tiempo de espera:** Switch ON/OFF.
 
 ---
 

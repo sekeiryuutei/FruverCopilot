@@ -36,15 +36,28 @@ public class OrderBatchingCoordinator {
     private final ConcurrentHashMap<Long, Instant> burstStarts = new ConcurrentHashMap<>();
     private final OrderProcessingService processing;
     private final AppProperties props;
+    private final PrinterConfigService printerConfig;
 
-    public OrderBatchingCoordinator(OrderProcessingService processing, AppProperties props) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public OrderBatchingCoordinator(OrderProcessingService processing, AppProperties props,
+                                    PrinterConfigService printerConfig) {
         this.processing = processing;
         this.props = props;
+        this.printerConfig = printerConfig;
+    }
+
+    public OrderBatchingCoordinator(OrderProcessingService processing, AppProperties props) {
+        this(processing, props, null);
     }
 
     public void scheduleProcessing(IntakeResult result) {
         long orderId = result.orderId();
-        int debounceSec = (props.conversation() != null) ? props.conversation().debounceSeconds() : 0;
+        int debounceSec = 20;
+        if (printerConfig != null && printerConfig.get().customerDebounceSeconds() >= 0) {
+            debounceSec = printerConfig.get().customerDebounceSeconds();
+        } else if (props.conversation() != null) {
+            debounceSec = props.conversation().debounceSeconds();
+        }
         int maxSec = (props.conversation() != null) ? props.conversation().debounceMaxSeconds() : 90;
 
         if (debounceSec <= 0) {

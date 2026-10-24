@@ -84,8 +84,16 @@ public class SaleController {
             String mode,
             Integer orderGraceSeconds,
             Integer printTimeoutSeconds,
-            Boolean autoPrintWholesale
-    ) {}
+            Boolean autoPrintWholesale,
+            Integer customerDebounceSeconds
+    ) {
+        public PrinterConfigUpdateRequest(
+                String officeHost, Integer officePort, String homeHost, Integer homePort,
+                Boolean enabled, String mode, Integer orderGraceSeconds, Integer printTimeoutSeconds,
+                Boolean autoPrintWholesale) {
+            this(officeHost, officePort, homeHost, homePort, enabled, mode, orderGraceSeconds, printTimeoutSeconds, autoPrintWholesale, null);
+        }
+    }
 
     public record TestPrinterRequest(String location) {}
 
@@ -108,7 +116,8 @@ public class SaleController {
         return printerConfig.update(
                 req.officeHost(), req.officePort(), req.homeHost(), req.homePort(),
                 req.enabled(), req.mode(),
-                req.orderGraceSeconds(), req.printTimeoutSeconds(), req.autoPrintWholesale()
+                req.orderGraceSeconds(), req.printTimeoutSeconds(), req.autoPrintWholesale(),
+                req.customerDebounceSeconds()
         );
     }
 

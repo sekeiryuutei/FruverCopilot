@@ -29,7 +29,8 @@ public class PrinterConfigService {
             int pendingCount,
             int orderGraceSeconds,
             int printTimeoutSeconds,
-            boolean autoPrintWholesale
+            boolean autoPrintWholesale,
+            int customerDebounceSeconds
     ) {}
 
     private final JdbcClient jdbc;
@@ -41,7 +42,7 @@ public class PrinterConfigService {
     }
 
     public PrinterConfig get() {
-        var row = jdbc.sql("SELECT office_host, office_port, home_host, home_port, enabled, mode, order_grace_seconds, print_timeout_seconds, auto_print_wholesale FROM printer_setting WHERE id = 'DEFAULT'")
+        var row = jdbc.sql("SELECT office_host, office_port, home_host, home_port, enabled, mode, order_grace_seconds, print_timeout_seconds, auto_print_wholesale, customer_debounce_seconds FROM printer_setting WHERE id = 'DEFAULT'")
                 .query((rs, n) -> new Object[]{
                         rs.getString(1),
                         rs.getInt(2),
@@ -51,7 +52,8 @@ public class PrinterConfigService {
                         rs.getString(6),
                         rs.getObject(7) != null ? rs.getInt(7) : null,
                         rs.getObject(8) != null ? rs.getInt(8) : null,
-                        rs.getObject(9) != null ? rs.getBoolean(9) : null
+                        rs.getObject(9) != null ? rs.getBoolean(9) : null,
+                        rs.getObject(10) != null ? rs.getInt(10) : null
                 }).optional();
 
         String officeHost = (props.printing() != null && props.printing().officeHost() != null) ? props.printing().officeHost() : "127.0.0.1";
@@ -63,6 +65,7 @@ public class PrinterConfigService {
         int orderGraceSeconds = (props.printing() != null) ? props.printing().wholesaleGraceSeconds() : 300;
         int printTimeoutSeconds = 5;
         boolean autoPrintWholesale = (props.printing() != null) ? props.printing().autoPrintWholesale() : true;
+        int customerDebounceSeconds = (props.conversation() != null) ? props.conversation().debounceSeconds() : 20;
 
         if (row.isPresent()) {
             Object[] data = row.get();
@@ -75,6 +78,7 @@ public class PrinterConfigService {
             if (data[6] != null) orderGraceSeconds = (Integer) data[6];
             if (data[7] != null && ((Integer) data[7]) > 0) printTimeoutSeconds = (Integer) data[7];
             if (data[8] != null) autoPrintWholesale = (Boolean) data[8];
+            if (data[9] != null && ((Integer) data[9]) >= 0) customerDebounceSeconds = (Integer) data[9];
         }
 
         String active = currentTargetPrinter(mode);
@@ -94,23 +98,33 @@ public class PrinterConfigService {
                 pendingCount,
                 orderGraceSeconds,
                 printTimeoutSeconds,
-                autoPrintWholesale
+                autoPrintWholesale,
+                customerDebounceSeconds
         );
     }
 
     public PrinterConfig update(String officeHost, Integer officePort, String homeHost, Integer homePort, Boolean enabled, String mode) {
         PrinterConfig current = get();
         return update(officeHost, officePort, homeHost, homePort, enabled, mode,
-                current.orderGraceSeconds(), current.printTimeoutSeconds(), current.autoPrintWholesale());
+                current.orderGraceSeconds(), current.printTimeoutSeconds(), current.autoPrintWholesale(), current.customerDebounceSeconds());
     }
 
     public PrinterConfig update(String officeHost, Integer officePort, String homeHost, Integer homePort,
                                 Boolean enabled, String mode,
                                 Integer orderGraceSeconds, Integer printTimeoutSeconds, Boolean autoPrintWholesale) {
+        PrinterConfig current = get();
+        return update(officeHost, officePort, homeHost, homePort, enabled, mode,
+                orderGraceSeconds, printTimeoutSeconds, autoPrintWholesale, current.customerDebounceSeconds());
+    }
+
+    public PrinterConfig update(String officeHost, Integer officePort, String homeHost, Integer homePort,
+                                Boolean enabled, String mode,
+                                Integer orderGraceSeconds, Integer printTimeoutSeconds, Boolean autoPrintWholesale,
+                                Integer customerDebounceSeconds) {
         jdbc.sql("""
                 INSERT INTO printer_setting(id, office_host, office_port, home_host, home_port, enabled, mode,
-                                            order_grace_seconds, print_timeout_seconds, auto_print_wholesale, updated_at)
-                VALUES ('DEFAULT', :oh, :op, :hh, :hp, :en, :m, :ogs, :pts, :apw, now())
+                                            order_grace_seconds, print_timeout_seconds, auto_print_wholesale, customer_debounce_seconds, updated_at)
+                VALUES ('DEFAULT', :oh, :op, :hh, :hp, :en, :m, :ogs, :pts, :apw, :cds, now())
                 ON CONFLICT (id) DO UPDATE SET
                     office_host = EXCLUDED.office_host,
                     office_port = EXCLUDED.office_port,
@@ -121,6 +135,7 @@ public class PrinterConfigService {
                     order_grace_seconds = EXCLUDED.order_grace_seconds,
                     print_timeout_seconds = EXCLUDED.print_timeout_seconds,
                     auto_print_wholesale = EXCLUDED.auto_print_wholesale,
+                    customer_debounce_seconds = EXCLUDED.customer_debounce_seconds,
                     updated_at = now()
                 """).param("oh", (officeHost != null && !officeHost.isBlank()) ? officeHost.trim() : "127.0.0.1")
                 .param("op", (officePort != null && officePort > 0) ? officePort : 9100)
@@ -131,6 +146,7 @@ public class PrinterConfigService {
                 .param("ogs", (orderGraceSeconds != null && orderGraceSeconds >= 0) ? orderGraceSeconds : 300)
                 .param("pts", (printTimeoutSeconds != null && printTimeoutSeconds >= 1) ? printTimeoutSeconds : 5)
                 .param("apw", autoPrintWholesale != null ? autoPrintWholesale : true)
+                .param("cds", (customerDebounceSeconds != null && customerDebounceSeconds >= 0) ? customerDebounceSeconds : 20)
                 .update();
 
         return get();

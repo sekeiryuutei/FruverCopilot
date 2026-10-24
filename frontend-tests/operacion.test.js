@@ -260,15 +260,19 @@ const rows=c=>c.querySelector('tbody').kids;const btn=(c,t)=>c.querySelectorAll(
   const cfgCard=main.children[0];
   ok('Pantalla de configuración se dibuja',!!cfgCard);
   ok('Muestra sección de Tiempos de Espera del Sistema',cfgCard.textContent.includes('Tiempos de Espera del Sistema'));
+  ok('Muestra etiqueta Tiempo de espera antes de enviar a la IA',cfgCard.textContent.includes('Tiempo de espera antes de enviar a la IA'));
   ok('Muestra etiqueta Tiempo de espera para hacer pedido',cfgCard.textContent.includes('Tiempo de espera para hacer pedido'));
   ok('Muestra etiqueta Tiempo de espera para imprimir',cfgCard.textContent.includes('Tiempo de espera para imprimir'));
 
   const inputs=cfgCard.querySelectorAll('input');
-  const graceIn=inputs.find(i=>String(i.min)==='0');
+  const aiDebounceIn=inputs.find(i=>i.placeholder==='Ej: 20');
+  const graceIn=inputs.find(i=>i.placeholder==='Ej: 5');
   const timeoutIn=inputs.find(i=>String(i.min)==='1');
+  ok('Campo de espera de IA presente',!!aiDebounceIn);
   ok('Campo de margen de pedido presente',!!graceIn);
   ok('Campo de timeout de impresión presente',!!timeoutIn);
 
+  if(aiDebounceIn) aiDebounceIn.value='25';
   if(graceIn) graceIn.value='3';
   if(timeoutIn) timeoutIn.value='8';
   const saveCfgBtn=cfgCard.querySelectorAll('button').find(b=>b.textContent.includes('GUARDAR CONFIGURACIÓN'));
@@ -277,6 +281,7 @@ const rows=c=>c.querySelector('tbody').kids;const btn=(c,t)=>c.querySelectorAll(
   if(saveCfgBtn) await saveCfgBtn.dispatch('click');
   await tick();await tick();
   const lastPut=calls.filter(c=>c.method==='PUT'&&c.url==='/api/printer/config').pop();
+  ok('Guardar envía customerDebounceSeconds (25s)',lastPut&&lastPut.body.customerDebounceSeconds===25);
   ok('Guardar envía orderGraceSeconds en segundos (3 min = 180s)',lastPut&&lastPut.body.orderGraceSeconds===180,JSON.stringify(lastPut&&lastPut.body));
   ok('Guardar envía printTimeoutSeconds (8s)',lastPut&&lastPut.body.printTimeoutSeconds===8);
   ok('Guardar envía autoPrintWholesale (true)',lastPut&&lastPut.body.autoPrintWholesale===true);
