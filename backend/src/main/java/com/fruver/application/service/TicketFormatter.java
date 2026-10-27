@@ -57,30 +57,77 @@ public final class TicketFormatter {
         if (t.notes() != null && !t.notes().isBlank()) wrap("OBS: " + t.notes(), cols, false, out);
 
         out.add(new TicketLine(doubleSep, false));
-        // Cabecera de la tabla: CANT / UNIDAD y espacio para PRECIO manual
+        // Cabecera de la tabla: PRODUCTO / CANTIDAD y espacio para PRECIO
         String colHeader = cols >= 40
-                ? leftRight("CANT.  DESCRIPCION", "VALOR", cols)
-                : leftRight("CANT.", "VALOR", cols);
+                ? leftRight("DESCRIPCION / CANT.", "VALOR", cols)
+                : leftRight("PRODUCTO / CANT.", "VALOR", cols);
         out.add(new TicketLine(colHeader, true));
         out.add(new TicketLine(doubleSep, false));
 
         for (TicketData.Line l : t.lines()) {
-            wrap(l.name(), cols, true, out);
             String qtyStr = l.quantity() != null ? Money.qty(l.quantity()) : "[   ]";
-            String left = "  " + qtyStr + " " + unitLabel(l.unit());
-            out.add(new TicketLine(leftRight(left, "$ [        ]", cols), false));
+            String qtyAndUnit = qtyStr + " " + unitLabel(l.unit());
+            String priceStr = (l.subtotal() != null && l.subtotal().compareTo(BigDecimal.ZERO) > 0)
+                    ? Money.format(l.subtotal())
+                    : "$ [        ]";
+            formatItemLine(l.name(), qtyAndUnit, priceStr, cols, out);
         }
 
         out.add(new TicketLine(doubleSep, false));
-        // Espacio manual para que el personal anote el total
-        String blankTotal = cols >= 40 ? "[                    ]" : "[              ]";
-        out.add(new TicketLine(leftRight("TOTAL $:", blankTotal, cols), true));
+        // Espacio manual para que el personal anote el total (o total calculado si existe)
+        String totalValue = (t.total() != null && t.total().compareTo(BigDecimal.ZERO) > 0)
+                ? Money.format(t.total())
+                : (cols >= 40 ? "[                    ]" : "[              ]");
+        out.add(new TicketLine(leftRight("TOTAL $:", totalValue, cols), true));
         out.add(new TicketLine(sep, false));
         // Firma del receptor
         String nitFill = "_".repeat(Math.max(4, cols - 9));
         out.add(new TicketLine("RECIBI: " + nitFill, false));
         out.add(new TicketLine(sep, false));
         return out;
+    }
+
+    static void formatItemLine(String name, String qtyAndUnit, String priceStr, int cols, List<TicketLine> out) {
+        String cleanName = (name != null ? name.strip() : "Artículo");
+        String fullLeft = cleanName + " " + qtyAndUnit;
+        int maxLeft = cols - priceStr.length() - 1;
+
+        if (fullLeft.length() <= maxLeft) {
+            out.add(new TicketLine(leftRight(fullLeft, priceStr, cols), false));
+            return;
+        }
+
+        // Si el nombre completo con cantidad excede el ancho para una sola línea:
+        // Envolvemos el exceso del nombre arriba, y en la última línea dejamos el final del nombre + cantidad + precio.
+        String[] words = cleanName.split("\\s+");
+        StringBuilder top = new StringBuilder();
+        StringBuilder bottom = new StringBuilder();
+
+        for (int i = 0; i < words.length; i++) {
+            String w = words[i];
+            String remainingWithQty = String.join(" ", java.util.Arrays.copyOfRange(words, i, words.length)) + " " + qtyAndUnit;
+            if (remainingWithQty.length() <= maxLeft) {
+                bottom.append(remainingWithQty);
+                break;
+            }
+            if (top.length() + w.length() + (top.length() > 0 ? 1 : 0) <= cols) {
+                if (top.length() > 0) top.append(" ");
+                top.append(w);
+            } else {
+                if (top.length() > 0) {
+                    out.add(new TicketLine(top.toString(), false));
+                    top.setLength(0);
+                }
+                top.append(w);
+            }
+        }
+
+        if (top.length() > 0) {
+            out.add(new TicketLine(top.toString(), false));
+        }
+
+        String lastLeft = bottom.length() > 0 ? bottom.toString() : qtyAndUnit;
+        out.add(new TicketLine(leftRight(lastLeft, priceStr, cols), false));
     }
 
     static String unitLabel(String unit) {
