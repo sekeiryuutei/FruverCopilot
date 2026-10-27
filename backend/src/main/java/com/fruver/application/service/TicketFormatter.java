@@ -57,10 +57,10 @@ public final class TicketFormatter {
         if (t.notes() != null && !t.notes().isBlank()) wrap("OBS: " + t.notes(), cols, false, out);
 
         out.add(new TicketLine(doubleSep, false));
-        // Cabecera de la tabla: PRODUCTO / CANTIDAD y espacio para PRECIO
+        // Cabecera de la tabla: CANTIDAD / UNIDAD primero, luego DESCRIPCION y VALOR
         String colHeader = cols >= 40
-                ? leftRight("DESCRIPCION / CANT.", "VALOR", cols)
-                : leftRight("PRODUCTO / CANT.", "VALOR", cols);
+                ? leftRight("CANT.  DESCRIPCION", "VALOR", cols)
+                : leftRight("CANT. DESCRIPCION", "VALOR", cols);
         out.add(new TicketLine(colHeader, true));
         out.add(new TicketLine(doubleSep, false));
 
@@ -89,7 +89,8 @@ public final class TicketFormatter {
 
     static void formatItemLine(String name, String qtyAndUnit, String priceStr, int cols, List<TicketLine> out) {
         String cleanName = (name != null ? name.strip() : "Artículo");
-        String fullLeft = cleanName + " " + qtyAndUnit;
+        String prefix = qtyAndUnit + "  ";
+        String fullLeft = prefix + cleanName;
         int maxLeft = cols - priceStr.length() - 1;
 
         if (fullLeft.length() <= maxLeft) {
@@ -97,37 +98,45 @@ public final class TicketFormatter {
             return;
         }
 
-        // Si el nombre completo con cantidad excede el ancho para una sola línea:
-        // Envolvemos el exceso del nombre arriba, y en la última línea dejamos el final del nombre + cantidad + precio.
+        // Si el producto con su cantidad excede el ancho disponible para una sola línea:
+        // Ponemos la cantidad y las primeras palabras en la primera línea, y el resto en la siguiente con el precio.
         String[] words = cleanName.split("\\s+");
-        StringBuilder top = new StringBuilder();
-        StringBuilder bottom = new StringBuilder();
+        StringBuilder line1 = new StringBuilder(prefix);
+        StringBuilder line2 = new StringBuilder();
+        int indentLen = Math.min(prefix.length(), 6);
+        String indent = " ".repeat(indentLen);
 
-        for (int i = 0; i < words.length; i++) {
+        int i = 0;
+        while (i < words.length) {
             String w = words[i];
-            String remainingWithQty = String.join(" ", java.util.Arrays.copyOfRange(words, i, words.length)) + " " + qtyAndUnit;
-            if (remainingWithQty.length() <= maxLeft) {
-                bottom.append(remainingWithQty);
+            int testLen = line1.length() == prefix.length() ? line1.length() + w.length() : line1.length() + 1 + w.length();
+            if (testLen <= maxLeft && i < words.length - 1) {
+                if (line1.length() > prefix.length()) line1.append(" ");
+                line1.append(w);
+                i++;
+            } else {
                 break;
             }
-            if (top.length() + w.length() + (top.length() > 0 ? 1 : 0) <= cols) {
-                if (top.length() > 0) top.append(" ");
-                top.append(w);
-            } else {
-                if (top.length() > 0) {
-                    out.add(new TicketLine(top.toString(), false));
-                    top.setLength(0);
-                }
-                top.append(w);
+        }
+
+        if (line1.length() > prefix.length()) {
+            out.add(new TicketLine(line1.toString(), false));
+            while (i < words.length) {
+                if (line2.length() > 0) line2.append(" ");
+                line2.append(words[i]);
+                i++;
             }
+            String secondLeft = indent + line2.toString();
+            out.add(new TicketLine(leftRight(secondLeft, priceStr, cols), false));
+        } else {
+            out.add(new TicketLine(prefix + words[0], false));
+            for (int j = 1; j < words.length; j++) {
+                if (line2.length() > 0) line2.append(" ");
+                line2.append(words[j]);
+            }
+            String secondLeft = indent + line2.toString();
+            out.add(new TicketLine(leftRight(secondLeft, priceStr, cols), false));
         }
-
-        if (top.length() > 0) {
-            out.add(new TicketLine(top.toString(), false));
-        }
-
-        String lastLeft = bottom.length() > 0 ? bottom.toString() : qtyAndUnit;
-        out.add(new TicketLine(leftRight(lastLeft, priceStr, cols), false));
     }
 
     static String unitLabel(String unit) {
