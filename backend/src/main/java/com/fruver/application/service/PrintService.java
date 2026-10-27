@@ -1,5 +1,6 @@
 package com.fruver.application.service;
 
+import com.fruver.application.port.MessagingGateway;
 import com.fruver.application.port.ThermalPrinterService;
 import com.fruver.config.AppProperties;
 import com.fruver.infrastructure.printing.EscPosEncoder;
@@ -31,10 +32,11 @@ public class PrintService {
     private final AppProperties props;
     private final AppMetrics metrics;
     private final SseHub hub;
+    private final MessagingGateway gateway;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     public PrintService(JdbcClient jdbc, TicketService tickets, ThermalPrinterService printer, TransactionTemplate tx,
-                        AppProperties props, AppMetrics metrics, SseHub hub) {
+                        AppProperties props, AppMetrics metrics, SseHub hub, MessagingGateway gateway) {
         this.jdbc = jdbc;
         this.tickets = tickets;
         this.printer = printer;
@@ -42,6 +44,7 @@ public class PrintService {
         this.props = props;
         this.metrics = metrics;
         this.hub = hub;
+        this.gateway = gateway;
     }
 
     @Scheduled(fixedDelayString = "${app.printing.poll-ms:1000}")
@@ -72,11 +75,35 @@ public class PrintService {
                         .param("s", job.saleId()).param("p", location).update();
             });
             metrics.print("ok");
+            if (!job.reprint()) {
+                sendPrintedConfirmation(job.saleId());
+            }
         } catch (RuntimeException e) {
             fail(job, e);
         }
         jdbc.sql("SELECT order_id FROM sale WHERE id = :s").param("s", job.saleId()).query(Long.class).optional().ifPresent(hub::orderChanged);
         return true;
+    }
+
+    private void sendPrintedConfirmation(long saleId) {
+        try {
+            var saleInfo = jdbc.sql("SELECT order_id, customer_phone FROM sale WHERE id = :s")
+                    .param("s", saleId)
+                    .query((rs, n) -> new String[]{ String.valueOf(rs.getLong(1)), rs.getString(2) })
+                    .optional().orElse(null);
+            if (saleInfo != null && saleInfo[1] != null && !saleInfo[1].isBlank()) {
+                long orderId = Long.parseLong(saleInfo[0]);
+                String phone = saleInfo[1];
+                String confirmMsg = "🙏👍";
+                var status = gateway.sendText(phone, confirmMsg).name();
+                jdbc.sql("INSERT INTO conversation_message(order_id, direction, message_type, content, delivery_status) VALUES (:o, 'OUTBOUND', 'TEXT', :c, :d)")
+                        .param("o", orderId).param("c", confirmMsg).param("d", status).update();
+                hub.orderChanged(orderId);
+                log.info("Confirmación '{}' enviada por WhatsApp al cliente {} para pedido #{}", confirmMsg, phone, orderId);
+            }
+        } catch (Exception e) {
+            log.warn("No se pudo enviar confirmación de impresión por WhatsApp: {}", e.getMessage());
+        }
     }
 
     /** Reintenta de inmediato todos los pedidos con fallo de impresion o pendientes por papel/red */

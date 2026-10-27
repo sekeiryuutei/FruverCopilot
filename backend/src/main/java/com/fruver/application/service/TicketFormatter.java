@@ -65,11 +65,12 @@ public final class TicketFormatter {
         out.add(new TicketLine(doubleSep, false));
 
         for (TicketData.Line l : t.lines()) {
-            String qtyStr = l.quantity() != null ? Money.qty(l.quantity()) : "[   ]";
-            String qtyAndUnit = qtyStr + " " + unitLabel(l.unit());
+            String qtyStr = l.quantity() != null ? Money.qty(l.quantity()) : "";
+            String uLabel = unitLabel(l.unit());
+            String qtyAndUnit = uLabel.isBlank() ? qtyStr : (qtyStr.isBlank() ? uLabel : qtyStr + " " + uLabel);
             String priceStr = (l.subtotal() != null && l.subtotal().compareTo(BigDecimal.ZERO) > 0)
                     ? Money.format(l.subtotal())
-                    : "$ [        ]";
+                    : "$          ";
             formatItemLine(l.name(), qtyAndUnit, priceStr, cols, out);
         }
 
@@ -77,7 +78,7 @@ public final class TicketFormatter {
         // Espacio manual para que el personal anote el total (o total calculado si existe)
         String totalValue = (t.total() != null && t.total().compareTo(BigDecimal.ZERO) > 0)
                 ? Money.format(t.total())
-                : (cols >= 40 ? "[                    ]" : "[              ]");
+                : (cols >= 40 ? "                    " : "              ");
         out.add(new TicketLine(leftRight("TOTAL $:", totalValue, cols), true));
         out.add(new TicketLine(sep, false));
         // Firma del receptor
@@ -89,7 +90,7 @@ public final class TicketFormatter {
 
     static void formatItemLine(String name, String qtyAndUnit, String priceStr, int cols, List<TicketLine> out) {
         String cleanName = (name != null ? name.strip() : "Artículo");
-        String prefix = qtyAndUnit + "  ";
+        String prefix = qtyAndUnit.isBlank() ? "" : qtyAndUnit + "  ";
         String fullLeft = prefix + cleanName;
         int maxLeft = cols - priceStr.length() - 1;
 
@@ -140,7 +141,7 @@ public final class TicketFormatter {
     }
 
     static String unitLabel(String unit) {
-        if (unit == null || unit.isBlank() || "null".equalsIgnoreCase(unit)) return "[    ]";
+        if (unit == null || unit.isBlank() || "null".equalsIgnoreCase(unit)) return "";
         return switch (unit.toUpperCase()) {
             case "UNIDAD" -> "UN";
             case "BULTO"  -> "BLT";
