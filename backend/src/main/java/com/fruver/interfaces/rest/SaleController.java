@@ -2,13 +2,18 @@ package com.fruver.interfaces.rest;
 
 import com.fruver.application.service.*;
 import com.fruver.domain.enums.CustomerType;
+import com.fruver.domain.service.Money;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -179,10 +184,7 @@ public class SaleController {
             return ticket(saleId);
         }
         TicketData t = tickets.buildFromOrder(orderId);
-        var lines = TicketFormatter.format(t, props.printing().columns());
-        StringBuilder sb = new StringBuilder();
-        for (var l : lines) sb.append(l.text()).append("\n");
-        return Map.of("saleId", -1, "orderId", t.orderNumber(), "total", 0, "text", sb.toString().stripTrailing());
+        return toTicketResponse(t, -1L);
     }
 
     /** Vista previa de factura (para demo sin impresora): mismo texto que iria al papel. */
@@ -192,10 +194,57 @@ public class SaleController {
         Integer exists = jdbc.sql("SELECT 1 FROM sale WHERE id = :id").param("id", id).query(Integer.class).optional().orElse(null);
         if (exists == null) throw new ApiException(404, "SALE_NOT_FOUND", "Venta no encontrada");
         TicketData t = tickets.build(id, false);
+        return toTicketResponse(t, id);
+    }
+
+    private Map<String, Object> toTicketResponse(TicketData t, Long saleId) {
         var lines = TicketFormatter.format(t, props.printing().columns());
         StringBuilder sb = new StringBuilder();
         for (var l : lines) sb.append(l.text()).append("\n");
-        return Map.of("saleId", id, "orderId", t.orderNumber(), "total", t.total() != null ? t.total() : 0, "text", sb.toString().stripTrailing());
+
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("saleId", saleId != null ? saleId : -1L);
+        resp.put("orderId", t.orderNumber());
+        resp.put("shop", t.shop() != null ? t.shop() : "FRUVER EL OASIS");
+        resp.put("total", t.total() != null ? t.total() : BigDecimal.ZERO);
+        resp.put("totalFormatted", t.total() != null && t.total().compareTo(BigDecimal.ZERO) > 0 ? Money.format(t.total()) : "");
+        resp.put("customer", t.customer() != null ? t.customer() : "");
+        resp.put("phone", t.phone() != null ? t.phone() : "");
+        resp.put("address", t.address() != null ? t.address() : "");
+        resp.put("notes", t.notes() != null ? t.notes() : "");
+        resp.put("customerType", t.customerType() != null ? t.customerType() : "RETAIL");
+        resp.put("deliveryPersonName", t.deliveryPersonName() != null ? t.deliveryPersonName() : "");
+        if (t.at() != null) {
+            resp.put("date", t.at().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+            resp.put("day", String.format("%02d", t.at().getDayOfMonth()));
+            resp.put("month", String.format("%02d", t.at().getMonthValue()));
+            resp.put("year", String.valueOf(t.at().getYear()));
+        } else {
+            resp.put("date", "");
+            resp.put("day", "");
+            resp.put("month", "");
+            resp.put("year", "");
+        }
+
+        List<Map<String, Object>> itemLines = new ArrayList<>();
+        if (t.lines() != null) {
+            for (var l : t.lines()) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("name", l.name());
+                String qStr = l.quantity() != null ? Money.qty(l.quantity()) : "";
+                String uLabel = TicketFormatter.unitLabel(l.unit());
+                String cant = uLabel.isBlank() ? qStr : (qStr.isBlank() ? uLabel : qStr + " " + uLabel);
+                m.put("quantity", qStr);
+                m.put("unit", uLabel);
+                m.put("cant", cant);
+                m.put("price", l.price() != null && l.price().compareTo(BigDecimal.ZERO) > 0 ? Money.format(l.price()) : "");
+                m.put("subtotal", l.subtotal() != null && l.subtotal().compareTo(BigDecimal.ZERO) > 0 ? Money.format(l.subtotal()) : "");
+                itemLines.add(m);
+            }
+        }
+        resp.put("items", itemLines);
+        resp.put("text", sb.toString().stripTrailing());
+        return resp;
     }
 
     @GetMapping("/reports/sales")

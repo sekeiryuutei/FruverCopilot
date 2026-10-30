@@ -93,6 +93,123 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
   input,select,textarea{font-size:16px;/* previene zoom en iOS */}
   #logoutBtn{display:inline-flex;align-items:center;padding:5px 9px;font-size:12px;min-height:32px;background:#1b3824;border:1px solid #ffffff44;border-radius:6px;color:#fff}
 }
+
+/* ── TALONARIO MEDIA CARTA / A5 (BROTHER HL-L2370DW) ── */
+.talonario-sheet {
+  width: 100%;
+  max-width: 580px;
+  margin: 0 auto;
+  background: #ffffff;
+  color: #0f172a;
+  border: 1.5px solid #1e40af;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-family: Arial, Helvetica, -apple-system, sans-serif;
+  box-sizing: border-box;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.12);
+}
+.box-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid #1e40af;
+  font-size: 10px;
+  font-weight: 800;
+  color: #1e40af;
+  vertical-align: middle;
+  background: #fff;
+}
+.talonario-tab-btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--mut);
+  transition: all 0.15s ease;
+}
+.talonario-tab-btn.active {
+  background: #1e40af;
+  color: #fff;
+  border-color: #1e40af;
+}
+
+@media print {
+  @page {
+    size: 140mm 216mm; /* Media Carta / Statement (5.5 x 8.5 in) / A5 */
+    margin: 4mm 5mm;
+  }
+  html, body {
+    background: #fff !important;
+    color: #000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  body > * {
+    display: none !important;
+  }
+  body > .modal-overlay {
+    display: block !important;
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .modal-overlay > .modal-card {
+    display: block !important;
+    position: static !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: transparent !important;
+  }
+  .modal-card > *:not(#talonarioViewContainer) {
+    display: none !important;
+  }
+  #talonarioViewContainer {
+    display: block !important;
+    width: 100% !important;
+  }
+  #printable-talonario {
+    width: 100% !important;
+    max-width: 100% !important;
+    border: 1.5px solid #000 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 2mm 3mm !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  #printable-talonario * {
+    border-color: #000 !important;
+    color: #000 !important;
+  }
+  #printable-talonario thead tr th {
+    background: #e2e8f0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .box-check {
+    border-color: #000 !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
 </style></head><body>
 <!-- ── Header ─────────────────────────────────────── -->
 <header>
@@ -455,10 +572,148 @@ async function showImageModal(orderId){
   document.body.append(overlay);
 }
 
+function buildTalonarioView(t){
+  const items = Array.isArray(t.items) ? t.items : [];
+  const minRows = 16;
+  const targetRows = Math.max(minRows, items.length + 2);
+  
+  const d = t.day || '';
+  const m = t.month || '';
+  const y = t.year || '';
+  const orderNum = String(t.orderId || t.saleId || '').padStart(6, '0');
+
+  let rowsHtml = '';
+  for(let i=0; i<targetRows; i++){
+    if(i < items.length){
+      const it = items[i];
+      const cant = it.cant || (it.quantity ? (it.quantity + ' ' + (it.unit || '')) : '');
+      const desc = it.name || '';
+      const vUnit = (it.price != null && it.price > 0) ? '$ ' + Number(it.price).toLocaleString('es-CO') : '';
+      const vTot = (it.subtotal != null && it.subtotal > 0) ? '$ ' + Number(it.subtotal).toLocaleString('es-CO') : '';
+      rowsHtml += `<tr>
+        <td style="text-align:center;font-weight:700;padding:4px 3px;border:1px solid #1e40af;font-size:11px">${cant}</td>
+        <td style="padding:4px 6px;border:1px solid #1e40af;text-transform:uppercase;font-size:11px">${desc}</td>
+        <td style="text-align:right;padding:4px 5px;border:1px solid #1e40af;font-size:11px">${vUnit}</td>
+        <td style="text-align:right;padding:4px 5px;border:1px solid #1e40af;font-weight:700;font-size:11px">${vTot}</td>
+      </tr>`;
+    } else {
+      rowsHtml += `<tr>
+        <td style="height:21px;border:1px solid #1e40af">&nbsp;</td>
+        <td style="border:1px solid #1e40af">&nbsp;</td>
+        <td style="border:1px solid #1e40af">&nbsp;</td>
+        <td style="border:1px solid #1e40af">&nbsp;</td>
+      </tr>`;
+    }
+  }
+
+  const customerName = (t.customer || 'CLIENTE GENERAL').toUpperCase();
+  const phone = t.phone || '';
+  const address = t.address || '';
+  const totalStr = t.totalFormatted || (t.total ? '$ ' + Number(t.total).toLocaleString('es-CO') : '');
+
+  return `
+  <div id="printable-talonario" class="talonario-sheet">
+    <!-- Encabezado superior: Casillas izquierda, Título centro, Fecha derecha -->
+    <div style="display:grid;grid-template-columns:125px 1fr 110px;align-items:start;gap:8px;margin-bottom:8px">
+      <!-- Casillas tipo documento -->
+      <div style="font-size:10px;font-weight:700;line-height:1.45;color:#1e40af">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+          <span>CUENTA DE COBRO</span><span class="box-check">&nbsp;</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+          <span>PEDIDO</span><span class="box-check">✕</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+          <span>COTIZACION</span><span class="box-check">&nbsp;</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span>REMISION</span><span class="box-check">&nbsp;</span>
+        </div>
+      </div>
+
+      <!-- Nombre Fruver El Oasis -->
+      <div style="text-align:center">
+        <div style="font-size:18px;font-weight:900;letter-spacing:0.5px;color:#1e40af;line-height:1.1">FRUVER EL OASIS</div>
+        <div style="font-size:11px;font-weight:600;color:#334155;margin-top:2px">Frutas y Verduras al por Mayor</div>
+        <div style="display:inline-block;margin-top:4px;padding:2px 10px;border:1.5px solid #1e40af;border-radius:4px;font-weight:800;font-size:13px;color:#1e40af">
+          FACTURA / PEDIDO N° ${orderNum}
+        </div>
+      </div>
+
+      <!-- Tabla Fecha DIA - MES - AÑO -->
+      <div>
+        <table style="width:100%;border-collapse:collapse;border:1.5px solid #1e40af;font-size:10px;text-align:center">
+          <thead>
+            <tr style="background:#e0e7ff;color:#1e40af;font-weight:800">
+              <th style="padding:2px;border:1px solid #1e40af;width:33%">DIA</th>
+              <th style="padding:2px;border:1px solid #1e40af;width:33%">MES</th>
+              <th style="padding:2px;border:1px solid #1e40af;width:34%">AÑO</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="font-size:12px;font-weight:800;height:24px;color:#0f172a">
+              <td style="border:1px solid #1e40af">${d}</td>
+              <td style="border:1px solid #1e40af">${m}</td>
+              <td style="border:1px solid #1e40af">${y}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Recuadro Cliente -->
+    <div style="border:1.5px solid #1e40af;border-radius:4px;padding:6px 9px;font-size:11.5px;margin-bottom:8px;line-height:1.45">
+      <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:6px">
+        <div><b style="color:#1e40af">CLIENTE:</b> <span>${customerName}</span></div>
+        <div><b style="color:#1e40af">NIT./ C.C.:</b> <span>${t.customerDoc || ''}</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:6px;margin-top:2px">
+        <div><b style="color:#1e40af">DIRECCION:</b> <span>${address}</span></div>
+        <div><b style="color:#1e40af">TEL.:</b> <span>${phone}</span></div>
+      </div>
+      ${t.notes ? `<div style="margin-top:2px;font-size:10.5px;color:#475569"><b style="color:#1e40af">OBS:</b> ${t.notes}</div>` : ''}
+    </div>
+
+    <!-- Tabla de Artículos con renglones para escribir a mano -->
+    <table style="width:100%;border-collapse:collapse;border:1.5px solid #1e40af;font-size:11px;table-layout:fixed">
+      <thead>
+        <tr style="background:#e0e7ff;color:#1e40af;font-size:10.5px;font-weight:800;text-align:center">
+          <th style="width:17%;padding:4px 2px;border:1px solid #1e40af">CANT.</th>
+          <th style="width:51%;padding:4px 4px;border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
+          <th style="width:16%;padding:4px 2px;border:1px solid #1e40af;text-align:right">VR. UNIT</th>
+          <th style="width:16%;padding:4px 2px;border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+      </tbody>
+    </table>
+
+    <!-- Pie: Firma RECIBI y TOTAL $ -->
+    <div style="display:grid;grid-template-columns:1fr 165px;align-items:center;margin-top:8px;gap:10px">
+      <div style="font-size:11px;font-weight:700;color:#1e40af;padding-top:10px">
+        RECIBI: <span style="display:inline-block;width:220px;border-bottom:1.5px solid #1e40af">&nbsp;</span>
+      </div>
+      <div style="border:1.5px solid #1e40af;padding:4px 8px;display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:12px;background:#f8fafc">
+        <span style="color:#1e40af">TOTAL $</span>
+        <span style="font-size:14px;color:#0f172a">${totalStr}</span>
+      </div>
+    </div>
+  </div>
+  `;
+}
+
 function showTicketModal(t){
   const overlay=h('div',{class:'modal-overlay',onclick:e=>{if(e.target===overlay)overlay.remove()}});
-  const pre=h('pre',{style:'background:var(--bg);color:var(--ink);padding:14px;border-radius:8px;white-space:pre-wrap;font-family:monospace;font-size:13px;overflow-x:auto;line-height:1.3'},t.text);
-  
+
+  const talonarioContainer = h('div',{id:'talonarioViewContainer'});
+  talonarioContainer.innerHTML = buildTalonarioView(t);
+
+  const thermalContainer = h('pre',{
+    id:'thermalViewContainer',
+    style:'display:none;background:var(--bg);color:var(--ink);padding:14px;border-radius:8px;white-space:pre-wrap;font-family:monospace;font-size:13px;overflow-x:auto;line-height:1.3'
+  }, t.text);
+
   const printTo=async(printerLoc)=>{
     try{
       const q = printerLoc ? `?printer=${printerLoc}` : '';
@@ -470,16 +725,58 @@ function showTicketModal(t){
     }catch(e){toast(e.message)}
   };
 
-  const m=h('div',{class:'modal-card',style:'max-width:520px'},
-    h('div',{class:'top'},h('b',{style:'font-size:16px'},'Factura Pedido #'+t.orderId),h('span',{class:'sp'}),h('button',{class:'b',onclick:()=>overlay.remove()},'✕ Cerrar')),
-    pre,
-    h('div',{style:'display:flex;gap:6px;justify-content:space-between;flex-wrap:wrap;align-items:center;margin-top:12px'},
-      h('button',{class:'b',style:'font-size:13.5px',onclick:()=>window.print()},'🖨️ Navegador'),
-      h('div',{style:'display:flex;gap:6px;flex-wrap:wrap'},
-        h('button',{class:'b',style:'background:#1e3a5f;color:#93c5fd;font-weight:700;font-size:13.5px;padding:8px 12px',onclick:()=>printTo('OFICINA')},'🏢 OFICINA'),
-        h('button',{class:'b',style:'background:#1e3a5f;color:#fcd34d;font-weight:700;font-size:13.5px;padding:8px 12px',onclick:()=>printTo('CASA')},'🏠 CASA'),
-        h('button',{class:'b main',style:'font-size:13.5px;padding:8px 14px;font-weight:800',onclick:()=>printTo()},'🖨️ Auto ('+(S.printerStatus?.activePrinter||'HORARIO')+')')
-      )
+  const btnBrotherPrint = h('button',{
+    class:'b main',
+    style:'font-size:14px;padding:9px 18px;font-weight:800;background:#1e40af;border-color:#1e40af;display:inline-flex;align-items:center;gap:6px',
+    onclick:()=>window.print()
+  }, '🖨️ Imprimir Factura (Brother Media Carta / A5)');
+
+  const btnThermalPrint = h('div',{style:'display:none;gap:6px;flex-wrap:wrap'},
+    h('button',{class:'b',style:'background:#1e3a5f;color:#93c5fd;font-weight:700;font-size:13.5px;padding:8px 12px',onclick:()=>printTo('OFICINA')},'🏢 OFICINA'),
+    h('button',{class:'b',style:'background:#1e3a5f;color:#fcd34d;font-weight:700;font-size:13.5px;padding:8px 12px',onclick:()=>printTo('CASA')},'🏠 CASA'),
+    h('button',{class:'b main',style:'font-size:13.5px;padding:8px 14px;font-weight:800',onclick:()=>printTo()},'🖨️ Auto ('+(S.printerStatus?.activePrinter||'HORARIO')+')')
+  );
+
+  const btnTabTalonario = h('button',{
+    class:'talonario-tab-btn active',
+    onclick:()=>{
+      btnTabTalonario.classList.add('active');
+      btnTabThermal.classList.remove('active');
+      talonarioContainer.style.display = 'block';
+      thermalContainer.style.display = 'none';
+      btnThermalPrint.style.display = 'none';
+      btnBrotherPrint.style.display = 'inline-flex';
+    }
+  }, '📄 Talonario Media Carta / A5 (Brother)');
+
+  const btnTabThermal = h('button',{
+    class:'talonario-tab-btn',
+    onclick:()=>{
+      btnTabThermal.classList.add('active');
+      btnTabTalonario.classList.remove('active');
+      talonarioContainer.style.display = 'none';
+      thermalContainer.style.display = 'block';
+      btnBrotherPrint.style.display = 'none';
+      btnThermalPrint.style.display = 'flex';
+    }
+  }, '🧾 Ticket Térmico 80mm');
+
+  const m=h('div',{class:'modal-card',style:'max-width:640px;max-height:92vh;overflow-y:auto'},
+    h('div',{class:'top',style:'margin-bottom:10px'},
+      h('b',{style:'font-size:16px'},'Factura Pedido #'+t.orderId),
+      h('span',{class:'sp'}),
+      h('button',{class:'b',onclick:()=>overlay.remove()},'✕ Cerrar')
+    ),
+    h('div',{style:'display:flex;gap:8px;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px'},
+      btnTabTalonario,
+      btnTabThermal
+    ),
+    talonarioContainer,
+    thermalContainer,
+    h('div',{style:'display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;align-items:center;margin-top:14px;padding-top:10px;border-top:1px solid var(--line)'},
+      h('button',{class:'b',style:'font-size:13px',onclick:()=>overlay.remove()},'Cerrar'),
+      btnBrotherPrint,
+      btnThermalPrint
     )
   );
   overlay.append(m);

@@ -140,7 +140,7 @@ public final class TicketFormatter {
         }
     }
 
-    static String unitLabel(String unit) {
+    public static String unitLabel(String unit) {
         if (unit == null || unit.isBlank() || "null".equalsIgnoreCase(unit)) return "";
         return switch (unit.toUpperCase()) {
             case "UNIDAD" -> "UN";
