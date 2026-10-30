@@ -13,7 +13,7 @@ import java.util.*;
 @Service
 public class SalesQueryService {
 
-    public record SaleSummary(long id, long orderId, String customerName, String phoneMasked, String customerType,
+    public record SaleSummary(long id, long orderId, String customerName, String phone, String phoneMasked, String customerType,
                               String inputType, BigDecimal total, String printStatus, String printError,
                               String approvedBy, OffsetDateTime createdAt) {}
 
@@ -62,7 +62,7 @@ public class SalesQueryService {
         }
         sql.append(" ORDER BY s.id DESC LIMIT 500");
         return jdbc.sql(sql.toString()).params(p).query((rs, n) -> new SaleSummary(rs.getLong(1), rs.getLong(2), rs.getString(3),
-                Phones.mask(rs.getString(4)), rs.getString(5), rs.getString(6), rs.getBigDecimal(7), rs.getString(8),
+                rs.getString(4), Phones.mask(rs.getString(4)), rs.getString(5), rs.getString(6), rs.getBigDecimal(7), rs.getString(8),
                 rs.getString(9), rs.getString(10), rs.getObject(11, OffsetDateTime.class))).list();
     }
 

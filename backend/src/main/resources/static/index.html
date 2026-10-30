@@ -717,24 +717,27 @@ function showTicketModal(t){
   const printTo=async(printerLoc)=>{
     try{
       const q = printerLoc ? `?printer=${printerLoc}` : '';
-      await api(`/api/orders/${t.orderId}/reprint${q}`,{method:'POST'});
-      toast(`✓ Pedido #${t.orderId} enviado a imprimir en ${printerLoc || S.printerStatus?.activePrinter || 'impresora'}`);
+      const endpoint = t.orderId ? `/api/orders/${t.orderId}/reprint${q}` : `/api/sales/${t.saleId}/reprint${q}`;
+      await api(endpoint,{method:'POST'});
+      toast(`✓ Factura #${t.orderId || t.saleId} enviada a imprimir en ${printerLoc || S.printerStatus?.activePrinter || 'impresora'}`);
       overlay.remove();
       await updatePrinterStatus();
-      await loadOrders();
+      if(typeof loadOrders === 'function') await loadOrders();
     }catch(e){toast(e.message)}
   };
 
   const btnBrotherPrint = h('button',{
     class:'b main',
-    style:'font-size:14px;padding:9px 18px;font-weight:800;background:#1e40af;border-color:#1e40af;display:inline-flex;align-items:center;gap:6px',
+    style:'font-size:13.5px;padding:8px 16px;font-weight:800;background:#1e40af;border-color:#1e40af;display:inline-flex;align-items:center;gap:6px',
+    title:'Imprimir formato Talonario en la Brother HL-L2370DW (Media Carta / A5)',
     onclick:()=>window.print()
-  }, '🖨️ Imprimir Factura (Brother Media Carta / A5)');
+  }, '🖨️ Imprimir en Brother (Media Carta / A5)');
 
-  const btnThermalPrint = h('div',{style:'display:none;gap:6px;flex-wrap:wrap'},
-    h('button',{class:'b',style:'background:#1e3a5f;color:#93c5fd;font-weight:700;font-size:13.5px;padding:8px 12px',onclick:()=>printTo('OFICINA')},'🏢 OFICINA'),
-    h('button',{class:'b',style:'background:#1e3a5f;color:#fcd34d;font-weight:700;font-size:13.5px;padding:8px 12px',onclick:()=>printTo('CASA')},'🏠 CASA'),
-    h('button',{class:'b main',style:'font-size:13.5px;padding:8px 14px;font-weight:800',onclick:()=>printTo()},'🖨️ Auto ('+(S.printerStatus?.activePrinter||'HORARIO')+')')
+  const thermalGroup = h('div',{style:'display:inline-flex;gap:4px;align-items:center;background:var(--bg);padding:3px 6px;border-radius:6px;border:1px solid var(--line)'},
+    h('span',{style:'font-size:11px;color:var(--mut);font-weight:700;padding-right:2px'},'Térmica:'),
+    h('button',{class:'b',style:'font-size:12px;padding:5px 8px;font-weight:700',title:'Enviar a térmica de Oficina',onclick:()=>printTo('OFICINA')},'🏢 Oficina'),
+    h('button',{class:'b',style:'font-size:12px;padding:5px 8px;font-weight:700',title:'Enviar a térmica de Casa',onclick:()=>printTo('CASA')},'🏠 Casa'),
+    h('button',{class:'b',style:'font-size:12px;padding:5px 8px;font-weight:700',title:'Enviar según horario automático ('+(S.printerStatus?.activePrinter||'HORARIO')+')',onclick:()=>printTo()},'⚙️ Auto')
   );
 
   const btnTabTalonario = h('button',{
@@ -744,8 +747,6 @@ function showTicketModal(t){
       btnTabThermal.classList.remove('active');
       talonarioContainer.style.display = 'block';
       thermalContainer.style.display = 'none';
-      btnThermalPrint.style.display = 'none';
-      btnBrotherPrint.style.display = 'inline-flex';
     }
   }, '📄 Talonario Media Carta / A5 (Brother)');
 
@@ -756,14 +757,12 @@ function showTicketModal(t){
       btnTabTalonario.classList.remove('active');
       talonarioContainer.style.display = 'none';
       thermalContainer.style.display = 'block';
-      btnBrotherPrint.style.display = 'none';
-      btnThermalPrint.style.display = 'flex';
     }
   }, '🧾 Ticket Térmico 80mm');
 
-  const m=h('div',{class:'modal-card',style:'max-width:640px;max-height:92vh;overflow-y:auto'},
+  const m=h('div',{class:'modal-card',style:'max-width:660px;max-height:92vh;overflow-y:auto'},
     h('div',{class:'top',style:'margin-bottom:10px'},
-      h('b',{style:'font-size:16px'},'Factura Pedido #'+t.orderId),
+      h('b',{style:'font-size:16px'},'Factura Pedido #'+(t.orderId || t.saleId)),
       h('span',{class:'sp'}),
       h('button',{class:'b',onclick:()=>overlay.remove()},'✕ Cerrar')
     ),
@@ -775,8 +774,10 @@ function showTicketModal(t){
     thermalContainer,
     h('div',{style:'display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;align-items:center;margin-top:14px;padding-top:10px;border-top:1px solid var(--line)'},
       h('button',{class:'b',style:'font-size:13px',onclick:()=>overlay.remove()},'Cerrar'),
-      btnBrotherPrint,
-      btnThermalPrint
+      h('div',{style:'display:flex;gap:6px;align-items:center;flex-wrap:wrap'},
+        btnBrotherPrint,
+        thermalGroup
+      )
     )
   );
   overlay.append(m);
@@ -1025,14 +1026,7 @@ function doneCard(o){
     tools.append(h('button',{class:'b main',style:'background:#b45309;border-color:#b45309;color:#fff;font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>syncOfflineOrders()},'⚡ Sincronizar con Servidor'));
   }else{
     tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>o.saleId?showTicket(o.saleId):showTicketByOrder(o.id)},'🧾 Ver Factura'));
-    tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',onclick:async()=>{
-      try{
-        await api(`/api/orders/${o.id}/reprint`,{method:'POST'});
-        toast(`✓ Reimpresión encolada para Pedido #${o.id}`);
-        await updatePrinterStatus();
-        await loadOrders();
-      }catch(e){toast(e.message)}
-    }},ps==='PRINT_FAILED'?'🔴 REINTENTAR IMPRESIÓN':'🖨️ REIMPRIMIR'));
+    tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',title:'Ver formato y elegir impresora (Brother / Térmica)',onclick:()=>o.saleId?showTicket(o.saleId):showTicketByOrder(o.id)},ps==='PRINT_FAILED'?'🔴 REINTENTAR / IMPRIMIR':'🖨️ REIMPRIMIR'));
 
     tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700;background:rgba(59,130,246,0.15);color:#60a5fa;border:1px solid rgba(59,130,246,0.3)',title:'Reabrir la orden para agregar o modificar productos',onclick:async()=>{
       if(!confirm(`¿Deseas agregar más cosas al Pedido #${o.id}? La comanda volverá al tablero para que puedas ajustar productos y volver a imprimirla.`))return;
@@ -2110,10 +2104,25 @@ async function renderPrinterConfig(){
 async function renderSales(){const m=$('#main');const today=new Date().toISOString().slice(0,10);const from=h('input',{type:'date',value:today}),to=h('input',{type:'date',value:today}),q=h('input',{placeholder:'Cliente, teléfono, dirección'});
   const ct=h('select',{},h('option',{value:''},'Todos'),h('option',{value:'RETAIL'},'Minorista'),h('option',{value:'WHOLESALE'},'Mayorista'));const out=h('div');
   const go=async()=>{try{const p=new URLSearchParams({from:from.value,to:to.value});if(q.value)p.set('q',q.value);if(ct.value)p.set('customerType',ct.value);const rows=await api('/api/sales?'+p);
-    out.replaceChildren(h('p',{class:'mut'},rows.length+' ventas · '+cop(rows.reduce((s,r)=>s+r.total,0))),h('div',{class:'scroll'},h('table',{},h('thead',{},h('tr',{},['#','Hora','Cliente','Tipo','Origen','Total','Impresión',''].map(t=>h('th',{},t)))),
-      h('tbody',{},rows.map(r=>h('tr',{},h('td',{},r.orderId),h('td',{},new Date(r.createdAt).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})),h('td',{},(r.customerName||'')+' '+(r.phoneMasked||'')),h('td',{},r.customerType==='WHOLESALE'?'Mayorista':'Minorista'),
-        h('td',{},r.inputType==='AUDIO'?'🎙️':r.inputType==='MANUAL'?'🏪':'📝'),h('td',{},cop(r.total)),h('td',{},r.printStatus==='PRINTED'?'🖨 OK':r.printStatus==='PRINT_FAILED'?'🔴 Falló':'…'),
-        h('td',{},h('button',{class:'b',onclick:async()=>{try{await api(`/api/sales/${r.id}/reprint`,{method:'POST'});toast('Reimpresión encolada');go()}catch(e){toast(e.message)}}},'Reimprimir'))))))))}catch(e){toast(e.message)}};
+    out.replaceChildren(h('p',{class:'mut'},rows.length+' ventas · '+cop(rows.reduce((s,r)=>s+r.total,0))),h('div',{class:'scroll'},h('table',{},h('thead',{},h('tr',{},['#','Hora','Cliente','Tipo','Origen','Total','Impresión','Acciones'].map(t=>h('th',{},t)))),
+      h('tbody',{},rows.map(r=>{
+        const ph = cleanPhone(r.phone || r.phoneMasked || '');
+        return h('tr',{},
+          h('td',{},r.orderId),
+          h('td',{},new Date(r.createdAt).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})),
+          h('td',{},(r.customerName||'Cliente')+(ph?' · '+ph:'')),
+          h('td',{},r.customerType==='WHOLESALE'?'Mayorista':'Minorista'),
+          h('td',{},r.inputType==='AUDIO'?'🎙️':r.inputType==='MANUAL'?'🏪':'📝'),
+          h('td',{},cop(r.total)),
+          h('td',{},r.printStatus==='PRINTED'?'🖨 OK':r.printStatus==='PRINT_FAILED'?'🔴 Falló':'…'),
+          h('td',{},h('button',{
+            class:'b',
+            style:'font-weight:700;display:inline-flex;align-items:center;gap:4px',
+            title:'Ver formato de factura talonario y elegir impresora',
+            onclick:()=>showTicket(r.id)
+          },'🖨️ Ver / Reimprimir'))
+        );
+      })))))}catch(e){toast(e.message)}};
   m.replaceChildren(h('div',{class:'row'},h('label',{},'Desde ',from),h('label',{},'Hasta ',to),ct,q,h('button',{class:'b',onclick:go},'Buscar')),out);go()}
 
 /* ---------- Precios (ADMIN) ---------- */
