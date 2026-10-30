@@ -68,17 +68,14 @@ public final class TicketFormatter {
             String qtyStr = l.quantity() != null ? Money.qty(l.quantity()) : "";
             String uLabel = unitLabel(l.unit());
             String qtyAndUnit = uLabel.isBlank() ? qtyStr : (qtyStr.isBlank() ? uLabel : qtyStr + " " + uLabel);
-            String priceStr = (l.subtotal() != null && l.subtotal().compareTo(BigDecimal.ZERO) > 0)
-                    ? Money.format(l.subtotal())
-                    : "$          ";
+            // Modulo de precios no habilitado para tickets/facturas: siempre espacio en blanco para calculo manual
+            String priceStr = "$          ";
             formatItemLine(l.name(), qtyAndUnit, priceStr, cols, out);
         }
 
         out.add(new TicketLine(doubleSep, false));
-        // Espacio manual para que el personal anote el total (o total calculado si existe)
-        String totalValue = (t.total() != null && t.total().compareTo(BigDecimal.ZERO) > 0)
-                ? Money.format(t.total())
-                : (cols >= 40 ? "                    " : "              ");
+        // Espacio manual para que el personal anote el total a mano (modulo de precios desactivado)
+        String totalValue = (cols >= 40 ? "                    " : "              ");
         out.add(new TicketLine(leftRight("TOTAL $:", totalValue, cols), true));
         out.add(new TicketLine(sep, false));
         // Firma del receptor

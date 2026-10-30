@@ -582,14 +582,15 @@ function buildTalonarioView(t){
   const y = t.year || '';
   const orderNum = String(t.orderId || t.saleId || '').padStart(6, '0');
 
+  const showPrices = t.showPrices === true;
   let rowsHtml = '';
   for(let i=0; i<targetRows; i++){
     if(i < items.length){
       const it = items[i];
       const cant = it.cant || (it.quantity ? (it.quantity + ' ' + (it.unit || '')) : '');
       const desc = it.name || '';
-      const vUnit = (it.price != null && it.price > 0) ? '$ ' + Number(it.price).toLocaleString('es-CO') : '';
-      const vTot = (it.subtotal != null && it.subtotal > 0) ? '$ ' + Number(it.subtotal).toLocaleString('es-CO') : '';
+      const vUnit = showPrices && it.price ? '$ ' + Number(it.price).toLocaleString('es-CO') : '&nbsp;';
+      const vTot = showPrices && it.subtotal ? '$ ' + Number(it.subtotal).toLocaleString('es-CO') : '&nbsp;';
       rowsHtml += `<tr>
         <td style="text-align:center;font-weight:700;padding:4px 3px;border:1px solid #1e40af;font-size:11px">${cant}</td>
         <td style="padding:4px 6px;border:1px solid #1e40af;text-transform:uppercase;font-size:11px">${desc}</td>
@@ -609,7 +610,7 @@ function buildTalonarioView(t){
   const customerName = (t.customer || 'CLIENTE GENERAL').toUpperCase();
   const phone = t.phone || '';
   const address = t.address || '';
-  const totalStr = t.totalFormatted || (t.total ? '$ ' + Number(t.total).toLocaleString('es-CO') : '');
+  const totalStr = showPrices && t.totalFormatted ? t.totalFormatted : '&nbsp;';
 
   return `
   <div id="printable-talonario" class="talonario-sheet">

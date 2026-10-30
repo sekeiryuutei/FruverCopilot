@@ -206,8 +206,10 @@ public class SaleController {
         resp.put("saleId", saleId != null ? saleId : -1L);
         resp.put("orderId", t.orderNumber());
         resp.put("shop", t.shop() != null ? t.shop() : "FRUVER EL OASIS");
-        resp.put("total", t.total() != null ? t.total() : BigDecimal.ZERO);
-        resp.put("totalFormatted", t.total() != null && t.total().compareTo(BigDecimal.ZERO) > 0 ? Money.format(t.total()) : "");
+        // Modulo de precios no habilitado para impresion: ni total ni individual
+        resp.put("total", BigDecimal.ZERO);
+        resp.put("totalFormatted", "");
+        resp.put("showPrices", false);
         resp.put("customer", t.customer() != null ? t.customer() : "");
         resp.put("phone", t.phone() != null ? t.phone() : "");
         resp.put("address", t.address() != null ? t.address() : "");
@@ -237,8 +239,8 @@ public class SaleController {
                 m.put("quantity", qStr);
                 m.put("unit", uLabel);
                 m.put("cant", cant);
-                m.put("price", l.price() != null && l.price().compareTo(BigDecimal.ZERO) > 0 ? Money.format(l.price()) : "");
-                m.put("subtotal", l.subtotal() != null && l.subtotal().compareTo(BigDecimal.ZERO) > 0 ? Money.format(l.subtotal()) : "");
+                m.put("price", "");
+                m.put("subtotal", "");
                 itemLines.add(m);
             }
         }
