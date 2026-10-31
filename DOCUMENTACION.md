@@ -374,7 +374,35 @@ RECIBI: __________________________________
 ------------------------------------------
 ```
 
+
+### 6.4. Impresión Láser IPP Nativa en Talonario A5 (Brother HL-L2405W)
+
+Para operaciones mayoristas con talonarios de papel preimpreso o comandas de despacho en formato media carta / A5, FruverCopilot incluye un motor de renderizado vectorial y rasterizador IPP nativo (`TalonarioRasterService` e `IppClient`):
+
+- **Protocolo Directo IPP (Puerto 631):**
+  - Se comunica directamente con la impresora láser mediante el estándar IPP (Internet Printing Protocol) en `http://<IP-IMPRESORA>:631/ipp/print`.
+  - Cero dependencias de drivers de Windows, Print Spooler ni software propietario.
+- **Formato PWG Raster a 600 DPI:**
+  - Renderizado en escala de grises monocromática de alta nitidez utilizando `cupsColorSpace = 18` (`sgray_8`), compatible con impresoras láser monocromáticas modernas.
+- **Calibración Exacta de Plantilla A5:**
+  - **35 renglones exactos por hoja** con tipografía estándar no negrita para lectura cómoda.
+  - **Distribución de Columnas:**
+    - `#` (7%): Consecutivo del ítem.
+    - `CANT.` (17%): Cantidad y unidad solicitada.
+    - `DESCRIPCIÓN` (38%): Nombre del producto compacto.
+    - `VR. UNIT` (19%): Espacio en blanco amplio para escribir a mano el precio unitario del día.
+    - `VR. TOTAL` (19%): Espacio en blanco amplio para calcular el subtotal.
+  - **Márgenes:** Margen inferior calibrado a **1 cm** para ajustarse a los renglones físicos del talonario de papel.
+  - **Paginación Balanceada:**
+    - Pedidos de hasta 35 ítems caben estrictamente en **1 sola hoja**, incluyendo encabezado, tabla y pie con firma de recibido y total.
+    - Pedidos grandes (ej. 50 ítems) se dividen automáticamente: página 1 con 35 ítems y página 2 con los ítems restantes más el bloque de totales y firma.
+- **Supervisor de Túnel ngrok 24/7 (`scripts/tunnel_keeper.js`):**
+  - Mantiene el webhook de Meta y la PWA conectados sin interrupción en el dominio fijo `jurist-resubmit-ended.ngrok-free.dev`.
+  - Ping de salud cada 10 minutos; si detecta caída de red o cierre de túnel, reinicia el proceso ngrok en menos de 6 segundos.
+  - Se puede iniciar automáticamente con el script `iniciar_tunel_24_7.bat`.
+
 ---
+
 
 ## 7. Integración con WhatsApp Cloud API
 
@@ -436,6 +464,9 @@ mvn -f backend/pom.xml test
 
 # 2. Pruebas de Frontend (Operación, DOM simulado y PWA):
 node frontend-tests/operacion.test.js
+
+# 3. Pruebas de Resiliencia de IA (Saturación HTTP 429 y Contingencia Multi-Proveedor):
+mvn -f backend/pom.xml test -Dtest=AiProviderCascadeAndSaturationTest
 ```
 
 ### 9.2. Copias de Seguridad (Backups)
