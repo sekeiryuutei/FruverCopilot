@@ -140,8 +140,8 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
 
 @media print {
   @page {
-    size: 140mm 216mm; /* Media Carta / Statement (5.5 x 8.5 in) / A5 */
-    margin: 4mm 5mm;
+    size: A5 portrait; /* Se adapta a A5 (148x210mm) y Media Carta / Statement (140x216mm) */
+    margin: 3mm 4mm;
   }
   html, body {
     background: #fff !important;
@@ -150,6 +150,8 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
     padding: 0 !important;
     height: auto !important;
     overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
   body > * {
     display: none !important;
@@ -182,6 +184,8 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
   #talonarioViewContainer {
     display: block !important;
     width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
   #printable-talonario {
     width: 100% !important;
@@ -193,6 +197,7 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
     page-break-after: avoid !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+    box-sizing: border-box !important;
   }
   #printable-talonario * {
     border-color: #000 !important;
@@ -574,8 +579,14 @@ async function showImageModal(orderId){
 
 function buildTalonarioView(t){
   const items = Array.isArray(t.items) ? t.items : [];
-  const minRows = 16;
-  const targetRows = Math.max(minRows, items.length + 2);
+  // Si tiene <=16 productos, dejamos 16 renglones para escritura manual.
+  // Si tiene más de 16, no agregamos renglones extra vacíos para garantizar que quepa en 1 sola hoja A5 / Media Carta.
+  const targetRows = items.length <= 16 ? 16 : items.length;
+  const compact = items.length > 13;
+  const rowPad = compact ? '1.5px 3px' : '3.5px 3px';
+  const descPad = compact ? '1.5px 5px' : '3.5px 6px';
+  const fontSize = compact ? '10px' : '11px';
+  const emptyRowHeight = compact ? '15px' : '19px';
   
   const d = t.day || '';
   const m = t.month || '';
@@ -592,14 +603,14 @@ function buildTalonarioView(t){
       const vUnit = showPrices && it.price ? '$ ' + Number(it.price).toLocaleString('es-CO') : '&nbsp;';
       const vTot = showPrices && it.subtotal ? '$ ' + Number(it.subtotal).toLocaleString('es-CO') : '&nbsp;';
       rowsHtml += `<tr>
-        <td style="text-align:center;font-weight:700;padding:4px 3px;border:1px solid #1e40af;font-size:11px">${cant}</td>
-        <td style="padding:4px 6px;border:1px solid #1e40af;text-transform:uppercase;font-size:11px">${desc}</td>
-        <td style="text-align:right;padding:4px 5px;border:1px solid #1e40af;font-size:11px">${vUnit}</td>
-        <td style="text-align:right;padding:4px 5px;border:1px solid #1e40af;font-weight:700;font-size:11px">${vTot}</td>
+        <td style="text-align:center;font-weight:700;padding:${rowPad};border:1px solid #1e40af;font-size:${fontSize}">${cant}</td>
+        <td style="padding:${descPad};border:1px solid #1e40af;text-transform:uppercase;font-size:${fontSize}">${desc}</td>
+        <td style="text-align:right;padding:${rowPad};border:1px solid #1e40af;font-size:${fontSize}">${vUnit}</td>
+        <td style="text-align:right;padding:${rowPad};border:1px solid #1e40af;font-weight:700;font-size:${fontSize}">${vTot}</td>
       </tr>`;
     } else {
       rowsHtml += `<tr>
-        <td style="height:21px;border:1px solid #1e40af">&nbsp;</td>
+        <td style="height:${emptyRowHeight};border:1px solid #1e40af">&nbsp;</td>
         <td style="border:1px solid #1e40af">&nbsp;</td>
         <td style="border:1px solid #1e40af">&nbsp;</td>
         <td style="border:1px solid #1e40af">&nbsp;</td>
@@ -615,16 +626,16 @@ function buildTalonarioView(t){
   return `
   <div id="printable-talonario" class="talonario-sheet">
     <!-- Encabezado superior: Casillas izquierda, Título centro, Fecha derecha -->
-    <div style="display:grid;grid-template-columns:125px 1fr 110px;align-items:start;gap:8px;margin-bottom:8px">
+    <div style="display:grid;grid-template-columns:125px 1fr 110px;align-items:start;gap:6px;margin-bottom:${compact ? '4px' : '7px'}">
       <!-- Casillas tipo documento -->
-      <div style="font-size:10px;font-weight:700;line-height:1.45;color:#1e40af">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+      <div style="font-size:9.5px;font-weight:700;line-height:1.35;color:#1e40af">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5px">
           <span>CUENTA DE COBRO</span><span class="box-check">&nbsp;</span>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5px">
           <span>PEDIDO</span><span class="box-check">✕</span>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5px">
           <span>COTIZACION</span><span class="box-check">&nbsp;</span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center">
@@ -634,25 +645,25 @@ function buildTalonarioView(t){
 
       <!-- Nombre Fruver El Oasis -->
       <div style="text-align:center">
-        <div style="font-size:18px;font-weight:900;letter-spacing:0.5px;color:#1e40af;line-height:1.1">FRUVER EL OASIS</div>
-        <div style="font-size:11px;font-weight:600;color:#334155;margin-top:2px">Frutas y Verduras al por Mayor</div>
-        <div style="display:inline-block;margin-top:4px;padding:2px 10px;border:1.5px solid #1e40af;border-radius:4px;font-weight:800;font-size:13px;color:#1e40af">
+        <div style="font-size:${compact ? '16px' : '18px'};font-weight:900;letter-spacing:0.5px;color:#1e40af;line-height:1.1">FRUVER EL OASIS</div>
+        <div style="font-size:10.5px;font-weight:600;color:#334155;margin-top:1px">Frutas y Verduras al por Mayor</div>
+        <div style="display:inline-block;margin-top:3px;padding:1px 8px;border:1.5px solid #1e40af;border-radius:4px;font-weight:800;font-size:12px;color:#1e40af">
           FACTURA / PEDIDO N° ${orderNum}
         </div>
       </div>
 
       <!-- Tabla Fecha DIA - MES - AÑO -->
       <div>
-        <table style="width:100%;border-collapse:collapse;border:1.5px solid #1e40af;font-size:10px;text-align:center">
+        <table style="width:100%;border-collapse:collapse;border:1.5px solid #1e40af;font-size:9.5px;text-align:center">
           <thead>
             <tr style="background:#e0e7ff;color:#1e40af;font-weight:800">
-              <th style="padding:2px;border:1px solid #1e40af;width:33%">DIA</th>
-              <th style="padding:2px;border:1px solid #1e40af;width:33%">MES</th>
-              <th style="padding:2px;border:1px solid #1e40af;width:34%">AÑO</th>
+              <th style="padding:1.5px;border:1px solid #1e40af;width:33%">DIA</th>
+              <th style="padding:1.5px;border:1px solid #1e40af;width:33%">MES</th>
+              <th style="padding:1.5px;border:1px solid #1e40af;width:34%">AÑO</th>
             </tr>
           </thead>
           <tbody>
-            <tr style="font-size:12px;font-weight:800;height:24px;color:#0f172a">
+            <tr style="font-size:11.5px;font-weight:800;height:20px;color:#0f172a">
               <td style="border:1px solid #1e40af">${d}</td>
               <td style="border:1px solid #1e40af">${m}</td>
               <td style="border:1px solid #1e40af">${y}</td>
@@ -663,26 +674,26 @@ function buildTalonarioView(t){
     </div>
 
     <!-- Recuadro Cliente -->
-    <div style="border:1.5px solid #1e40af;border-radius:4px;padding:6px 9px;font-size:11.5px;margin-bottom:8px;line-height:1.45">
-      <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:6px">
+    <div style="border:1.5px solid #1e40af;border-radius:4px;padding:${compact ? '3px 6px' : '5px 8px'};font-size:${compact ? '10.5px' : '11px'};margin-bottom:${compact ? '5px' : '7px'};line-height:1.35">
+      <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:4px">
         <div><b style="color:#1e40af">CLIENTE:</b> <span>${customerName}</span></div>
         <div><b style="color:#1e40af">NIT./ C.C.:</b> <span>${t.customerDoc || ''}</span></div>
       </div>
-      <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:6px;margin-top:2px">
+      <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:4px;margin-top:1.5px">
         <div><b style="color:#1e40af">DIRECCION:</b> <span>${address}</span></div>
         <div><b style="color:#1e40af">TEL.:</b> <span>${phone}</span></div>
       </div>
-      ${t.notes ? `<div style="margin-top:2px;font-size:10.5px;color:#475569"><b style="color:#1e40af">OBS:</b> ${t.notes}</div>` : ''}
+      ${t.notes ? `<div style="margin-top:1.5px;font-size:10px;color:#475569"><b style="color:#1e40af">OBS:</b> ${t.notes}</div>` : ''}
     </div>
 
     <!-- Tabla de Artículos con renglones para escribir a mano -->
-    <table style="width:100%;border-collapse:collapse;border:1.5px solid #1e40af;font-size:11px;table-layout:fixed">
+    <table style="width:100%;border-collapse:collapse;border:1.5px solid #1e40af;font-size:${fontSize};table-layout:fixed">
       <thead>
-        <tr style="background:#e0e7ff;color:#1e40af;font-size:10.5px;font-weight:800;text-align:center">
-          <th style="width:17%;padding:4px 2px;border:1px solid #1e40af">CANT.</th>
-          <th style="width:51%;padding:4px 4px;border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
-          <th style="width:16%;padding:4px 2px;border:1px solid #1e40af;text-align:right">VR. UNIT</th>
-          <th style="width:16%;padding:4px 2px;border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
+        <tr style="background:#e0e7ff;color:#1e40af;font-size:${compact ? '9.5px' : '10.5px'};font-weight:800;text-align:center">
+          <th style="width:17%;padding:${rowPad};border:1px solid #1e40af">CANT.</th>
+          <th style="width:51%;padding:${descPad};border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
+          <th style="width:16%;padding:${rowPad};border:1px solid #1e40af;text-align:right">VR. UNIT</th>
+          <th style="width:16%;padding:${rowPad};border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
         </tr>
       </thead>
       <tbody>
@@ -691,13 +702,13 @@ function buildTalonarioView(t){
     </table>
 
     <!-- Pie: Firma RECIBI y TOTAL $ -->
-    <div style="display:grid;grid-template-columns:1fr 165px;align-items:center;margin-top:8px;gap:10px">
-      <div style="font-size:11px;font-weight:700;color:#1e40af;padding-top:10px">
-        RECIBI: <span style="display:inline-block;width:220px;border-bottom:1.5px solid #1e40af">&nbsp;</span>
+    <div style="display:grid;grid-template-columns:1fr 165px;align-items:center;margin-top:${compact ? '5px' : '7px'};gap:8px">
+      <div style="font-size:${compact ? '10px' : '11px'};font-weight:700;color:#1e40af;padding-top:6px">
+        RECIBI: <span style="display:inline-block;width:180px;border-bottom:1.5px solid #1e40af">&nbsp;</span>
       </div>
-      <div style="border:1.5px solid #1e40af;padding:4px 8px;display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:12px;background:#f8fafc">
+      <div style="border:1.5px solid #1e40af;padding:3px 6px;display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:11.5px;background:#f8fafc">
         <span style="color:#1e40af">TOTAL $</span>
-        <span style="font-size:14px;color:#0f172a">${totalStr}</span>
+        <span style="font-size:13px;color:#0f172a">${totalStr}</span>
       </div>
     </div>
   </div>
