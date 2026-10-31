@@ -125,13 +125,19 @@ public class TalonarioRasterService {
         List<TicketData.Line> lines = t.lines() != null ? t.lines() : List.of();
         int maxPerPage = 30;
         int pagesCount = Math.max(1, (int) Math.ceil((double) lines.size() / maxPerPage));
-        int chunkSize = (int) Math.ceil((double) lines.size() / pagesCount);
 
         StringBuilder pagesHtml = new StringBuilder();
 
         for (int p = 0; p < pagesCount; p++) {
-            int from = p * chunkSize;
-            int to = Math.min(lines.size(), (p + 1) * chunkSize);
+            int from, to;
+            if (pagesCount == 2 && lines.size() > 30 && lines.size() <= 34) {
+                int half = (int) Math.ceil((double) lines.size() / 2);
+                from = p * half;
+                to = Math.min(lines.size(), (p + 1) * half);
+            } else {
+                from = p * maxPerPage;
+                to = Math.min(lines.size(), (p + 1) * maxPerPage);
+            }
             List<TicketData.Line> pageLines = lines.subList(from, to);
             boolean isFirstPage = (p == 0);
             boolean isLastPage = (p == pagesCount - 1);
@@ -140,18 +146,18 @@ public class TalonarioRasterService {
 
             StringBuilder rowsHtml = new StringBuilder();
             for (int i = 0; i < targetRows; i++) {
-                int globalIdx = p * chunkSize + i + 1;
+                int globalIdx = from + i + 1;
                 if (i < pageLines.size()) {
                     TicketData.Line l = pageLines.get(i);
                     String cant = (l.quantity() != null ? l.quantity().stripTrailingZeros().toPlainString() : "") +
                             (l.unit() != null && !l.unit().isBlank() ? " " + l.unit() : "");
                     String name = l.name() != null ? l.name().toUpperCase() : "";
                     rowsHtml.append("<tr>")
-                        .append("<td style=\"text-align:center;font-weight:bold;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px;color:#475569\">").append(globalIdx).append("</td>")
-                        .append("<td style=\"text-align:center;font-weight:bold;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px\">").append(cant).append("</td>")
-                        .append("<td style=\"padding:3.5px 6px;border:1px solid #1e40af;text-transform:uppercase;font-size:11px;font-weight:normal\">").append(name).append("</td>")
-                        .append("<td style=\"text-align:right;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px\">&nbsp;</td>")
-                        .append("<td style=\"text-align:right;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px\">&nbsp;</td>")
+                        .append("<td style=\"text-align:center;font-weight:bold;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px;color:#475569\">").append(globalIdx).append("</td>")
+                        .append("<td style=\"text-align:center;font-weight:bold;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px\">").append(cant).append("</td>")
+                        .append("<td style=\"padding:3.8px 6px;border:1px solid #1e40af;text-transform:uppercase;font-size:11px;font-weight:normal\">").append(name).append("</td>")
+                        .append("<td style=\"text-align:right;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px\">&nbsp;</td>")
+                        .append("<td style=\"text-align:right;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px\">&nbsp;</td>")
                         .append("</tr>\n");
                 } else {
                     rowsHtml.append("<tr>")

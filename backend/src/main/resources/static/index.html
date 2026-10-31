@@ -587,7 +587,6 @@ function buildTalonarioView(t){
   const items = Array.isArray(t.items) ? t.items : [];
   const maxPerPage = 30;
   const pagesCount = Math.max(1, Math.ceil(items.length / maxPerPage));
-  const chunkSize = Math.ceil(items.length / pagesCount);
 
   const d = t.day || '';
   const m = t.month || '';
@@ -603,14 +602,24 @@ function buildTalonarioView(t){
   let pagesHtml = '';
 
   for (let p = 0; p < pagesCount; p++) {
-    const pageItems = items.slice(p * chunkSize, (p + 1) * chunkSize);
+    let from, to;
+    if (pagesCount === 2 && items.length > 30 && items.length <= 34) {
+      const half = Math.ceil(items.length / 2);
+      from = p * half;
+      to = Math.min(items.length, (p + 1) * half);
+    } else {
+      from = p * maxPerPage;
+      to = Math.min(items.length, (p + 1) * maxPerPage);
+    }
+
+    const pageItems = items.slice(from, to);
     const isFirstPage = (p === 0);
     const isLastPage = (p === pagesCount - 1);
     const targetRows = (pagesCount === 1 && pageItems.length <= 16) ? 16 : pageItems.length;
 
     let rowsHtml = '';
     for (let i = 0; i < targetRows; i++) {
-      const globalIdx = p * chunkSize + i + 1;
+      const globalIdx = from + i + 1;
       if (i < pageItems.length) {
         const it = pageItems[i];
         const cant = it.cant || (it.quantity ? (it.quantity + ' ' + (it.unit || '')) : '');
@@ -618,11 +627,11 @@ function buildTalonarioView(t){
         const vUnit = showPrices && it.price ? '$ ' + Number(it.price).toLocaleString('es-CO') : '&nbsp;';
         const vTot = showPrices && it.subtotal ? '$ ' + Number(it.subtotal).toLocaleString('es-CO') : '&nbsp;';
         rowsHtml += `<tr>
-          <td style="text-align:center;font-weight:700;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px;color:#475569">${globalIdx}</td>
-          <td style="text-align:center;font-weight:700;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px">${cant}</td>
-          <td style="padding:3.5px 6px;border:1px solid #1e40af;text-transform:uppercase;font-size:11px;font-weight:normal">${desc}</td>
-          <td style="text-align:right;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px">${vUnit}</td>
-          <td style="text-align:right;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px">${vTot}</td>
+          <td style="text-align:center;font-weight:700;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px;color:#475569">${globalIdx}</td>
+          <td style="text-align:center;font-weight:700;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px">${cant}</td>
+          <td style="padding:3.8px 6px;border:1px solid #1e40af;text-transform:uppercase;font-size:11px;font-weight:normal">${desc}</td>
+          <td style="text-align:right;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px">${vUnit}</td>
+          <td style="text-align:right;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px">${vTot}</td>
         </tr>`;
       } else {
         rowsHtml += `<tr>
