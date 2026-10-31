@@ -589,9 +589,10 @@ function buildTalonarioView(t){
   // Si tiene más de 16, no agregamos renglones extra vacíos para garantizar que quepa en 1 sola hoja A5 / Media Carta.
   const targetRows = items.length <= 16 ? 16 : items.length;
   const compact = items.length > 13;
-  const rowPad = compact ? '1.5px 3px' : '3.5px 3px';
-  const descPad = compact ? '1.5px 5px' : '3.5px 6px';
-  const fontSize = compact ? '10px' : '11px';
+  const isHuge = items.length > 25;
+  const rowPad = isHuge ? '1px 2px' : (compact ? '1.5px 3px' : '3.5px 3px');
+  const descPad = isHuge ? '1px 4px' : (compact ? '1.5px 5px' : '3.5px 6px');
+  const fontSize = isHuge ? '8.5px' : (compact ? '10px' : '11px');
   const emptyRowHeight = compact ? '15px' : '19px';
   
   const d = t.day || '';
@@ -733,10 +734,17 @@ function showTicketModal(t){
 
   const btnBrotherPrint = h('button',{
     class:'b main',
-    style:'font-size:13.5px;padding:8px 16px;font-weight:800;background:#1e40af;border-color:#1e40af;display:inline-flex;align-items:center;gap:6px',
-    title:'Imprimir formato Talonario en la Brother HL-L2370DW (Media Carta / A5)',
+    style:'font-size:13px;padding:7px 14px;font-weight:800;background:#1e40af;border-color:#1e40af;display:inline-flex;align-items:center;gap:6px',
+    title:'Enviar directamente a la impresora Brother de Fruver (IPP Red)',
+    onclick:()=>printTo('OFICINA')
+  }, '🖨️ Imprimir en Fruver');
+
+  const btnLocalPrint = h('button',{
+    class:'b',
+    style:'font-size:12px;padding:6px 10px;font-weight:600;display:inline-flex;align-items:center;gap:4px',
+    title:'Imprimir desde este dispositivo o guardar PDF',
     onclick:()=>window.print()
-  }, '🖨️ Imprimir en Brother (Media Carta / A5)');
+  }, '📄 Navegador / PDF');
 
   const thermalGroup = h('div',{style:'display:inline-flex;gap:4px;align-items:center;background:var(--bg);padding:3px 6px;border-radius:6px;border:1px solid var(--line)'},
     h('span',{style:'font-size:11px;color:var(--mut);font-weight:700;padding-right:2px'},'Imprimir:'),
@@ -781,6 +789,7 @@ function showTicketModal(t){
       h('button',{class:'b',style:'font-size:13px',onclick:()=>overlay.remove()},'Cerrar'),
       h('div',{style:'display:flex;gap:6px;align-items:center;flex-wrap:wrap'},
         btnBrotherPrint,
+        btnLocalPrint,
         thermalGroup
       )
     )

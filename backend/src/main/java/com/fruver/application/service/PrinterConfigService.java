@@ -157,7 +157,7 @@ public class PrinterConfigService {
     }
 
     public String currentTargetPrinter(String mode) {
-        if ("OFICINA".equalsIgnoreCase(mode)) return "OFICINA";
+        if ("OFICINA".equalsIgnoreCase(mode) || "FRUVER".equalsIgnoreCase(mode)) return "OFICINA";
         if ("CASA".equalsIgnoreCase(mode)) return "CASA";
         ZoneId zone = ZoneId.of((props.timezone() != null && !props.timezone().isBlank()) ? props.timezone() : "America/Bogota");
         int hour = LocalTime.now(zone).getHour();

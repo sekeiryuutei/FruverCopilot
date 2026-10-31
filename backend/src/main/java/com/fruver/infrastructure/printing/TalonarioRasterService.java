@@ -69,7 +69,7 @@ public class TalonarioRasterService {
             // 1. Convertir HTML a PDF A5
             ProcessBuilder pbPdf = new ProcessBuilder(
                     "wkhtmltopdf", "-q", "-s", "A5",
-                    "-B", "4mm", "-T", "4mm", "-L", "6mm", "-R", "6mm",
+                    "-B", "3mm", "-T", "3mm", "-L", "6mm", "-R", "6mm",
                     tmpHtml.getAbsolutePath(), tmpPdf.getAbsolutePath()
             );
             pbPdf.redirectErrorStream(true);
@@ -79,10 +79,16 @@ public class TalonarioRasterService {
                 throw new IOException("wkhtmltopdf falló con código " + exit1);
             }
 
-            // 2. Convertir PDF a PWG Raster A5 a 300 DPI
+            // 2. Convertir PDF a PWG Raster A5 a 300 DPI con espacio de color sgray_8 (Luminancia: 255=blanco, 0=negro)
+            // -dcupsColorSpace=0 y -dcupsBitsPerColor=8 evitan la inversión de color donde salía fondo negro con letras blancas
             ProcessBuilder pbPwg = new ProcessBuilder(
                     "gs", "-q", "-dNOPAUSE", "-dBATCH",
-                    "-sDEVICE=pwgraster", "-r300", "-sPAPERSIZE=a5",
+                    "-sDEVICE=pwgraster",
+                    "-dcupsColorSpace=0",
+                    "-dcupsBitsPerColor=8",
+                    "-sColorConversionStrategy=Gray",
+                    "-dProcessColorModel=/DeviceGray",
+                    "-r300", "-sPAPERSIZE=a5",
                     "-sOutputFile=" + tmpPwg.getAbsolutePath(),
                     tmpPdf.getAbsolutePath()
             );
@@ -119,10 +125,11 @@ public class TalonarioRasterService {
 
         List<TicketData.Line> lines = t.lines() != null ? t.lines() : List.of();
         int targetRows = lines.size() <= 16 ? 16 : lines.size();
+        boolean isHuge = lines.size() > 25;
         boolean compact = lines.size() > 13;
-        String fontSize = compact ? "9.5px" : "10.5px";
-        String pad = compact ? "1.5px 3px" : "3px 4px";
-        String descPad = compact ? "1.5px 5px" : "3px 6px";
+        String fontSize = isHuge ? "8.5px" : (compact ? "9.5px" : "10.5px");
+        String pad = isHuge ? "1px 2px" : (compact ? "1.5px 3px" : "3px 4px");
+        String descPad = isHuge ? "1px 4px" : (compact ? "1.5px 5px" : "3px 6px");
 
         StringBuilder rows = new StringBuilder();
         for (int i = 0; i < targetRows; i++) {
@@ -155,8 +162,8 @@ public class TalonarioRasterService {
             <head>
             <meta charset="utf-8">
             <style>
-              @page { size: A5 portrait; margin: 4mm 6mm 4mm 6mm; }
-              body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #000; }
+              @page { size: A5 portrait; margin: 3mm 6mm 2.5mm 6mm; }
+              body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #000; background: #fff; }
               table { width: 100%; border-collapse: collapse; }
               thead { display: table-header-group; }
               tr { page-break-inside: avoid; break-inside: avoid; }
@@ -164,24 +171,24 @@ public class TalonarioRasterService {
             </head>
             <body>
               <!-- Encabezado superior -->
-              <div style="border-bottom:1.5px solid #1e40af;padding-bottom:3px;margin-bottom:3px">
+              <div style="border-bottom:1.5px solid #1e40af;padding-bottom:2px;margin-bottom:2px">
                 <table style="width:100%;border:none">
                   <tr>
                     <td style="border:none;vertical-align:middle">
-                      <div style="font-size:17px;font-weight:900;letter-spacing:0.5px;color:#1e40af;line-height:1.05">FRUVER EL OASIS</div>
-                      <div style="font-size:10px;font-weight:bold;color:#334155;margin-top:1px">Frutas y Verduras al por Mayor</div>
+                      <div style="font-size:16px;font-weight:900;letter-spacing:0.5px;color:#1e40af;line-height:1.05">FRUVER EL OASIS</div>
+                      <div style="font-size:9.5px;font-weight:bold;color:#334155;margin-top:1px">Frutas y Verduras al por Mayor</div>
                     </td>
                     <td style="border:none;text-align:right;vertical-align:middle">
-                      <div style="display:inline-block;padding:2px 7px;border:1.5px solid #1e40af;border-radius:4px;font-weight:bold;font-size:11px;color:#1e40af;margin-right:5px">
+                      <div style="display:inline-block;padding:2px 6px;border:1.5px solid #1e40af;border-radius:4px;font-weight:bold;font-size:10.5px;color:#1e40af;margin-right:4px">
                         FACTURA / PEDIDO N° {{ORDER_NUM}}
                       </div>
-                      <table style="display:inline-table;border-collapse:collapse;border:1.5px solid #1e40af;font-size:8px;text-align:center;width:85px;vertical-align:middle">
+                      <table style="display:inline-table;border-collapse:collapse;border:1.5px solid #1e40af;font-size:8px;text-align:center;width:80px;vertical-align:middle">
                         <tr style="background:#e0e7ff;color:#1e40af;font-weight:bold">
                           <th style="padding:1px;border:1px solid #1e40af;width:33%">DIA</th>
                           <th style="padding:1px;border:1px solid #1e40af;width:33%">MES</th>
                           <th style="padding:1px;border:1px solid #1e40af;width:34%">AÑO</th>
                         </tr>
-                        <tr style="font-size:10px;font-weight:bold;height:14px;color:#0f172a">
+                        <tr style="font-size:9.5px;font-weight:bold;height:13px;color:#0f172a">
                           <td style="border:1px solid #1e40af">{{DAY}}</td>
                           <td style="border:1px solid #1e40af">{{MONTH}}</td>
                           <td style="border:1px solid #1e40af">{{YEAR}}</td>
@@ -193,8 +200,8 @@ public class TalonarioRasterService {
               </div>
 
               <!-- Recuadro Cliente -->
-              <div style="border:1.5px solid #1e40af;border-radius:4px;padding:3px 5px;font-size:9.5px;margin-bottom:4px;line-height:1.25">
-                <table style="width:100%;border:none;font-size:9.5px">
+              <div style="border:1.5px solid #1e40af;border-radius:4px;padding:2px 4px;font-size:9px;margin-bottom:3px;line-height:1.2">
+                <table style="width:100%;border:none;font-size:9px">
                   <tr>
                     <td style="border:none;width:65%"><b style="color:#1e40af">CLIENTE:</b> <span>{{CUSTOMER}}</span></td>
                     <td style="border:none;width:35%"><b style="color:#1e40af">NIT./ C.C.:</b> <span></span></td>
@@ -208,14 +215,14 @@ public class TalonarioRasterService {
               </div>
 
               <!-- Tabla de Artículos -->
-              <table style="width:100%;border:1.5px solid #1e40af;font-size:9.5px">
+              <table style="width:100%;border:1.5px solid #1e40af;font-size:9px">
                 <thead>
-                  <tr style="background:#e0e7ff;color:#1e40af;font-size:9px;font-weight:bold;text-align:center">
-                    <th style="width:6%;padding:1.5px 3px;border:1px solid #1e40af">#</th>
-                    <th style="width:16%;padding:1.5px 3px;border:1px solid #1e40af">CANT.</th>
-                    <th style="width:48%;padding:1.5px 5px;border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
-                    <th style="width:15%;padding:1.5px 3px;border:1px solid #1e40af;text-align:right">VR. UNIT</th>
-                    <th style="width:15%;padding:1.5px 3px;border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
+                  <tr style="background:#e0e7ff;color:#1e40af;font-size:8.5px;font-weight:bold;text-align:center">
+                    <th style="width:6%;padding:1px 2px;border:1px solid #1e40af">#</th>
+                    <th style="width:16%;padding:1px 2px;border:1px solid #1e40af">CANT.</th>
+                    <th style="width:48%;padding:1px 4px;border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
+                    <th style="width:15%;padding:1px 2px;border:1px solid #1e40af;text-align:right">VR. UNIT</th>
+                    <th style="width:15%;padding:1px 2px;border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -224,16 +231,16 @@ public class TalonarioRasterService {
               </table>
 
               <!-- Pie -->
-              <div style="margin-top:5px;page-break-inside:avoid">
+              <div style="margin-top:3px;page-break-inside:avoid">
                 <table style="width:100%;border:none">
                   <tr>
-                    <td style="border:none;font-size:9.5px;font-weight:bold;color:#1e40af;vertical-align:middle">
-                      RECIBI: <span style="display:inline-block;width:150px;border-bottom:1.5px solid #1e40af">&nbsp;</span>
+                    <td style="border:none;font-size:9px;font-weight:bold;color:#1e40af;vertical-align:middle">
+                      RECIBI: <span style="display:inline-block;width:140px;border-bottom:1.5px solid #1e40af">&nbsp;</span>
                     </td>
-                    <td style="border:none;text-align:right;width:140px">
-                      <div style="border:1.5px solid #1e40af;padding:2px 5px;display:flex;justify-content:space-between;align-items:center;font-weight:bold;font-size:10px;background:#f8fafc">
+                    <td style="border:none;text-align:right;width:130px">
+                      <div style="border:1.5px solid #1e40af;padding:2px 4px;display:flex;justify-content:space-between;align-items:center;font-weight:bold;font-size:9.5px;background:#f8fafc">
                         <span style="color:#1e40af">TOTAL $</span>
-                        <span style="font-size:11px;color:#0f172a">&nbsp;</span>
+                        <span style="font-size:10.5px;color:#0f172a">&nbsp;</span>
                       </div>
                     </td>
                   </tr>
