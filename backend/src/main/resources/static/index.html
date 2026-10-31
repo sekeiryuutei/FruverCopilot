@@ -141,7 +141,7 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
 @media print {
   @page {
     size: A5 portrait; /* Se adapta a A5 (148x210mm) y Media Carta / Statement (140x216mm) */
-    margin: 4mm 5mm 2mm 5mm; /* Margen inferior mínimo para que nunca desborde */
+    margin: 4mm 8mm 3mm 8mm; /* Márgenes laterales cómodos */
   }
   html, body {
     background: #fff !important;
@@ -149,7 +149,7 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
     margin: 0 !important;
     padding: 0 !important;
     height: auto !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -190,24 +190,35 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
   #printable-talonario {
     width: 100% !important;
     max-width: 100% !important;
-    border: 1.5px solid #000 !important;
+    border: none !important;
     box-shadow: none !important;
     margin: 0 !important;
-    padding: 2mm 3mm 1mm 3mm !important;
-    page-break-after: avoid !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-    page-break-before: avoid !important;
+    padding: 0 !important;
     box-sizing: border-box !important;
   }
   #printable-talonario * {
     border-color: #000 !important;
     color: #000 !important;
   }
+  #printable-talonario table {
+    width: 100% !important;
+    page-break-inside: auto !important;
+  }
+  #printable-talonario thead {
+    display: table-header-group !important;
+  }
+  #printable-talonario tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
   #printable-talonario thead tr th {
     background: #e2e8f0 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+  .talonario-footer {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 }
 </style></head><body>
@@ -598,6 +609,7 @@ function buildTalonarioView(t){
       const vUnit = showPrices && it.price ? '$ ' + Number(it.price).toLocaleString('es-CO') : '&nbsp;';
       const vTot = showPrices && it.subtotal ? '$ ' + Number(it.subtotal).toLocaleString('es-CO') : '&nbsp;';
       rowsHtml += `<tr>
+        <td style="text-align:center;font-weight:700;padding:${rowPad};border:1px solid #1e40af;font-size:${fontSize};color:#475569">${i + 1}</td>
         <td style="text-align:center;font-weight:700;padding:${rowPad};border:1px solid #1e40af;font-size:${fontSize}">${cant}</td>
         <td style="padding:${descPad};border:1px solid #1e40af;text-transform:uppercase;font-size:${fontSize}">${desc}</td>
         <td style="text-align:right;padding:${rowPad};border:1px solid #1e40af;font-size:${fontSize}">${vUnit}</td>
@@ -605,7 +617,8 @@ function buildTalonarioView(t){
       </tr>`;
     } else {
       rowsHtml += `<tr>
-        <td style="height:${emptyRowHeight};border:1px solid #1e40af">&nbsp;</td>
+        <td style="height:${emptyRowHeight};text-align:center;color:#94a3b8;font-size:${fontSize};border:1px solid #1e40af">${i + 1}</td>
+        <td style="border:1px solid #1e40af">&nbsp;</td>
         <td style="border:1px solid #1e40af">&nbsp;</td>
         <td style="border:1px solid #1e40af">&nbsp;</td>
         <td style="border:1px solid #1e40af">&nbsp;</td>
@@ -668,10 +681,11 @@ function buildTalonarioView(t){
     <table style="width:100%;border-collapse:collapse;border:1.5px solid #1e40af;font-size:${fontSize};table-layout:fixed">
       <thead>
         <tr style="background:#e0e7ff;color:#1e40af;font-size:${compact ? '9px' : '10px'};font-weight:800;text-align:center">
-          <th style="width:17%;padding:${rowPad};border:1px solid #1e40af">CANT.</th>
-          <th style="width:51%;padding:${descPad};border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
-          <th style="width:16%;padding:${rowPad};border:1px solid #1e40af;text-align:right">VR. UNIT</th>
-          <th style="width:16%;padding:${rowPad};border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
+          <th style="width:6%;padding:${rowPad};border:1px solid #1e40af">#</th>
+          <th style="width:16%;padding:${rowPad};border:1px solid #1e40af">CANT.</th>
+          <th style="width:48%;padding:${descPad};border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
+          <th style="width:15%;padding:${rowPad};border:1px solid #1e40af;text-align:right">VR. UNIT</th>
+          <th style="width:15%;padding:${rowPad};border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
         </tr>
       </thead>
       <tbody>
@@ -680,7 +694,7 @@ function buildTalonarioView(t){
     </table>
 
     <!-- Pie: Firma RECIBI y TOTAL $ -->
-    <div style="display:grid;grid-template-columns:1fr 145px;align-items:center;margin-top:${compact ? '4px' : '6px'};gap:8px">
+    <div class="talonario-footer" style="display:grid;grid-template-columns:1fr 145px;align-items:center;margin-top:${compact ? '4px' : '6px'};gap:8px;page-break-inside:avoid;break-inside:avoid">
       <div style="font-size:${compact ? '9.5px' : '10.5px'};font-weight:700;color:#1e40af;padding-top:4px">
         RECIBI: <span style="display:inline-block;width:150px;border-bottom:1.5px solid #1e40af">&nbsp;</span>
       </div>

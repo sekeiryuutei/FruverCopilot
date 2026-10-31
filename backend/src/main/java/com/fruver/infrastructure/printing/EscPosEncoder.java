@@ -21,11 +21,12 @@ public final class EscPosEncoder {
         for (TicketLine l : lines) {
             if (l.bold()) out.writeBytes(new byte[]{0x1B, 0x45, 0x01}); // ESC E 1
             out.writeBytes(ascii(l.text()).getBytes(StandardCharsets.US_ASCII));
-            out.write(0x0A);
+            out.writeBytes(new byte[]{0x0D, 0x0A}); // CR + LF para evitar escalonamiento en impresoras de red y laser
             if (l.bold()) out.writeBytes(new byte[]{0x1B, 0x45, 0x00}); // ESC E 0
         }
         out.writeBytes(new byte[]{0x1B, 0x64, 0x04});           // ESC d 4 : avanzar 4 lineas
-        out.writeBytes(new byte[]{0x1D, 0x56, 0x42, 0x03});     // GS V 66 3 : corte parcial
+        out.writeBytes(new byte[]{0x1D, 0x56, 0x42, 0x03});     // GS V 66 3 : corte parcial (termicas)
+        out.write(0x0C);                                        // FF (Form Feed): expulsa la hoja en impresoras laser
         return out.toByteArray();
     }
 
