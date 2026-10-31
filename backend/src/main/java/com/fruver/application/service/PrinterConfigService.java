@@ -2,6 +2,8 @@ package com.fruver.application.service;
 
 import com.fruver.config.AppProperties;
 import com.fruver.infrastructure.printing.EscPosEncoder;
+import com.fruver.infrastructure.printing.IppClient;
+import com.fruver.infrastructure.printing.TalonarioRasterService;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
@@ -35,10 +37,12 @@ public class PrinterConfigService {
 
     private final JdbcClient jdbc;
     private final AppProperties props;
+    private final TalonarioRasterService talonarioRaster;
 
-    public PrinterConfigService(JdbcClient jdbc, AppProperties props) {
+    public PrinterConfigService(JdbcClient jdbc, AppProperties props, TalonarioRasterService talonarioRaster) {
         this.jdbc = jdbc;
         this.props = props;
+        this.talonarioRaster = talonarioRaster;
     }
 
     public PrinterConfig get() {
@@ -176,6 +180,16 @@ public class PrinterConfigService {
         String loc = (targetLocation != null && !targetLocation.isBlank()) ? targetLocation.toUpperCase() : get().activePrinter();
         String host = hostFor(loc);
         int port = portFor(loc);
+
+        if (port == 631) {
+            try {
+                byte[] raster = talonarioRaster.renderTestPageToPwgRaster(loc, host, port);
+                IppClient.printRaster(host, port, "Prueba_Fruver_IPP", raster);
+                return;
+            } catch (Exception e) {
+                throw new RuntimeException("Error al imprimir por IPP (puerto 631): " + e.getMessage(), e);
+            }
+        }
 
         String nowStr = java.time.LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         var lines = java.util.List.of(

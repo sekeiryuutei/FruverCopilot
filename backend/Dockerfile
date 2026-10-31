@@ -8,7 +8,7 @@ RUN mvn -q -B package -DskipTests
 
 # ---- runtime ----
 FROM eclipse-temurin:21.0.5_11-jre
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+RUN apt-get update && apt-get install -y --no-install-recommends curl ghostscript wkhtmltopdf cups-client \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --create-home --uid 10001 fruver \
     && mkdir -p /data/audio && chown -R fruver /data

@@ -227,7 +227,7 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
   <span class="logo" style="display:flex;align-items:center;gap:6px"><img src="/oasis-logo.png" alt="Oasis" style="height:28px;width:auto;border-radius:4px;object-fit:contain" onerror="this.style.display='none'"><b>Fruver El Oasis</b></span>
   <div class="hactions">
     <button id="btnHeaderInstall" class="b" style="display:none;padding:5px 9px;font-size:12px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-weight:700" title="Instalar app en tu pantalla de inicio">📲 Instalar</button>
-    <span id="printerBadge" title="Impresora activa según horario">🖨️ OFICINA</span>
+    <span id="printerBadge" title="Impresora activa según horario">🖨️ FRUVER</span>
     <span class="cnt" id="cnt"></span>
     <button class="b" style="padding:6px 11px;font-size:13px;background:#1b3824;color:#fff;border:1px solid #ffffff44;display:inline-flex;align-items:center;gap:4px" id="logoutBtn" title="Cerrar sesión">🚪 Salir</button>
   </div>
@@ -484,7 +484,7 @@ async function updatePrinterStatus(){
     S.printerStatus=st;
     const pb=$('#printerBadge');
     if(pb){
-      const loc=st.activePrinter==='OFICINA'?'🏢 OFICINA (4am-7pm)':'🏠 CASA (7pm-4am)';
+      const loc=st.activePrinter==='OFICINA'?'🏪 FRUVER (4am-7pm)':'🏠 CASA (7pm-4am)';
       if(st.failedCount>0){
         pb.textContent=`🖨️ ${loc} · 🔴 ${st.failedCount} SIN IMPRIMIR`;
         pb.style.background='#b91c1c';pb.style.color='#fff';
@@ -739,8 +739,8 @@ function showTicketModal(t){
   }, '🖨️ Imprimir en Brother (Media Carta / A5)');
 
   const thermalGroup = h('div',{style:'display:inline-flex;gap:4px;align-items:center;background:var(--bg);padding:3px 6px;border-radius:6px;border:1px solid var(--line)'},
-    h('span',{style:'font-size:11px;color:var(--mut);font-weight:700;padding-right:2px'},'Térmica:'),
-    h('button',{class:'b',style:'font-size:12px;padding:5px 8px;font-weight:700',title:'Enviar a térmica de Oficina',onclick:()=>printTo('OFICINA')},'🏢 Oficina'),
+    h('span',{style:'font-size:11px;color:var(--mut);font-weight:700;padding-right:2px'},'Imprimir:'),
+    h('button',{class:'b',style:'font-size:12px;padding:5px 8px;font-weight:700',title:'Enviar a impresora de Fruver',onclick:()=>printTo('OFICINA')},'🏪 Fruver'),
     h('button',{class:'b',style:'font-size:12px;padding:5px 8px;font-weight:700',title:'Enviar a térmica de Casa',onclick:()=>printTo('CASA')},'🏠 Casa'),
     h('button',{class:'b',style:'font-size:12px;padding:5px 8px;font-weight:700',title:'Enviar según horario automático ('+(S.printerStatus?.activePrinter||'HORARIO')+')',onclick:()=>printTo()},'⚙️ Auto')
   );
@@ -1851,17 +1851,17 @@ async function renderPrinterConfig(){
   m.replaceChildren(h('div',{class:'card',style:'text-align:center;padding:24px'},'Cargando configuración de impresoras... ⏳'));
   try{
     const cfg = await api('/api/printer/config');
-    const locName = cfg.activePrinter==='OFICINA'?'🏢 OFICINA (4am-7pm)':'🏠 CASA (7pm-4am)';
+    const locName = cfg.activePrinter==='OFICINA'?'🏪 FRUVER (4am-7pm)':'🏠 CASA (7pm-4am)';
 
-    const officeHostInput = h('input',{value:cfg.officeHost||'127.0.0.1',placeholder:'IP Impresora Oficina',style:'font-size:15px;font-weight:700;width:100%'});
-    const officePortInput = h('input',{type:'number',value:cfg.officePort||9100,placeholder:'Puerto',style:'font-size:15px;font-weight:700;width:100px'});
+    const officeHostInput = h('input',{value:cfg.officeHost||'127.0.0.1',placeholder:'IP Impresora Fruver',style:'font-size:15px;font-weight:700;width:100%'});
+    const officePortInput = h('input',{type:'number',value:cfg.officePort||631,placeholder:'Puerto (631 IPP / 9100 RAW)',style:'font-size:15px;font-weight:700;width:130px'});
 
     const homeHostInput = h('input',{value:cfg.homeHost||'127.0.0.1',placeholder:'IP Impresora Casa',style:'font-size:15px;font-weight:700;width:100%'});
-    const homePortInput = h('input',{type:'number',value:cfg.homePort||9100,placeholder:'Puerto',style:'font-size:15px;font-weight:700;width:100px'});
+    const homePortInput = h('input',{type:'number',value:cfg.homePort||631,placeholder:'Puerto',style:'font-size:15px;font-weight:700;width:100px'});
 
     const modeSelect = h('select',{style:'font-size:15px;padding:9px;font-weight:700;width:100%'},
-      h('option',{value:'AUTO',selected:cfg.mode==='AUTO'},'⏱️ Horario Automático (Oficina 4am-7pm / Casa 7pm-4am)'),
-      h('option',{value:'OFICINA',selected:cfg.mode==='OFICINA'},'🏢 Forzar SIEMPRE Oficina'),
+      h('option',{value:'AUTO',selected:cfg.mode==='AUTO'},'⏱️ Horario Automático (Fruver 4am-7pm / Casa 7pm-4am)'),
+      h('option',{value:'OFICINA',selected:cfg.mode==='OFICINA'},'🏪 Forzar SIEMPRE Fruver'),
       h('option',{value:'CASA',selected:cfg.mode==='CASA'},'🏠 Forzar SIEMPRE Casa')
     );
 
@@ -1931,13 +1931,13 @@ async function renderPrinterConfig(){
 
     const testOfficeBtn = h('button',{class:'b',style:'font-size:13.5px;padding:8px 14px;font-weight:700;background:#1e3a5f;color:#93c5fd',onclick:async()=>{
       testOfficeBtn.disabled=true;
-      toast('Enviando ticket de prueba a Oficina... ⏳');
+      toast('Enviando página de prueba a Fruver... ⏳');
       try{
         const r=await api('/api/printer/test',{method:'POST',body:{location:'OFICINA'}});
         toast('✓ '+r.message);
-      }catch(e){toast('🔴 Error Oficina: '+e.message)}
+      }catch(e){toast('🔴 Error Fruver: '+e.message)}
       finally{testOfficeBtn.disabled=false}
-    }},'🖨️ Probar Oficina');
+    }},'🖨️ Probar Fruver');
 
     const testHomeBtn = h('button',{class:'b',style:'font-size:13.5px;padding:8px 14px;font-weight:700;background:#1e3a5f;color:#93c5fd',onclick:async()=>{
       testHomeBtn.disabled=true;

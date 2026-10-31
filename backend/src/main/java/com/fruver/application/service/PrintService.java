@@ -4,6 +4,8 @@ import com.fruver.application.port.MessagingGateway;
 import com.fruver.application.port.ThermalPrinterService;
 import com.fruver.config.AppProperties;
 import com.fruver.infrastructure.printing.EscPosEncoder;
+import com.fruver.infrastructure.printing.IppClient;
+import com.fruver.infrastructure.printing.TalonarioRasterService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -33,10 +35,13 @@ public class PrintService {
     private final AppMetrics metrics;
     private final SseHub hub;
     private final MessagingGateway gateway;
+    private final PrinterConfigService printerConfig;
+    private final TalonarioRasterService talonarioRaster;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     public PrintService(JdbcClient jdbc, TicketService tickets, ThermalPrinterService printer, TransactionTemplate tx,
-                        AppProperties props, AppMetrics metrics, SseHub hub, MessagingGateway gateway) {
+                        AppProperties props, AppMetrics metrics, SseHub hub, MessagingGateway gateway,
+                        PrinterConfigService printerConfig, TalonarioRasterService talonarioRaster) {
         this.jdbc = jdbc;
         this.tickets = tickets;
         this.printer = printer;
@@ -45,6 +50,8 @@ public class PrintService {
         this.metrics = metrics;
         this.hub = hub;
         this.gateway = gateway;
+        this.printerConfig = printerConfig;
+        this.talonarioRaster = talonarioRaster;
     }
 
     @Scheduled(fixedDelayString = "${app.printing.poll-ms:1000}")
@@ -66,8 +73,16 @@ public class PrintService {
         Job job = claimed.get();
         String location = job.targetPrinter() != null ? job.targetPrinter() : props.printing().currentTargetPrinter(props.timezone());
         try {
-            byte[] payload = EscPosEncoder.encode(TicketFormatter.format(tickets.build(job.saleId(), job.reprint()), props.printing().columns()));
-            printer.print(payload, location);
+            int port = printerConfig.portFor(location);
+            String host = printerConfig.hostFor(location);
+            if (port == 631) {
+                TicketData ticket = tickets.build(job.saleId(), job.reprint());
+                byte[] raster = talonarioRaster.renderTicketToPwgRaster(ticket);
+                IppClient.printRaster(host, port, "Pedido_" + ticket.orderNumber(), raster);
+            } else {
+                byte[] payload = EscPosEncoder.encode(TicketFormatter.format(tickets.build(job.saleId(), job.reprint()), props.printing().columns()));
+                printer.print(payload, location);
+            }
             tx.executeWithoutResult(s -> {
                 jdbc.sql("UPDATE print_job SET status = 'DONE', last_error = NULL, printed_printer = :p, updated_at = now() WHERE id = :id")
                         .param("id", job.id()).param("p", location).update();
@@ -78,8 +93,8 @@ public class PrintService {
             if (!job.reprint()) {
                 sendPrintedConfirmation(job.saleId());
             }
-        } catch (RuntimeException e) {
-            fail(job, e);
+        } catch (Exception e) {
+            fail(job, e instanceof RuntimeException re ? re : new RuntimeException(e));
         }
         jdbc.sql("SELECT order_id FROM sale WHERE id = :s").param("s", job.saleId()).query(Long.class).optional().ifPresent(hub::orderChanged);
         return true;
