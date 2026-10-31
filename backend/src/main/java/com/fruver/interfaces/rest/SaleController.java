@@ -211,7 +211,9 @@ public class SaleController {
         resp.put("totalFormatted", "");
         resp.put("showPrices", false);
         resp.put("customer", t.customer() != null ? t.customer() : "");
-        resp.put("phone", t.phone() != null ? t.phone() : "");
+        String rawPhone = t.phone() != null ? t.phone().trim() : "";
+        String cleanPhone = rawPhone.replaceFirst("^\\+?57", "");
+        resp.put("phone", cleanPhone);
         resp.put("address", t.address() != null ? t.address() : "");
         resp.put("notes", t.notes() != null ? t.notes() : "");
         resp.put("customerType", t.customerType() != null ? t.customerType() : "RETAIL");

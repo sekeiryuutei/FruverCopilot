@@ -627,7 +627,8 @@ function buildTalonarioView(t){
   }
 
   const customerName = (t.customer || 'CLIENTE GENERAL').toUpperCase();
-  const phone = t.phone || '';
+  const rawPhone = (t.phone || '').trim();
+  const phone = rawPhone.replace(/^(\+?57)/, '');
   const address = t.address || '';
   const totalStr = showPrices && t.totalFormatted ? t.totalFormatted : '&nbsp;';
 
