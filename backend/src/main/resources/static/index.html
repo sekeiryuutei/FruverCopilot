@@ -585,128 +585,154 @@ async function showImageModal(orderId){
 
 function buildTalonarioView(t){
   const items = Array.isArray(t.items) ? t.items : [];
-  // Si tiene <=16 productos, dejamos 16 renglones para escritura manual.
-  // Si tiene más de 16, no agregamos renglones extra vacíos para garantizar que quepa en 1 sola hoja A5 / Media Carta.
-  const targetRows = items.length <= 16 ? 16 : items.length;
-  const compact = items.length > 13;
-  const isHuge = items.length > 25;
-  const rowPad = isHuge ? '1px 2px' : (compact ? '1.5px 3px' : '3.5px 3px');
-  const descPad = isHuge ? '1px 4px' : (compact ? '1.5px 5px' : '3.5px 6px');
-  const fontSize = isHuge ? '8.5px' : (compact ? '10px' : '11px');
-  const emptyRowHeight = compact ? '15px' : '19px';
-  
+  const maxPerPage = 30;
+  const pagesCount = Math.max(1, Math.ceil(items.length / maxPerPage));
+  const chunkSize = Math.ceil(items.length / pagesCount);
+
   const d = t.day || '';
   const m = t.month || '';
   const y = t.year || '';
   const orderNum = String(t.orderId || t.saleId || '').padStart(6, '0');
-
-  const showPrices = t.showPrices === true;
-  let rowsHtml = '';
-  for(let i=0; i<targetRows; i++){
-    if(i < items.length){
-      const it = items[i];
-      const cant = it.cant || (it.quantity ? (it.quantity + ' ' + (it.unit || '')) : '');
-      const desc = it.name || '';
-      const vUnit = showPrices && it.price ? '$ ' + Number(it.price).toLocaleString('es-CO') : '&nbsp;';
-      const vTot = showPrices && it.subtotal ? '$ ' + Number(it.subtotal).toLocaleString('es-CO') : '&nbsp;';
-      rowsHtml += `<tr>
-        <td style="text-align:center;font-weight:700;padding:${rowPad};border:1px solid #1e40af;font-size:${fontSize};color:#475569">${i + 1}</td>
-        <td style="text-align:center;font-weight:700;padding:${rowPad};border:1px solid #1e40af;font-size:${fontSize}">${cant}</td>
-        <td style="padding:${descPad};border:1px solid #1e40af;text-transform:uppercase;font-size:${fontSize}">${desc}</td>
-        <td style="text-align:right;padding:${rowPad};border:1px solid #1e40af;font-size:${fontSize}">${vUnit}</td>
-        <td style="text-align:right;padding:${rowPad};border:1px solid #1e40af;font-weight:700;font-size:${fontSize}">${vTot}</td>
-      </tr>`;
-    } else {
-      rowsHtml += `<tr>
-        <td style="height:${emptyRowHeight};text-align:center;color:#94a3b8;font-size:${fontSize};border:1px solid #1e40af">${i + 1}</td>
-        <td style="border:1px solid #1e40af">&nbsp;</td>
-        <td style="border:1px solid #1e40af">&nbsp;</td>
-        <td style="border:1px solid #1e40af">&nbsp;</td>
-        <td style="border:1px solid #1e40af">&nbsp;</td>
-      </tr>`;
-    }
-  }
-
   const customerName = (t.customer || 'CLIENTE GENERAL').toUpperCase();
   const rawPhone = (t.phone || '').trim();
   const phone = rawPhone.replace(/^(\+?57)/, '');
   const address = t.address || '';
+  const showPrices = t.showPrices === true;
   const totalStr = showPrices && t.totalFormatted ? t.totalFormatted : '&nbsp;';
 
-  return `
-  <div id="printable-talonario" class="talonario-sheet">
-    <!-- Encabezado superior compacto: Título izquierda, Factura y Fecha derecha (sin casillas de cuenta de cobro/cotización) -->
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:${compact ? '3px' : '5px'};padding-bottom:3px;border-bottom:1.5px solid #1e40af">
-      <div>
-        <div style="font-size:${compact ? '17px' : '19px'};font-weight:900;letter-spacing:0.5px;color:#1e40af;line-height:1.05">FRUVER EL OASIS</div>
-        <div style="font-size:${compact ? '10px' : '11px'};font-weight:600;color:#334155;margin-top:1px">Frutas y Verduras al por Mayor</div>
-      </div>
+  let pagesHtml = '';
 
-      <div style="display:flex;align-items:center;gap:8px">
-        <div style="padding:2px 7px;border:1.5px solid #1e40af;border-radius:4px;font-weight:800;font-size:${compact ? '12px' : '13px'};color:#1e40af;white-space:nowrap">
-          FACTURA / PEDIDO N° ${orderNum}
+  for (let p = 0; p < pagesCount; p++) {
+    const pageItems = items.slice(p * chunkSize, (p + 1) * chunkSize);
+    const isFirstPage = (p === 0);
+    const isLastPage = (p === pagesCount - 1);
+    const targetRows = (pagesCount === 1 && pageItems.length <= 16) ? 16 : pageItems.length;
+
+    let rowsHtml = '';
+    for (let i = 0; i < targetRows; i++) {
+      const globalIdx = p * chunkSize + i + 1;
+      if (i < pageItems.length) {
+        const it = pageItems[i];
+        const cant = it.cant || (it.quantity ? (it.quantity + ' ' + (it.unit || '')) : '');
+        const desc = it.name || '';
+        const vUnit = showPrices && it.price ? '$ ' + Number(it.price).toLocaleString('es-CO') : '&nbsp;';
+        const vTot = showPrices && it.subtotal ? '$ ' + Number(it.subtotal).toLocaleString('es-CO') : '&nbsp;';
+        rowsHtml += `<tr>
+          <td style="text-align:center;font-weight:700;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px;color:#475569">${globalIdx}</td>
+          <td style="text-align:center;font-weight:700;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px">${cant}</td>
+          <td style="padding:3.5px 6px;border:1px solid #1e40af;text-transform:uppercase;font-size:11px;font-weight:normal">${desc}</td>
+          <td style="text-align:right;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px">${vUnit}</td>
+          <td style="text-align:right;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px">${vTot}</td>
+        </tr>`;
+      } else {
+        rowsHtml += `<tr>
+          <td style="height:19px;text-align:center;color:#94a3b8;font-size:11px;border:1px solid #1e40af">${globalIdx}</td>
+          <td style="border:1px solid #1e40af">&nbsp;</td>
+          <td style="border:1px solid #1e40af">&nbsp;</td>
+          <td style="border:1px solid #1e40af">&nbsp;</td>
+          <td style="border:1px solid #1e40af">&nbsp;</td>
+        </tr>`;
+      }
+    }
+
+    let headerHtml = '';
+    if (isFirstPage) {
+      const pageIndicator = pagesCount > 1 ? `<span style="font-size:9.5px;color:#64748b">(Pág 1/${pagesCount})</span>` : '';
+      headerHtml = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px;padding-bottom:3px;border-bottom:2px solid #1e40af">
+        <div>
+          <div style="font-size:18px;font-weight:900;letter-spacing:0.5px;color:#1e40af;line-height:1.05">FRUVER EL OASIS</div>
+          <div style="font-size:10.5px;font-weight:600;color:#334155;margin-top:2px">Frutas y Verduras al por Mayor</div>
         </div>
-        <!-- Tabla Fecha DIA - MES - AÑO -->
-        <table style="border-collapse:collapse;border:1.5px solid #1e40af;font-size:9px;text-align:center;width:95px">
-          <thead>
-            <tr style="background:#e0e7ff;color:#1e40af;font-weight:800">
-              <th style="padding:1px;border:1px solid #1e40af;width:33%">DIA</th>
-              <th style="padding:1px;border:1px solid #1e40af;width:33%">MES</th>
-              <th style="padding:1px;border:1px solid #1e40af;width:34%">AÑO</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr style="font-size:11px;font-weight:800;height:17px;color:#0f172a">
-              <td style="border:1px solid #1e40af">${d}</td>
-              <td style="border:1px solid #1e40af">${m}</td>
-              <td style="border:1px solid #1e40af">${y}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="padding:3px 7px;border:1.5px solid #1e40af;border-radius:4px;font-weight:800;font-size:12px;color:#1e40af;white-space:nowrap">
+            FACTURA / PEDIDO N° ${orderNum} ${pageIndicator}
+          </div>
+          <table style="border-collapse:collapse;border:1.5px solid #1e40af;font-size:8.5px;text-align:center;width:85px">
+            <thead>
+              <tr style="background:#e0e7ff;color:#1e40af;font-weight:800">
+                <th style="padding:1px;border:1px solid #1e40af;width:33%">DIA</th>
+                <th style="padding:1px;border:1px solid #1e40af;width:33%">MES</th>
+                <th style="padding:1px;border:1px solid #1e40af;width:34%">AÑO</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="font-size:10px;font-weight:800;height:14px;color:#0f172a">
+                <td style="border:1px solid #1e40af">${d}</td>
+                <td style="border:1px solid #1e40af">${m}</td>
+                <td style="border:1px solid #1e40af">${y}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+      <div style="border:1.5px solid #1e40af;border-radius:4px;padding:3px 6px;font-size:10px;margin-bottom:5px;line-height:1.25">
+        <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:4px">
+          <div><b style="color:#1e40af">CLIENTE:</b> <span>${customerName}</span></div>
+          <div><b style="color:#1e40af">NIT./ C.C.:</b> <span>${t.customerDoc || ''}</span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:4px;margin-top:1px">
+          <div><b style="color:#1e40af">DIRECCION:</b> <span>${address}</span></div>
+          <div><b style="color:#1e40af">TEL.:</b> <span>${phone}</span></div>
+        </div>
+        ${t.notes ? `<div style="margin-top:1px;font-size:9.5px;color:#475569"><b style="color:#1e40af">OBS:</b> ${t.notes}</div>` : ''}
+      </div>`;
+    } else {
+      headerHtml = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;padding-bottom:3px;border-bottom:2px solid #1e40af">
+        <div>
+          <span style="font-size:16px;font-weight:900;color:#1e40af">FRUVER EL OASIS</span>
+          <span style="font-size:10.5px;color:#475569;margin-left:8px">— Continuación Pedido</span>
+        </div>
+        <div style="padding:2px 7px;border:1.5px solid #1e40af;border-radius:4px;font-weight:800;font-size:11px;color:#1e40af">
+          FACTURA N° ${orderNum} (Pág ${p + 1}/${pagesCount})
+        </div>
+      </div>`;
+    }
 
-    <!-- Recuadro Cliente Ultra-compacto -->
-    <div style="border:1.5px solid #1e40af;border-radius:4px;padding:${compact ? '3px 6px' : '4px 7px'};font-size:${compact ? '10px' : '11px'};margin-bottom:${compact ? '4px' : '6px'};line-height:1.3">
-      <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:4px">
-        <div><b style="color:#1e40af">CLIENTE:</b> <span>${customerName}</span></div>
-        <div><b style="color:#1e40af">NIT./ C.C.:</b> <span>${t.customerDoc || ''}</span></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:4px;margin-top:1px">
-        <div><b style="color:#1e40af">DIRECCION:</b> <span>${address}</span></div>
-        <div><b style="color:#1e40af">TEL.:</b> <span>${phone}</span></div>
-      </div>
-      ${t.notes ? `<div style="margin-top:1px;font-size:9.5px;color:#475569"><b style="color:#1e40af">OBS:</b> ${t.notes}</div>` : ''}
-    </div>
+    let footerHtml = '';
+    if (isLastPage) {
+      footerHtml = `
+      <div class="talonario-footer" style="display:grid;grid-template-columns:1fr 145px;align-items:center;margin-top:6px;gap:8px;page-break-inside:avoid;break-inside:avoid">
+        <div style="font-size:10px;font-weight:700;color:#1e40af;padding-top:4px">
+          RECIBI: <span style="display:inline-block;width:150px;border-bottom:1.5px solid #1e40af">&nbsp;</span>
+        </div>
+        <div style="border:1.5px solid #1e40af;padding:3px 6px;display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:11px;background:#f8fafc">
+          <span style="color:#1e40af">TOTAL $</span>
+          <span style="font-size:12px;color:#0f172a">${totalStr}</span>
+        </div>
+      </div>`;
+    } else {
+      footerHtml = `
+      <div style="margin-top:6px;text-align:right;font-size:10px;font-weight:700;color:#64748b">
+        Continúa en la siguiente página (Pág ${p + 2}/${pagesCount}) ➔
+      </div>`;
+    }
 
-    <!-- Tabla de Artículos con renglones para escribir a mano -->
-    <table style="width:100%;border-collapse:collapse;border:1.5px solid #1e40af;font-size:${fontSize};table-layout:fixed">
-      <thead>
-        <tr style="background:#e0e7ff;color:#1e40af;font-size:${compact ? '9px' : '10px'};font-weight:800;text-align:center">
-          <th style="width:6%;padding:${rowPad};border:1px solid #1e40af">#</th>
-          <th style="width:16%;padding:${rowPad};border:1px solid #1e40af">CANT.</th>
-          <th style="width:48%;padding:${descPad};border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
-          <th style="width:15%;padding:${rowPad};border:1px solid #1e40af;text-align:right">VR. UNIT</th>
-          <th style="width:15%;padding:${rowPad};border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rowsHtml}
-      </tbody>
-    </table>
+    const pageBreak = (p < pagesCount - 1) ? 'page-break-after:always;break-after:page;margin-bottom:16px;border-bottom:2px dashed #94a3b8;padding-bottom:16px;' : '';
 
-    <!-- Pie: Firma RECIBI y TOTAL $ -->
-    <div class="talonario-footer" style="display:grid;grid-template-columns:1fr 145px;align-items:center;margin-top:${compact ? '4px' : '6px'};gap:8px;page-break-inside:avoid;break-inside:avoid">
-      <div style="font-size:${compact ? '9.5px' : '10.5px'};font-weight:700;color:#1e40af;padding-top:4px">
-        RECIBI: <span style="display:inline-block;width:150px;border-bottom:1.5px solid #1e40af">&nbsp;</span>
-      </div>
-      <div style="border:1.5px solid #1e40af;padding:2px 6px;display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:11px;background:#f8fafc">
-        <span style="color:#1e40af">TOTAL $</span>
-        <span style="font-size:12px;color:#0f172a">${totalStr}</span>
-      </div>
-    </div>
-  </div>
-  `;
+    pagesHtml += `
+    <div class="talonario-page" style="${pageBreak}">
+      ${headerHtml}
+      <table style="width:100%;border-collapse:collapse;border:1.5px solid #1e40af;font-size:11px;table-layout:fixed">
+        <thead>
+          <tr style="background:#e0e7ff;color:#1e40af;font-size:10px;font-weight:800;text-align:center">
+            <th style="width:7%;padding:3px 2px;border:1px solid #1e40af">#</th>
+            <th style="width:16%;padding:3px 2px;border:1px solid #1e40af">CANT.</th>
+            <th style="width:47%;padding:3px 5px;border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
+            <th style="width:15%;padding:3px 2px;border:1px solid #1e40af;text-align:right">VR. UNIT</th>
+            <th style="width:15%;padding:3px 2px;border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+      ${footerHtml}
+    </div>`;
+  }
+
+  return `<div id="printable-talonario" class="talonario-sheet">${pagesHtml}</div>`;
 }
 
 function showTicketModal(t){

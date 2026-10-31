@@ -66,10 +66,10 @@ public class TalonarioRasterService {
         try {
             Files.writeString(tmpHtml.toPath(), html);
 
-            // 1. Convertir HTML a PDF A5
+            // 1. Convertir HTML a PDF A5 con margen superior de 6mm y margen inferior reducido de 3mm
             ProcessBuilder pbPdf = new ProcessBuilder(
                     "wkhtmltopdf", "-q", "-s", "A5",
-                    "-B", "3mm", "-T", "3mm", "-L", "6mm", "-R", "6mm",
+                    "-B", "3mm", "-T", "6mm", "-L", "7mm", "-R", "7mm",
                     tmpHtml.getAbsolutePath(), tmpPdf.getAbsolutePath()
             );
             pbPdf.redirectErrorStream(true);
@@ -123,143 +123,199 @@ public class TalonarioRasterService {
         String year = dt != null ? String.valueOf(dt.getYear()) : "";
 
         List<TicketData.Line> lines = t.lines() != null ? t.lines() : List.of();
-        int targetRows = lines.size() <= 16 ? 16 : lines.size();
-        boolean isHuge = lines.size() > 25;
-        boolean compact = lines.size() > 13;
-        String fontSize = isHuge ? "8.5px" : (compact ? "9.5px" : "10.5px");
-        String pad = isHuge ? "1px 2px" : (compact ? "1.5px 3px" : "3px 4px");
-        String descPad = isHuge ? "1px 4px" : (compact ? "1.5px 5px" : "3px 6px");
+        int maxPerPage = 30;
+        int pagesCount = Math.max(1, (int) Math.ceil((double) lines.size() / maxPerPage));
+        int chunkSize = (int) Math.ceil((double) lines.size() / pagesCount);
 
-        StringBuilder rows = new StringBuilder();
-        for (int i = 0; i < targetRows; i++) {
-            if (i < lines.size()) {
-                TicketData.Line l = lines.get(i);
-                String cant = (l.quantity() != null ? l.quantity().stripTrailingZeros().toPlainString() : "") +
-                        (l.unit() != null && !l.unit().isBlank() ? " " + l.unit() : "");
-                String name = l.name() != null ? l.name().toUpperCase() : "";
-                rows.append("<tr>")
-                    .append("<td style=\"text-align:center;font-weight:bold;padding:").append(pad).append(";border:1px solid #1e40af;font-size:").append(fontSize).append(";color:#475569\">").append(i + 1).append("</td>")
-                    .append("<td style=\"text-align:center;font-weight:bold;padding:").append(pad).append(";border:1px solid #1e40af;font-size:").append(fontSize).append("\">").append(cant).append("</td>")
-                    .append("<td style=\"padding:").append(descPad).append(";border:1px solid #1e40af;font-size:").append(fontSize).append("\">").append(name).append("</td>")
-                    .append("<td style=\"text-align:right;padding:").append(pad).append(";border:1px solid #1e40af;font-size:").append(fontSize).append("\">&nbsp;</td>")
-                    .append("<td style=\"text-align:right;padding:").append(pad).append(";border:1px solid #1e40af;font-weight:bold;font-size:").append(fontSize).append("\">&nbsp;</td>")
-                    .append("</tr>\n");
-            } else {
-                rows.append("<tr>")
-                    .append("<td style=\"height:15px;text-align:center;color:#94a3b8;font-size:").append(fontSize).append(";border:1px solid #1e40af\">").append(i + 1).append("</td>")
-                    .append("<td style=\"border:1px solid #1e40af\">&nbsp;</td>")
-                    .append("<td style=\"border:1px solid #1e40af\">&nbsp;</td>")
-                    .append("<td style=\"border:1px solid #1e40af\">&nbsp;</td>")
-                    .append("<td style=\"border:1px solid #1e40af\">&nbsp;</td>")
-                    .append("</tr>\n");
+        StringBuilder pagesHtml = new StringBuilder();
+
+        for (int p = 0; p < pagesCount; p++) {
+            int from = p * chunkSize;
+            int to = Math.min(lines.size(), (p + 1) * chunkSize);
+            List<TicketData.Line> pageLines = lines.subList(from, to);
+            boolean isFirstPage = (p == 0);
+            boolean isLastPage = (p == pagesCount - 1);
+
+            int targetRows = (pagesCount == 1 && pageLines.size() <= 16) ? 16 : pageLines.size();
+
+            StringBuilder rowsHtml = new StringBuilder();
+            for (int i = 0; i < targetRows; i++) {
+                int globalIdx = p * chunkSize + i + 1;
+                if (i < pageLines.size()) {
+                    TicketData.Line l = pageLines.get(i);
+                    String cant = (l.quantity() != null ? l.quantity().stripTrailingZeros().toPlainString() : "") +
+                            (l.unit() != null && !l.unit().isBlank() ? " " + l.unit() : "");
+                    String name = l.name() != null ? l.name().toUpperCase() : "";
+                    rowsHtml.append("<tr>")
+                        .append("<td style=\"text-align:center;font-weight:bold;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px;color:#475569\">").append(globalIdx).append("</td>")
+                        .append("<td style=\"text-align:center;font-weight:bold;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px\">").append(cant).append("</td>")
+                        .append("<td style=\"padding:3.5px 6px;border:1px solid #1e40af;text-transform:uppercase;font-size:11px;font-weight:normal\">").append(name).append("</td>")
+                        .append("<td style=\"text-align:right;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px\">&nbsp;</td>")
+                        .append("<td style=\"text-align:right;padding:3.5px 3px;border:1px solid #1e40af;font-size:11px\">&nbsp;</td>")
+                        .append("</tr>\n");
+                } else {
+                    rowsHtml.append("<tr>")
+                        .append("<td style=\"height:19px;text-align:center;color:#94a3b8;font-size:11px;border:1px solid #1e40af\">").append(globalIdx).append("</td>")
+                        .append("<td style=\"border:1px solid #1e40af\">&nbsp;</td>")
+                        .append("<td style=\"border:1px solid #1e40af\">&nbsp;</td>")
+                        .append("<td style=\"border:1px solid #1e40af\">&nbsp;</td>")
+                        .append("<td style=\"border:1px solid #1e40af\">&nbsp;</td>")
+                        .append("</tr>\n");
+                }
             }
+
+            String headerHtml;
+            if (isFirstPage) {
+                String pageIndicator = pagesCount > 1 ? "<span style=\"font-size:9.5px;color:#64748b\">(Pág 1/" + pagesCount + ")</span>" : "";
+                String obsRow = notes.isBlank() ? "" : "<tr><td colspan=\"2\" style=\"border:none;font-size:9px;color:#475569\"><b style=\"color:#1e40af\">OBS:</b> " + notes + "</td></tr>";
+                headerHtml = """
+                    <div style="border-bottom:2px solid #1e40af;padding-bottom:3px;margin-bottom:4px;padding-top:2px">
+                      <table style="width:100%;border:none">
+                        <tr>
+                          <td style="border:none;vertical-align:middle">
+                            <div style="font-size:18px;font-weight:900;letter-spacing:0.5px;color:#1e40af;line-height:1.05">FRUVER EL OASIS</div>
+                            <div style="font-size:10px;font-weight:bold;color:#334155;margin-top:2px">Frutas y Verduras al por Mayor</div>
+                          </td>
+                          <td style="border:none;text-align:right;vertical-align:middle">
+                            <div style="display:inline-block;padding:3px 7px;border:1.5px solid #1e40af;border-radius:4px;font-weight:bold;font-size:11.5px;color:#1e40af;margin-right:5px">
+                              FACTURA / PEDIDO N° {{ORDER_NUM}} {{PAGE_INDICATOR}}
+                            </div>
+                            <table style="display:inline-table;border-collapse:collapse;border:1.5px solid #1e40af;font-size:8.5px;text-align:center;width:85px;vertical-align:middle">
+                              <tr style="background:#e0e7ff;color:#1e40af;font-weight:bold">
+                                <th style="padding:1px;border:1px solid #1e40af;width:33%">DIA</th>
+                                <th style="padding:1px;border:1px solid #1e40af;width:33%">MES</th>
+                                <th style="padding:1px;border:1px solid #1e40af;width:34%">AÑO</th>
+                              </tr>
+                              <tr style="font-size:10px;font-weight:bold;height:14px;color:#0f172a">
+                                <td style="border:1px solid #1e40af">{{DAY}}</td>
+                                <td style="border:1px solid #1e40af">{{MONTH}}</td>
+                                <td style="border:1px solid #1e40af">{{YEAR}}</td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                      </table>
+                    </div>
+                    <div style="border:1.5px solid #1e40af;border-radius:4px;padding:3px 6px;font-size:9.5px;margin-bottom:5px;line-height:1.25">
+                      <table style="width:100%;border:none;font-size:9.5px">
+                        <tr>
+                          <td style="border:none;width:65%"><b style="color:#1e40af">CLIENTE:</b> <span>{{CUSTOMER}}</span></td>
+                          <td style="border:none;width:35%"><b style="color:#1e40af">NIT./ C.C.:</b> <span></span></td>
+                        </tr>
+                        <tr>
+                          <td style="border:none"><b style="color:#1e40af">DIRECCION:</b> <span>{{ADDRESS}}</span></td>
+                          <td style="border:none"><b style="color:#1e40af">TEL.:</b> <span>{{PHONE}}</span></td>
+                        </tr>
+                        {{OBS_ROW}}
+                      </table>
+                    </div>
+                    """
+                    .replace("{{ORDER_NUM}}", orderNum)
+                    .replace("{{PAGE_INDICATOR}}", pageIndicator)
+                    .replace("{{DAY}}", day)
+                    .replace("{{MONTH}}", month)
+                    .replace("{{YEAR}}", year)
+                    .replace("{{CUSTOMER}}", customer)
+                    .replace("{{ADDRESS}}", address)
+                    .replace("{{PHONE}}", phone)
+                    .replace("{{OBS_ROW}}", obsRow);
+            } else {
+                headerHtml = ("""
+                    <div style="border-bottom:2px solid #1e40af;padding-bottom:3px;margin-bottom:6px;padding-top:2px">
+                      <table style="width:100%;border:none">
+                        <tr>
+                          <td style="border:none">
+                            <span style="font-size:16px;font-weight:900;color:#1e40af">FRUVER EL OASIS</span>
+                            <span style="font-size:10.5px;color:#475569;margin-left:8px">— Continuación Pedido</span>
+                          </td>
+                          <td style="border:none;text-align:right">
+                            <div style="display:inline-block;padding:2px 7px;border:1.5px solid #1e40af;border-radius:4px;font-weight:bold;font-size:11px;color:#1e40af">
+                              FACTURA N° {{ORDER_NUM}} (Pág {{CURR_PAGE}}/{{TOTAL_PAGES}})
+                            </div>
+                          </td>
+                        </tr>
+                      </table>
+                    </div>
+                    """)
+                    .replace("{{ORDER_NUM}}", orderNum)
+                    .replace("{{CURR_PAGE}}", String.valueOf(p + 1))
+                    .replace("{{TOTAL_PAGES}}", String.valueOf(pagesCount));
+            }
+
+            String footerHtml;
+            if (isLastPage) {
+                footerHtml = """
+                    <div style="margin-top:6px;page-break-inside:avoid">
+                      <table style="width:100%;border:none">
+                        <tr>
+                          <td style="border:none;font-size:10px;font-weight:bold;color:#1e40af;vertical-align:middle">
+                            RECIBI: <span style="display:inline-block;width:150px;border-bottom:1.5px solid #1e40af">&nbsp;</span>
+                          </td>
+                          <td style="border:none;text-align:right;width:145px">
+                            <div style="border:1.5px solid #1e40af;padding:3px 6px;display:flex;justify-content:space-between;align-items:center;font-weight:bold;font-size:11px;background:#f8fafc">
+                              <span style="color:#1e40af">TOTAL $</span>
+                              <span style="font-size:11.5px;color:#0f172a">&nbsp;</span>
+                            </div>
+                          </td>
+                        </tr>
+                      </table>
+                    </div>
+                    """;
+            } else {
+                footerHtml = ("""
+                    <div style="margin-top:6px;text-align:right;font-size:10px;font-weight:bold;color:#64748b">
+                      Continúa en la siguiente página (Pág {{NEXT_PAGE}}/{{TOTAL_PAGES}}) ➔
+                    </div>
+                    """)
+                    .replace("{{NEXT_PAGE}}", String.valueOf(p + 2))
+                    .replace("{{TOTAL_PAGES}}", String.valueOf(pagesCount));
+            }
+
+            String pageBreak = (p < pagesCount - 1) ? "page-break-after: always; break-after: page;" : "";
+
+            pagesHtml.append("""
+                <div class="page-container" style="{{PAGE_BREAK}}">
+                  {{HEADER_HTML}}
+                  <table style="width:100%;border:1.5px solid #1e40af;font-size:11px">
+                    <thead>
+                      <tr style="background:#e0e7ff;color:#1e40af;font-size:10px;font-weight:bold;text-align:center">
+                        <th style="width:7%;padding:3px 2px;border:1px solid #1e40af">#</th>
+                        <th style="width:16%;padding:3px 2px;border:1px solid #1e40af">CANT.</th>
+                        <th style="width:47%;padding:3px 5px;border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
+                        <th style="width:15%;padding:3px 2px;border:1px solid #1e40af;text-align:right">VR. UNIT</th>
+                        <th style="width:15%;padding:3px 2px;border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {{ROWS_HTML}}
+                    </tbody>
+                  </table>
+                  {{FOOTER_HTML}}
+                </div>
+                """
+                .replace("{{PAGE_BREAK}}", pageBreak)
+                .replace("{{HEADER_HTML}}", headerHtml)
+                .replace("{{ROWS_HTML}}", rowsHtml.toString())
+                .replace("{{FOOTER_HTML}}", footerHtml));
         }
 
-        String template = """
+        return """
             <!DOCTYPE html>
             <html>
             <head>
             <meta charset="utf-8">
             <style>
-              @page { size: A5 portrait; margin: 3mm 6mm 2.5mm 6mm; }
+              @page { size: A5 portrait; margin: 6mm 7mm 3mm 7mm; }
               body { font-family: Arial, sans-serif; margin: 0; padding: 0; color: #000; background: #fff; }
               table { width: 100%; border-collapse: collapse; }
-              thead { display: table-header-group; }
               tr { page-break-inside: avoid; break-inside: avoid; }
+              .page-container { width: 100%; box-sizing: border-box; }
             </style>
             </head>
             <body>
-              <!-- Encabezado superior -->
-              <div style="border-bottom:1.5px solid #1e40af;padding-bottom:2px;margin-bottom:2px">
-                <table style="width:100%;border:none">
-                  <tr>
-                    <td style="border:none;vertical-align:middle">
-                      <div style="font-size:16px;font-weight:900;letter-spacing:0.5px;color:#1e40af;line-height:1.05">FRUVER EL OASIS</div>
-                      <div style="font-size:9.5px;font-weight:bold;color:#334155;margin-top:1px">Frutas y Verduras al por Mayor</div>
-                    </td>
-                    <td style="border:none;text-align:right;vertical-align:middle">
-                      <div style="display:inline-block;padding:2px 6px;border:1.5px solid #1e40af;border-radius:4px;font-weight:bold;font-size:10.5px;color:#1e40af;margin-right:4px">
-                        FACTURA / PEDIDO N° {{ORDER_NUM}}
-                      </div>
-                      <table style="display:inline-table;border-collapse:collapse;border:1.5px solid #1e40af;font-size:8px;text-align:center;width:80px;vertical-align:middle">
-                        <tr style="background:#e0e7ff;color:#1e40af;font-weight:bold">
-                          <th style="padding:1px;border:1px solid #1e40af;width:33%">DIA</th>
-                          <th style="padding:1px;border:1px solid #1e40af;width:33%">MES</th>
-                          <th style="padding:1px;border:1px solid #1e40af;width:34%">AÑO</th>
-                        </tr>
-                        <tr style="font-size:9.5px;font-weight:bold;height:13px;color:#0f172a">
-                          <td style="border:1px solid #1e40af">{{DAY}}</td>
-                          <td style="border:1px solid #1e40af">{{MONTH}}</td>
-                          <td style="border:1px solid #1e40af">{{YEAR}}</td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
-                </table>
-              </div>
-
-              <!-- Recuadro Cliente -->
-              <div style="border:1.5px solid #1e40af;border-radius:4px;padding:2px 4px;font-size:9px;margin-bottom:3px;line-height:1.2">
-                <table style="width:100%;border:none;font-size:9px">
-                  <tr>
-                    <td style="border:none;width:65%"><b style="color:#1e40af">CLIENTE:</b> <span>{{CUSTOMER}}</span></td>
-                    <td style="border:none;width:35%"><b style="color:#1e40af">NIT./ C.C.:</b> <span></span></td>
-                  </tr>
-                  <tr>
-                    <td style="border:none"><b style="color:#1e40af">DIRECCION:</b> <span>{{ADDRESS}}</span></td>
-                    <td style="border:none"><b style="color:#1e40af">TEL.:</b> <span>{{PHONE}}</span></td>
-                  </tr>
-                  {{OBS_ROW}}
-                </table>
-              </div>
-
-              <!-- Tabla de Artículos -->
-              <table style="width:100%;border:1.5px solid #1e40af;font-size:9px">
-                <thead>
-                  <tr style="background:#e0e7ff;color:#1e40af;font-size:8.5px;font-weight:bold;text-align:center">
-                    <th style="width:6%;padding:1px 2px;border:1px solid #1e40af">#</th>
-                    <th style="width:16%;padding:1px 2px;border:1px solid #1e40af">CANT.</th>
-                    <th style="width:48%;padding:1px 4px;border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
-                    <th style="width:15%;padding:1px 2px;border:1px solid #1e40af;text-align:right">VR. UNIT</th>
-                    <th style="width:15%;padding:1px 2px;border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {{ROWS}}
-                </tbody>
-              </table>
-
-              <!-- Pie -->
-              <div style="margin-top:3px;page-break-inside:avoid">
-                <table style="width:100%;border:none">
-                  <tr>
-                    <td style="border:none;font-size:9px;font-weight:bold;color:#1e40af;vertical-align:middle">
-                      RECIBI: <span style="display:inline-block;width:140px;border-bottom:1.5px solid #1e40af">&nbsp;</span>
-                    </td>
-                    <td style="border:none;text-align:right;width:130px">
-                      <div style="border:1.5px solid #1e40af;padding:2px 4px;display:flex;justify-content:space-between;align-items:center;font-weight:bold;font-size:9.5px;background:#f8fafc">
-                        <span style="color:#1e40af">TOTAL $</span>
-                        <span style="font-size:10.5px;color:#0f172a">&nbsp;</span>
-                      </div>
-                    </td>
-                  </tr>
-                </table>
-              </div>
+              {{PAGES_HTML}}
             </body>
             </html>
-            """;
-
-        String obsRow = notes.isBlank() ? "" : "<tr><td colspan=\"2\" style=\"border:none;font-size:9px;color:#475569\"><b style=\"color:#1e40af\">OBS:</b> " + notes + "</td></tr>";
-
-        return template
-                .replace("{{ORDER_NUM}}", orderNum)
-                .replace("{{DAY}}", day)
-                .replace("{{MONTH}}", month)
-                .replace("{{YEAR}}", year)
-                .replace("{{CUSTOMER}}", customer)
-                .replace("{{ADDRESS}}", address)
-                .replace("{{PHONE}}", phone)
-                .replace("{{OBS_ROW}}", obsRow)
-                .replace("{{ROWS}}", rows.toString());
+            """.replace("{{PAGES_HTML}}", pagesHtml.toString());
     }
 }
