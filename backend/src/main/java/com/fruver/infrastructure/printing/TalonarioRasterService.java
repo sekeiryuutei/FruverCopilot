@@ -79,16 +79,15 @@ public class TalonarioRasterService {
                 throw new IOException("wkhtmltopdf falló con código " + exit1);
             }
 
-            // 2. Convertir PDF a PWG Raster A5 a 300 DPI con espacio de color sgray_8 (Luminancia: 255=blanco, 0=negro)
-            // -dcupsColorSpace=0 y -dcupsBitsPerColor=8 evitan la inversión de color donde salía fondo negro con letras blancas
+            // 2. Convertir PDF a PWG Raster A5 a 600 DPI con espacio de color sgray_8 (cupsColorSpace=18)
+            // La impresora Brother HL-L2405W exige exactamente sgray_8 (18) a 600 DPI; de lo contrario aborta con document-format-error.
             ProcessBuilder pbPwg = new ProcessBuilder(
                     "gs", "-q", "-dNOPAUSE", "-dBATCH",
                     "-sDEVICE=pwgraster",
-                    "-dcupsColorSpace=0",
+                    "-dcupsColorSpace=18",
                     "-dcupsBitsPerColor=8",
-                    "-sColorConversionStrategy=Gray",
-                    "-dProcessColorModel=/DeviceGray",
-                    "-r300", "-sPAPERSIZE=a5",
+                    "-sPAPERSIZE=a5",
+                    "-r600",
                     "-sOutputFile=" + tmpPwg.getAbsolutePath(),
                     tmpPdf.getAbsolutePath()
             );
