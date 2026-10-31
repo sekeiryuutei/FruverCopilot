@@ -130,7 +130,11 @@ public class GeminiOrderExtractor implements OrderExtractor {
                 <zonas_domicilio>%s</zonas_domicilio>
                 <historial_cliente>%s</historial_cliente>
                 <nota_adicional_cliente>%s</nota_adicional_cliente>
-                Lee con precisión los productos y cantidades de la lista en la imagen adjunta. Si ya hay productos acordados en pedido_actual, consérvalos y agrega los nuevos ítems de la lista.
+                INSTRUCCIÓN DE CONSOLIDACIÓN MULTIMODAL:
+                1. Extrae con precisión todos los renglones, productos y cantidades escritos en la imagen adjunta.
+                2. REVISA <nota_adicional_cliente>: contiene los mensajes de texto y notas de voz transcritas enviadas por el cliente. Si menciona productos adicionales (por ejemplo zanahoria, lulo, maracuyá, pepino, etc.), DEBES EXTRAERLOS Y AGREGARLOS A LA LISTA 'items'.
+                3. Si un producto se menciona en el audio/texto y también en la foto con cantidades diferentes, prevalece la cantidad más reciente.
+                4. Si ya hay productos acordados en pedido_actual, consérvalos y consolida todos los ítems en una única lista completa sin omitir nada.
                 """.formatted(
                 join(request.recentTurns()),
                 join(request.currentItems()),
@@ -189,7 +193,11 @@ public class GeminiOrderExtractor implements OrderExtractor {
                 <zonas_domicilio>%s</zonas_domicilio>
                 <historial_cliente>%s</historial_cliente>
                 <nota_adicional_cliente>%s</nota_adicional_cliente>
-                Lee con precisión todas las imágenes y audios/textos adjuntos en este pedido. Si hay varias fotos o listas, consolida todos los productos sin omitir ninguno.
+                INSTRUCCIÓN DE CONSOLIDACIÓN MULTIMODAL:
+                1. Lee con precisión todas las imágenes adjuntas. Si hay varias fotos o listas, consolida todos los productos sin omitir ninguno.
+                2. REVISA <nota_adicional_cliente>: contiene los mensajes de texto y notas de voz transcritas enviadas por el cliente. Si menciona productos adicionales, extráelos e inclúyelos en 'items'.
+                3. Si un producto se repite con diferente cantidad, conserva la cantidad más reciente.
+                4. Si ya hay productos acordados en pedido_actual, consérvalos. Consolida todo en una única lista completa.
                 """.formatted(
                 join(request.recentTurns()),
                 join(request.currentItems()),

@@ -125,16 +125,24 @@ final class SystemPrompts {
            - Cada renglón o ítem de la foto debe convertirse en un elemento en la lista 'items'.
            - 'productoMencionado': texto exacto leído en la foto (ej: "3 bultos papa pastusa", "1 caja tomate chonto", "10 atados cilantro", "1 arroba cebolla cabezona").
            - 'productoNormalizado': nombre estándar del producto (ej: "Papa Pastusa", "Tomate Chonto", "Cilantro", "Cebolla Cabezona").
-           - 'cantidad': número decimal (ej: 3.0, 1.0, 0.5, 10.0). Presta mucha atención a números manuscritos como "10" que pueden pegarse a la unidad (por ejemplo "10und" o "10 un" nunca debe leerse como "1" ni como "1ound"). Si no se especifica o no es legible, asigna 1.0 y marca 'ambiguo': true.
+           - 'cantidad': número decimal (ej: 3.0, 1.0, 0.5, 10.0). Presta mucha atención a números manuscritos como "10", "20", "30" pegados a la unidad (por ejemplo "10und", "10 un", "10amarilla" NUNCA debe leerse como "1", ni "1und", ni descartarse: la cantidad es 10.0). Si no se especifica o no es legible, asigna 1.0 y marca 'ambiguo': true.
            - 'unidadMedida': BULTO, CAJA, ARROBA, ATADO, BOLSA, LB, KG, UNIDAD, o null si solo dice un número sin unidad (ej: "20 papa", "5 manzana", "2 cebolla").
              Si la lista o mensaje NO especifica la unidad explícitamente, pon 'unidadMedida': null y 'ambiguo': false. NUNCA asumas LB ni UNIDAD si no está escrito.
            - 'ambiguo': true si la letra es ilegible, dudosa o tachada; false si se lee con claridad. Si solo falta la unidad pero la cantidad y producto son claros, 'ambiguo' debe ser false.
            - 'observacion': si hay alguna duda fonética o caligráfica, indícalo aquí (ej: "Letra dudosa entre cebolla o espinaca").
 
-        3. ACCIONES Y MENSAJES:
+        3. CONSOLIDACIÓN MULTIMODAL OBLIGATORIA (FOTO + AUDIO / TEXTO ADICIONAL):
+           - El cliente con frecuencia envía una FOTO de una lista manuscrita Y ADEMÁS envía NOTAS DE VOZ o MENSAJES DE TEXTO complementarios (los cuales aparecen en <nota_adicional_cliente>).
+           - DEBES CONSOLIDAR Y AGREGAR EN 'items' ABSOLUTAMENTE TODOS LOS PRODUCTOS DE AMBAS FUENTES:
+             a) Todos los productos de la FOTO.
+             b) Todos los productos pedidos por AUDIO o TEXTO en <nota_adicional_cliente> (por ejemplo: "10 lb de lulo", "4 de pepino", "10 libras de zanahoria", "8 maracuyás", etc.). NUNCA los ignores ni los omitas.
+             c) Si ya había productos en <pedido_actual>, consérvalos también.
+             d) CORRECCIÓN DE CANTIDAD: Si un producto se menciona en el audio y también en la foto con cantidades diferentes (por ejemplo en el audio dice '8 papaya' y en la foto dice '15 papaya', o viceversa), PREVALECE LA CANTIDAD MÁS RECIENTE.
+
+        4. ACCIONES Y MENSAJES:
            - En modo mayorista NO enviamos respuestas de chat al cliente. 'customerMessage' debe ser null.
            - 'action' debe ser 'CONFIRM_ORDER'.
-           - En 'clarificationReason': indica un resumen breve de lo extraído (ej: "Lista manuscrita de 8 renglones leída").
+           - En 'clarificationReason': indica un resumen breve de lo extraído (ej: "Lista consolidada de imagen manuscrita y requerimientos en audio/texto").
 
         Responde únicamente con el formato estructurado JSON solicitado.
         """;
