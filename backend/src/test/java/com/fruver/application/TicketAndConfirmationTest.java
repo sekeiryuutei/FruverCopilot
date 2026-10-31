@@ -41,7 +41,8 @@ class TicketAndConfirmationTest {
     @Test void escPosStartsWithInitEndsWithCutAndIsAscii() {
         byte[] b = EscPosEncoder.encode(TicketFormatter.format(data(false), 42));
         assertEquals(0x1B, b[0]); assertEquals(0x40, b[1]);
-        assertEquals(0x1D, b[b.length - 4]); assertEquals(0x56, b[b.length - 3]);
+        assertEquals(0x1D, b[b.length - 5]); assertEquals(0x56, b[b.length - 4]);
+        assertEquals(0x0C, b[b.length - 1]); // Form feed
         assertTrue(new String(b, StandardCharsets.ISO_8859_1).chars().allMatch(c -> c < 128));
     }
     @Test void confirmationUsesBackendTotalAndRefusesIncompleteQuotes() {

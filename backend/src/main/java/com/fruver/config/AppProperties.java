@@ -16,6 +16,7 @@ public record AppProperties(
         DemoSeed demoSeed) {
 
     public AppProperties {
+        if (timezone == null || timezone.isBlank()) timezone = "America/Bogota";
         if (ai == null) ai = new Ai("gemini", new Gemini("", "", "gemini-3.5-flash-lite", "https://generativelanguage.googleapis.com"), null, null, null, null, null);
     }
 

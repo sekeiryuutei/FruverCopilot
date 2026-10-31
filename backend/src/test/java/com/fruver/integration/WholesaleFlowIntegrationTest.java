@@ -36,7 +36,8 @@ import static org.mockito.Mockito.when;
         "app.printing.auto-print-wholesale=true",
         "app.printing.wholesale-grace-seconds=0",
         "app.conversation.ai-auto-reply=false",
-        "app.conversation.auto-confirm-clear-orders=false"
+        "app.conversation.auto-confirm-clear-orders=false",
+        "app.conversation.debounce-seconds=0"
 })
 @Testcontainers(disabledWithoutDocker = true)
 class WholesaleFlowIntegrationTest {

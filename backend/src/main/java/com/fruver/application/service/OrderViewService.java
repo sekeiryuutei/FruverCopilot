@@ -33,7 +33,7 @@ public class OrderViewService {
         this.orders = orders;
         this.quotes = quotes;
         this.jdbc = jdbc;
-        this.zone = ZoneId.of(props.timezone());
+        this.zone = ZoneId.of((props != null && props.timezone() != null && !props.timezone().isBlank()) ? props.timezone() : "America/Bogota");
     }
 
     public List<OrderView> board() {

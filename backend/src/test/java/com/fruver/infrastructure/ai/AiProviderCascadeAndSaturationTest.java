@@ -43,7 +43,7 @@ class AiProviderCascadeAndSaturationTest {
     @Test
     @DisplayName("Si todas las claves de Gemini se saturan, se activa FallbackAiClient de contingencia")
     void siGeminiFallaSeActivaFallbackAiClient() {
-        AppProperties.Gemini geminiProps = new AppProperties.Gemini("key1", "key1", "gemini-2.5-flash", "https://mock.gemini");
+        AppProperties.Gemini geminiProps = new AppProperties.Gemini("key1", "key1", "gemini-2.5-flash", "http://127.0.0.1:59999");
         AppProperties props = new AppProperties(
                 "America/Bogota", false, null, null, null, null,
                 new AppProperties.Ai("gemini", geminiProps, null, null, null, null, null), null, null, null
@@ -57,6 +57,10 @@ class AiProviderCascadeAndSaturationTest {
         when(mockFallback.tryFallback(any(), any())).thenReturn(expectedFallbackResponse);
 
         RestClient.Builder restBuilder = RestClient.builder();
+        org.springframework.test.web.client.MockRestServiceServer server = org.springframework.test.web.client.MockRestServiceServer.bindTo(restBuilder).ignoreExpectOrder(true).build();
+        server.expect(org.springframework.test.web.client.ExpectedCount.manyTimes(), org.springframework.test.web.client.match.MockRestRequestMatchers.anything())
+                .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withStatus(org.springframework.http.HttpStatus.NOT_FOUND));
+
         GeminiOrderExtractor extractor = new GeminiOrderExtractor(restBuilder, props, mapper, mockFallback);
 
         ExtractionRequest request = new ExtractionRequest(
@@ -74,7 +78,7 @@ class AiProviderCascadeAndSaturationTest {
     @Test
     @DisplayName("Si TODAS las IAs fallan (apagón total), arroja ExtractionUnavailableException controlada sin perder datos")
     void siTodasLasIasFallanArrojaExtractionUnavailableException() {
-        AppProperties.Gemini geminiProps = new AppProperties.Gemini("key1", "key1", "gemini-2.5-flash", "https://invalid.gemini.local");
+        AppProperties.Gemini geminiProps = new AppProperties.Gemini("key1", "key1", "gemini-2.5-flash", "http://127.0.0.1:59999");
         AppProperties props = new AppProperties(
                 "America/Bogota", false, null, null, null, null,
                 new AppProperties.Ai("gemini", geminiProps, null, null, null, null, null), null, null, null
@@ -85,6 +89,10 @@ class AiProviderCascadeAndSaturationTest {
         when(mockFallback.tryFallback(any(), any())).thenReturn(null);
 
         RestClient.Builder restBuilder = RestClient.builder();
+        org.springframework.test.web.client.MockRestServiceServer server = org.springframework.test.web.client.MockRestServiceServer.bindTo(restBuilder).ignoreExpectOrder(true).build();
+        server.expect(org.springframework.test.web.client.ExpectedCount.manyTimes(), org.springframework.test.web.client.match.MockRestRequestMatchers.anything())
+                .andRespond(org.springframework.test.web.client.response.MockRestResponseCreators.withStatus(org.springframework.http.HttpStatus.NOT_FOUND));
+
         GeminiOrderExtractor extractor = new GeminiOrderExtractor(restBuilder, props, mapper, mockFallback);
 
         ExtractionRequest request = new ExtractionRequest(

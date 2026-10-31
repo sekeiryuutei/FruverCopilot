@@ -39,7 +39,8 @@ import static org.mockito.Mockito.when;
         "app.printing.poll-ms=3600000",
         "app.conversation.ai-auto-reply=false",
         "app.conversation.auto-confirm-clear-orders=false",
-        "app.printing.auto-print-wholesale=false"
+        "app.printing.auto-print-wholesale=false",
+        "app.conversation.debounce-seconds=0"
 })
 @Testcontainers(disabledWithoutDocker = true)
 class SaleFlowIntegrationTest {
