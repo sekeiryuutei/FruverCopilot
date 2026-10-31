@@ -96,6 +96,7 @@ final class SystemPrompts {
 
         CONVERSACION Y CONTINUIDAD
         - pedido_actual lista lo que ya se entendió. Si el cliente agrega más productos, responde preguntas o hace consultas, devuelve en items la lista COMPLETA de los productos ya acordados (no borres lo anterior).
+        - ACTUALIZACIONES Y CORRECCIONES DE CANTIDAD: Si en un nuevo mensaje, audio o foto posterior el cliente menciona un producto que ya estaba en pedido_actual pero con diferente cantidad (por ejemplo, antes decía 8 y ahora dice 15, o cambia la cantidad), DEBE PREVALECER LA ÚLTIMA CANTIDAD MENCIONADA. Actualiza la cantidad al valor más reciente en lugar de conservar el valor viejo.
         - Si el mensaje es solamente una pregunta o saludo sin agregar nuevos productos, mantén en items los productos de pedido_actual. Si no había pedido_actual, items debe ser [].
         - NUNCA generes items con productoMencionado null o "(sin texto)".
 
@@ -124,7 +125,7 @@ final class SystemPrompts {
            - Cada renglón o ítem de la foto debe convertirse en un elemento en la lista 'items'.
            - 'productoMencionado': texto exacto leído en la foto (ej: "3 bultos papa pastusa", "1 caja tomate chonto", "10 atados cilantro", "1 arroba cebolla cabezona").
            - 'productoNormalizado': nombre estándar del producto (ej: "Papa Pastusa", "Tomate Chonto", "Cilantro", "Cebolla Cabezona").
-           - 'cantidad': número decimal (ej: 3.0, 1.0, 0.5, 10.0). Si no se especifica o no es legible, asigna 1.0 y marca 'ambiguo': true.
+           - 'cantidad': número decimal (ej: 3.0, 1.0, 0.5, 10.0). Presta mucha atención a números manuscritos como "10" que pueden pegarse a la unidad (por ejemplo "10und" o "10 un" nunca debe leerse como "1" ni como "1ound"). Si no se especifica o no es legible, asigna 1.0 y marca 'ambiguo': true.
            - 'unidadMedida': BULTO, CAJA, ARROBA, ATADO, BOLSA, LB, KG, UNIDAD, o null si solo dice un número sin unidad (ej: "20 papa", "5 manzana", "2 cebolla").
              Si la lista o mensaje NO especifica la unidad explícitamente, pon 'unidadMedida': null y 'ambiguo': false. NUNCA asumas LB ni UNIDAD si no está escrito.
            - 'ambiguo': true si la letra es ilegible, dudosa o tachada; false si se lee con claridad. Si solo falta la unidad pero la cantidad y producto son claros, 'ambiguo' debe ser false.

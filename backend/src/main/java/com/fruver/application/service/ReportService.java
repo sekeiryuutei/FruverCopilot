@@ -29,20 +29,32 @@ public class ReportService {
         out.put("to", t.toString());
 
         out.put("totals", jdbc.sql("SELECT count(*) AS sales, COALESCE(sum(total), 0) AS revenue FROM sale WHERE created_at >= :a AND created_at < :b")
-                .param("a", start).param("b", end).query((rs, n) -> Map.of("sales", rs.getLong(1), "revenue", rs.getBigDecimal(2))).single());
-        out.put("byCustomerType", group("SELECT customer_type, count(*), COALESCE(sum(total), 0) FROM sale WHERE created_at >= :a AND created_at < :b GROUP BY 1 ORDER BY 1", start, end));
-        out.put("byInputType", group("SELECT input_type, count(*), COALESCE(sum(total), 0) FROM sale WHERE created_at >= :a AND created_at < :b GROUP BY 1 ORDER BY 1", start, end));
+                .param("a", start).param("b", end).query((rs, n) -> Map.<String, Object>of("sales", rs.getLong(1), "revenue", rs.getBigDecimal(2) != null ? rs.getBigDecimal(2) : java.math.BigDecimal.ZERO)).single());
+        out.put("byCustomerType", group("SELECT COALESCE(customer_type, 'RETAIL'), count(*), COALESCE(sum(total), 0) FROM sale WHERE created_at >= :a AND created_at < :b GROUP BY 1 ORDER BY 1", start, end));
+        out.put("byInputType", group("SELECT COALESCE(input_type, 'MANUAL'), count(*), COALESCE(sum(total), 0) FROM sale WHERE created_at >= :a AND created_at < :b GROUP BY 1 ORDER BY 1", start, end));
 
         out.put("topProducts", jdbc.sql("""
-                SELECT i.product_name, i.unit, sum(i.quantity), sum(i.subtotal)
+                SELECT COALESCE(i.product_name, 'Producto'), COALESCE(i.unit, ''), COALESCE(sum(i.quantity), 0), COALESCE(sum(i.subtotal), 0)
                 FROM sale_item i JOIN sale s ON s.id = i.sale_id WHERE s.created_at >= :a AND s.created_at < :b
-                GROUP BY i.product_name, i.unit ORDER BY sum(i.subtotal) DESC LIMIT 10
+                GROUP BY i.product_name, i.unit ORDER BY COALESCE(sum(i.subtotal), 0) DESC, COALESCE(sum(i.quantity), 0) DESC LIMIT 10
                 """).param("a", start).param("b", end)
-                .query((rs, n) -> Map.of("product", rs.getString(1), "unit", rs.getString(2), "quantity", rs.getBigDecimal(3), "revenue", rs.getBigDecimal(4))).list());
+                .query((rs, n) -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("product", rs.getString(1) != null ? rs.getString(1) : "Producto");
+                    item.put("unit", rs.getString(2) != null ? rs.getString(2) : "");
+                    item.put("quantity", rs.getBigDecimal(3) != null ? rs.getBigDecimal(3) : java.math.BigDecimal.ZERO);
+                    item.put("revenue", rs.getBigDecimal(4) != null ? rs.getBigDecimal(4) : java.math.BigDecimal.ZERO);
+                    return item;
+                }).list());
 
         // Calidad de la IA y velocidad operativa (metricas para saber si el sistema realmente acelera el negocio)
         out.put("reviewStatus", jdbc.sql("SELECT COALESCE(review_status, 'SIN_REVISION'), count(*) FROM orders WHERE received_at >= :a AND received_at < :b GROUP BY 1 ORDER BY 1")
-                .param("a", start).param("b", end).query((rs, n) -> Map.of("status", rs.getString(1), "orders", rs.getLong(2))).list());
+                .param("a", start).param("b", end).query((rs, n) -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("status", rs.getString(1) != null ? rs.getString(1) : "SIN_REVISION");
+                    m.put("orders", rs.getLong(2));
+                    return m;
+                }).list());
         out.put("orders", jdbc.sql("""
                 SELECT count(*), count(*) FILTER (WHERE corrected), count(*) FILTER (WHERE ai_status IN ('FAILED','TRANSCRIPTION_FAILED')),
                        COALESCE(avg(extract(epoch FROM approved_at - received_at)) FILTER (WHERE approved_at IS NOT NULL), 0)
@@ -64,6 +76,12 @@ public class ReportService {
 
     private List<Map<String, Object>> group(String sql, Object start, Object end) {
         return jdbc.sql(sql).param("a", start).param("b", end)
-                .query((rs, n) -> Map.<String, Object>of("key", rs.getString(1), "sales", rs.getLong(2), "revenue", rs.getBigDecimal(3))).list();
+                .query((rs, n) -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("key", rs.getString(1) != null ? rs.getString(1) : "GENERAL");
+                    m.put("sales", rs.getLong(2));
+                    m.put("revenue", rs.getBigDecimal(3) != null ? rs.getBigDecimal(3) : java.math.BigDecimal.ZERO);
+                    return m;
+                }).list();
     }
 }

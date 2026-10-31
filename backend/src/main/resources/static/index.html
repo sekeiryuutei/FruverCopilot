@@ -585,7 +585,7 @@ async function showImageModal(orderId){
 
 function buildTalonarioView(t){
   const items = Array.isArray(t.items) ? t.items : [];
-  const maxPerPage = 30;
+  const maxPerPage = 35;
   const pagesCount = Math.max(1, Math.ceil(items.length / maxPerPage));
 
   const d = t.day || '';
@@ -603,7 +603,7 @@ function buildTalonarioView(t){
 
   for (let p = 0; p < pagesCount; p++) {
     let from, to;
-    if (pagesCount === 2 && items.length > 30 && items.length <= 34) {
+    if (pagesCount === 2 && items.length > 35 && items.length <= 40) {
       const half = Math.ceil(items.length / 2);
       from = p * half;
       to = Math.min(items.length, (p + 1) * half);
@@ -627,15 +627,15 @@ function buildTalonarioView(t){
         const vUnit = showPrices && it.price ? '$ ' + Number(it.price).toLocaleString('es-CO') : '&nbsp;';
         const vTot = showPrices && it.subtotal ? '$ ' + Number(it.subtotal).toLocaleString('es-CO') : '&nbsp;';
         rowsHtml += `<tr>
-          <td style="text-align:center;font-weight:700;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px;color:#475569">${globalIdx}</td>
-          <td style="text-align:center;font-weight:700;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px">${cant}</td>
-          <td style="padding:3.8px 6px;border:1px solid #1e40af;text-transform:uppercase;font-size:11px;font-weight:normal">${desc}</td>
-          <td style="text-align:right;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px">${vUnit}</td>
-          <td style="text-align:right;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px">${vTot}</td>
+          <td style="text-align:center;font-weight:700;padding:4.5px 3px;border:1px solid #1e40af;font-size:11px;color:#475569">${globalIdx}</td>
+          <td style="text-align:center;font-weight:700;padding:4.5px 3px;border:1px solid #1e40af;font-size:11px">${cant}</td>
+          <td style="padding:4.5px 5px;border:1px solid #1e40af;text-transform:uppercase;font-size:11px;font-weight:normal">${desc}</td>
+          <td style="text-align:right;padding:4.5px 3px;border:1px solid #1e40af;font-size:11px">${vUnit}</td>
+          <td style="text-align:right;padding:4.5px 3px;border:1px solid #1e40af;font-size:11px">${vTot}</td>
         </tr>`;
       } else {
         rowsHtml += `<tr>
-          <td style="height:19px;text-align:center;color:#94a3b8;font-size:11px;border:1px solid #1e40af">${globalIdx}</td>
+          <td style="height:20px;text-align:center;color:#94a3b8;font-size:11px;border:1px solid #1e40af">${globalIdx}</td>
           <td style="border:1px solid #1e40af">&nbsp;</td>
           <td style="border:1px solid #1e40af">&nbsp;</td>
           <td style="border:1px solid #1e40af">&nbsp;</td>
@@ -726,11 +726,11 @@ function buildTalonarioView(t){
       <table style="width:100%;border-collapse:collapse;border:1.5px solid #1e40af;font-size:11px;table-layout:fixed">
         <thead>
           <tr style="background:#e0e7ff;color:#1e40af;font-size:10px;font-weight:800;text-align:center">
-            <th style="width:7%;padding:3px 2px;border:1px solid #1e40af">#</th>
-            <th style="width:16%;padding:3px 2px;border:1px solid #1e40af">CANT.</th>
-            <th style="width:47%;padding:3px 5px;border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
-            <th style="width:15%;padding:3px 2px;border:1px solid #1e40af;text-align:right">VR. UNIT</th>
-            <th style="width:15%;padding:3px 2px;border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
+            <th style="width:7%;padding:4px 2px;border:1px solid #1e40af">#</th>
+            <th style="width:17%;padding:4px 2px;border:1px solid #1e40af">CANT.</th>
+            <th style="width:38%;padding:4px 4px;border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
+            <th style="width:19%;padding:4px 2px;border:1px solid #1e40af;text-align:right">VR. UNIT</th>
+            <th style="width:19%;padding:4px 2px;border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
           </tr>
         </thead>
         <tbody>
@@ -2272,7 +2272,7 @@ async function renderReports(){const m=$('#main');const today=new Date().toISOSt
   const go=async()=>{try{const r=await api(`/api/reports/sales?from=${from.value}&to=${to.value}`);
     out.replaceChildren(h('p',{class:'total'},cop(r.totals.revenue)+' · '+r.totals.sales+' ventas'),
       kv('Por tipo de cliente',r.byCustomerType.map(x=>[x.key==='WHOLESALE'?'Mayorista':'Minorista',x.sales+' ventas',cop(x.revenue)])),
-      kv('Por origen',r.byInputType.map(x=>[x.key==='AUDIO'?'🎙️ Audio':x.key==='MANUAL'?'🏪 Mostrador':'📝 Texto',x.sales+' ventas',cop(x.revenue)])),
+      kv('Por origen',r.byInputType.map(x=>[x.key==='AUDIO'?'🎙️ Audio':x.key==='IMAGE'?'📸 Foto':x.key==='MANUAL'?'🏪 Mostrador':'📝 Texto',x.sales+' ventas',cop(x.revenue)])),
       kv('Semáforo (pedidos recibidos)',r.reviewStatus.map(x=>[x.status,x.orders])),
       kv('Calidad de la IA y velocidad',[['Pedidos recibidos',r.orders.received],['Corregidos por empleados',r.orders.correctedByHumans+' ('+r.orders.correctedPercent+'%)'],['Fallas de IA/transcripción',r.orders.aiFailures],
         ['Promedio recibido → aprobado',r.orders.avgSecondsReceivedToApproved+' s'],['Promedio aprobado → impreso',r.avgSecondsApprovedToPrinted+' s']]),

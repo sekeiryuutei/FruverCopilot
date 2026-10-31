@@ -123,14 +123,14 @@ public class TalonarioRasterService {
         String year = dt != null ? String.valueOf(dt.getYear()) : "";
 
         List<TicketData.Line> lines = t.lines() != null ? t.lines() : List.of();
-        int maxPerPage = 30;
+        int maxPerPage = 35;
         int pagesCount = Math.max(1, (int) Math.ceil((double) lines.size() / maxPerPage));
 
         StringBuilder pagesHtml = new StringBuilder();
 
         for (int p = 0; p < pagesCount; p++) {
             int from, to;
-            if (pagesCount == 2 && lines.size() > 30 && lines.size() <= 34) {
+            if (pagesCount == 2 && lines.size() > 35 && lines.size() <= 40) {
                 int half = (int) Math.ceil((double) lines.size() / 2);
                 from = p * half;
                 to = Math.min(lines.size(), (p + 1) * half);
@@ -153,15 +153,15 @@ public class TalonarioRasterService {
                             (l.unit() != null && !l.unit().isBlank() ? " " + l.unit() : "");
                     String name = l.name() != null ? l.name().toUpperCase() : "";
                     rowsHtml.append("<tr>")
-                        .append("<td style=\"text-align:center;font-weight:bold;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px;color:#475569\">").append(globalIdx).append("</td>")
-                        .append("<td style=\"text-align:center;font-weight:bold;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px\">").append(cant).append("</td>")
-                        .append("<td style=\"padding:3.8px 6px;border:1px solid #1e40af;text-transform:uppercase;font-size:11px;font-weight:normal\">").append(name).append("</td>")
-                        .append("<td style=\"text-align:right;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px\">&nbsp;</td>")
-                        .append("<td style=\"text-align:right;padding:3.8px 3px;border:1px solid #1e40af;font-size:11px\">&nbsp;</td>")
+                        .append("<td style=\"text-align:center;font-weight:bold;padding:4.5px 3px;border:1px solid #1e40af;font-size:11px;color:#475569\">").append(globalIdx).append("</td>")
+                        .append("<td style=\"text-align:center;font-weight:bold;padding:4.5px 3px;border:1px solid #1e40af;font-size:11px\">").append(cant).append("</td>")
+                        .append("<td style=\"padding:4.5px 5px;border:1px solid #1e40af;text-transform:uppercase;font-size:11px;font-weight:normal\">").append(name).append("</td>")
+                        .append("<td style=\"text-align:right;padding:4.5px 3px;border:1px solid #1e40af;font-size:11px\">&nbsp;</td>")
+                        .append("<td style=\"text-align:right;padding:4.5px 3px;border:1px solid #1e40af;font-size:11px\">&nbsp;</td>")
                         .append("</tr>\n");
                 } else {
                     rowsHtml.append("<tr>")
-                        .append("<td style=\"height:19px;text-align:center;color:#94a3b8;font-size:11px;border:1px solid #1e40af\">").append(globalIdx).append("</td>")
+                        .append("<td style=\"height:20px;text-align:center;color:#94a3b8;font-size:11px;border:1px solid #1e40af\">").append(globalIdx).append("</td>")
                         .append("<td style=\"border:1px solid #1e40af\">&nbsp;</td>")
                         .append("<td style=\"border:1px solid #1e40af\">&nbsp;</td>")
                         .append("<td style=\"border:1px solid #1e40af\">&nbsp;</td>")
@@ -285,11 +285,11 @@ public class TalonarioRasterService {
                   <table style="width:100%;border:1.5px solid #1e40af;font-size:11px">
                     <thead>
                       <tr style="background:#e0e7ff;color:#1e40af;font-size:10px;font-weight:bold;text-align:center">
-                        <th style="width:7%;padding:3px 2px;border:1px solid #1e40af">#</th>
-                        <th style="width:16%;padding:3px 2px;border:1px solid #1e40af">CANT.</th>
-                        <th style="width:47%;padding:3px 5px;border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
-                        <th style="width:15%;padding:3px 2px;border:1px solid #1e40af;text-align:right">VR. UNIT</th>
-                        <th style="width:15%;padding:3px 2px;border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
+                        <th style="width:7%;padding:4px 2px;border:1px solid #1e40af">#</th>
+                        <th style="width:17%;padding:4px 2px;border:1px solid #1e40af">CANT.</th>
+                        <th style="width:38%;padding:4px 4px;border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
+                        <th style="width:19%;padding:4px 2px;border:1px solid #1e40af;text-align:right">VR. UNIT</th>
+                        <th style="width:19%;padding:4px 2px;border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
                       </tr>
                     </thead>
                     <tbody>
