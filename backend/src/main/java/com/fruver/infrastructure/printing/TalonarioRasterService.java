@@ -212,7 +212,7 @@ public class TalonarioRasterService {
                         <tr>
                           <td style="vertical-align:middle">
                             <div style="font-size:27px;font-weight:900;letter-spacing:0.3px;color:#000;line-height:1.1">FRUVER EL OASIS</div>
-                            <div style="font-size:12px;font-weight:bold;color:#333;margin-top:3px">Frutas y Verduras al por Mayor</div>
+                            <div style="font-size:12px;font-weight:bold;color:#222;margin-top:3px">Frutas y Verduras al por Mayor &bull; TEL: 3128947392</div>
                           </td>
                           <td style="text-align:right;vertical-align:middle">
                             <div style="display:inline-block;padding:6px 11px;border:2px solid #000;border-radius:3px;font-weight:900;font-size:14px;color:#000;margin-right:6px">
@@ -257,7 +257,7 @@ public class TalonarioRasterService {
                         <tr>
                           <td style="vertical-align:middle">
                             <span style="font-size:21px;font-weight:900;color:#000">FRUVER EL OASIS</span>
-                            <span style="font-size:12px;color:#333;margin-left:8px;font-weight:bold">— Continuación Pedido</span>
+                            <span style="font-size:12px;color:#333;margin-left:8px;font-weight:bold">— Continuación Pedido &bull; TEL: 3128947392</span>
                           </td>
                           <td style="text-align:right;vertical-align:middle">
                             <div style="display:inline-block;padding:4px 10px;border:2px solid #000;border-radius:3px;font-weight:900;font-size:13px;color:#000">

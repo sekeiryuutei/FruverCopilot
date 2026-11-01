@@ -31,6 +31,7 @@ public final class TicketFormatter {
         // Encabezado: nombre del negocio bien grande
         out.add(new TicketLine(center("FRUVER EL OASIS", cols), true));
         out.add(new TicketLine(center("Frutas y Verduras al por Mayor", cols), false));
+        out.add(new TicketLine(center("TEL: 3128947392", cols), false));
         out.add(new TicketLine(sep, false));
 
         // Número de factura grande y prominente
