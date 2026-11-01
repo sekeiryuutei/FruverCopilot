@@ -79,7 +79,7 @@ public class OrderEditService {
         // 2) Actualizar existentes o insertar nuevos
         for (ItemEdit e : incoming) {
             validate(e);
-            String unit = UnitOfMeasure.parse(e.unit()).orElseThrow().name();
+            String unit = (e.unit() == null || e.unit().isBlank()) ? null : UnitOfMeasure.parse(e.unit()).map(Enum::name).orElse(null);
             BigDecimal qty = e.quantity().setScale(3, RoundingMode.HALF_UP);
             BigDecimal price = e.manualPrice() == null ? null : e.manualPrice().setScale(0, Money.ROUNDING);
             String reason = e.priceChangeReason() == null || e.priceChangeReason().isBlank() ? null : clip(e.priceChangeReason(), 200);
@@ -96,7 +96,7 @@ public class OrderEditService {
             } else {
                 boolean productChanged = !Objects.equals(prev.productId(), e.productId());
                 boolean qtyChanged = prev.quantity() == null || prev.quantity().compareTo(qty) != 0;
-                boolean unitChanged = !unit.equals(prev.unit());
+                boolean unitChanged = !java.util.Objects.equals(unit, prev.unit());
                 boolean priceChanged = !Objects.equals(prev.manualPrice() == null ? null : prev.manualPrice().longValue(),
                         price == null ? null : price.longValue());
                 if (productChanged || qtyChanged || unitChanged) {
@@ -389,7 +389,7 @@ public class OrderEditService {
         if (e.quantity().setScale(3, RoundingMode.HALF_UP).signum() <= 0) {
             throw new ApiException(422, "ITEM_INVALID", "Cantidad demasiado pequeña");
         }
-        if (UnitOfMeasure.parse(e.unit()).isEmpty()) throw new ApiException(422, "ITEM_INVALID", "Unidad invalida");
+        if (e.unit() != null && !e.unit().isBlank() && UnitOfMeasure.parse(e.unit()).isEmpty()) throw new ApiException(422, "ITEM_INVALID", "Unidad invalida");
         if (e.manualPrice() != null && (e.manualPrice().signum() < 0 || e.manualPrice().compareTo(new BigDecimal("100000000")) > 0)) {
             throw new ApiException(422, "ITEM_INVALID", "Precio manual invalido");
         }

@@ -185,8 +185,8 @@ public class TalonarioRasterService {
                         vrTotal = "$ " + MONEY_FMT.format(val);
                     }
                 } else {
-                    cant = (l.quantity() != null ? l.quantity().stripTrailingZeros().toPlainString() : "") +
-                            (l.unit() != null && !l.unit().isBlank() ? " " + l.unit() : "");
+                    String u = (l.unit() != null && !l.unit().isBlank() && !l.unit().equalsIgnoreCase("NO_UNIT")) ? (" " + l.unit()) : "";
+                    cant = (l.quantity() != null ? l.quantity().stripTrailingZeros().toPlainString() : "") + u;
                     if (l.price() != null && l.price().signum() > 0) {
                         vrUnit = "$" + MONEY_FMT.format(l.price());
                     }
@@ -275,7 +275,8 @@ public class TalonarioRasterService {
 
             String footerHtml = "";
             if (isLastPage) {
-                String totalStr = (t.total() != null && t.total().signum() > 0) ? "$" + MONEY_FMT.format(t.total()) : "&nbsp;";
+                boolean allPriced = !lines.isEmpty() && lines.stream().allMatch(line -> isMoneyOrderLine(line) || (line.subtotal() != null && line.subtotal().signum() > 0));
+                String totalStr = (allPriced && t.total() != null && t.total().signum() > 0) ? "$" + MONEY_FMT.format(t.total()) : "&nbsp;";
                 footerHtml = """
                     <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:flex-end">
                       <div style="width:56%;border:1.5px solid #000;border-radius:4px;padding:9px 12px;font-size:11.5px">
@@ -374,7 +375,7 @@ public class TalonarioRasterService {
         }
         // Si cantidad es >= 1000 sin unidad de peso/unidad típica (ej: "10.000 de cebolla")
         if (l.quantity() != null && l.quantity().compareTo(new BigDecimal("1000")) >= 0
-                && (u.isBlank() || !List.of("LB", "LBS", "KG", "KGS", "UN", "UND", "UNIDAD", "UNIDADES").contains(u))) {
+                && (u.isBlank() || !List.of("LB", "LBS", "KG", "KGS", "KL", "KLS", "UN", "UND", "UNIDAD", "UNIDADES").contains(u))) {
             return true;
         }
         return false;

@@ -69,19 +69,21 @@ public class QuoteService {
             String displayUnit = it.unit();
             BigDecimal subtotal = problem == null ? Money.line(effectiveQty, applied) : null;
             boolean manual = it.manualPrice() != null && (catalog == null || it.manualPrice().compareTo(catalog) != 0);
-            if (problem != null) complete = false; else total = total.add(subtotal);
+            if (problem != null) { complete = false; } else if (subtotal != null) { total = total.add(subtotal); }
             lines.add(new QuoteLine(it.id(), p == null ? null : p.id(), p == null ? null : p.name(), effectiveQty,
                     displayUnit, catalog, applied, manual, subtotal, problem));
         }
-        return new Quote(lines, total, complete, type.name());
+        // Solo si todas las líneas tienen subtotal/precio se suma el total general; si faltan precios, total es null
+        boolean allPriced = !items.isEmpty() && lines.stream().allMatch(l -> l.subtotal() != null);
+        BigDecimal finalTotal = (complete && allPriced) ? total : null;
+        return new Quote(lines, finalTotal, complete && allPriced, type.name());
     }
 
     private static String problemOf(ItemRow it, ProductRow p, BigDecimal applied) {
         if (p == null) return "NO_PRODUCT";
         if (!p.active()) return "INACTIVE_PRODUCT";
         if (it.quantity() == null || it.quantity().signum() <= 0) return "NO_QUANTITY";
-        if (it.unit() == null) return "NO_UNIT";
-        if (!it.unit().equals(p.unit())) return "UNIT_MISMATCH";
+        if (it.unit() != null && p.unit() != null && !it.unit().equals(p.unit())) return "UNIT_MISMATCH";
         if (applied == null) return "NO_PRICE";
         return null;
     }

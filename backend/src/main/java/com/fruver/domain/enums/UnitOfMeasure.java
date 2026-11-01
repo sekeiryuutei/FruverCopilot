@@ -10,7 +10,7 @@ public enum UnitOfMeasure {
         if (raw == null) return Optional.empty();
         return switch (raw.trim().toUpperCase()) {
             case "LB", "LIBRA", "LIBRAS" -> Optional.of(LB);
-            case "KG", "KILO", "KILOS" -> Optional.of(KG);
+            case "KG", "KILO", "KILOS", "KL", "KLS", "KL." -> Optional.of(KG);
             case "UN", "UND", "UNIDAD", "UNIDADES" -> Optional.of(UNIDAD);
             default -> Optional.empty();
         };

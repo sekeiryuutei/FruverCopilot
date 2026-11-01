@@ -472,10 +472,49 @@ async function loadOrders(){if(loading){again=true;return}loading=true;
     S.orders=[...offList,...orders.filter(o=>!offList.some(off=>off.id===o.id))];
     if(S.tab==='ops')renderOps();
   }finally{loading=false;if(again){again=false;loadOrders()}}}
+function isMoneyOrder(it){
+  if(!it)return false;
+  const u=(it.unit||"").trim().toUpperCase();
+  if(["VALOR","PESOS","COP","$","DINERO","PLATA"].includes(u))return true;
+  if(!it.quantity&&(it.manualPrice||it.subtotal||it.price))return true;
+  if(Number(it.quantity||0)>=1000&&(!u||!["LB","LBS","KG","KGS","KL","KLS","UN","UND","UNIDAD","UNIDADES","BULTO","CAJA","ARROBA","ATADO"].includes(u)))return true;
+  const txt=((it.name||"")+" "+(it.mentioned||"")+" "+(it.observation||"")).toLowerCase();
+  if(/\b\d{3,6}\s*(pesos|de|mil|cop|\$)/i.test(txt)&&!["LB","KG","KL","UNIDAD"].includes(u))return true;
+  return false;
+}
 function draftOf(o){return S.draft[o.id]||null}
-function buildDraft(o){return S.draft[o.id]||{version:o.version,customerName:o.customer.name||'',address:o.address||'',notes:o.notes||'',deliveryPersonId:o.deliveryPersonId||null,
-  items:o.items.map(i=>({id:i.id,name:i.productName||i.mentioned||'',productId:i.productId,quantity:i.quantity,unit:i.unit||'LB',manualPrice:i.manualPrice,reason:i.priceChangeReason}))}}
-function priceFor(o,it){const p=S.products.find(x=>x.id===it.productId);if(it.manualPrice!=null)return it.manualPrice;return p?(p.prices[o.customer.type]??null):null}
+function buildDraft(o){return S.draft[o.id]||{version:o.version,customerName:o.customer.name||"",address:o.address||"",notes:o.notes||"",deliveryPersonId:o.deliveryPersonId||null,
+  items:o.items.map(i=>({id:i.id,name:i.productName||i.mentioned||"",productId:i.productId,quantity:i.quantity,unit:(i.unit!=null&&i.unit!=="NO_UNIT")?i.unit:"",manualPrice:i.manualPrice,reason:i.priceChangeReason}))}}
+function priceFor(o,it){
+  if(!it)return null;
+  if(it.manualPrice!=null&&Number(it.manualPrice)>0)return Number(it.manualPrice);
+  if(isMoneyOrder(it)){
+    const v=it.manualPrice||it.subtotal||(Number(it.quantity)>=1000?it.quantity:null);
+    return v?Number(v):null;
+  }
+  const isWholesale=o&&o.customer&&(o.customer.type==="WHOLESALE"||o.customer.type==="RESTAURANTE");
+  if(isWholesale)return null; // En mayorista no se imponen precios de catálogo si el pedido no fue por valor
+  const p=S.products.find(x=>x.id===it.productId);
+  return p?(p.prices[o.customer.type]??null):null;
+}
+function subtotalOf(o,it){
+  if(!it)return null;
+  if(isMoneyOrder(it)){
+    const val=it.manualPrice||it.subtotal||(Number(it.quantity)>=1000?it.quantity:null);
+    return val?Number(val):null;
+  }
+  const p=priceFor(o,it);
+  if(p!=null&&it.quantity!=null&&Number(it.quantity)>0){
+    return Math.round(Number(it.quantity)*Number(p));
+  }
+  return null;
+}
+function totalOf(o,d){
+  if(!d||!d.items||d.items.length===0)return null;
+  const allPriced=d.items.every(it=>!it.qtyError&&!it.priceError&&subtotalOf(o,it)!=null);
+  if(!allPriced)return null;
+  return d.items.reduce((s,it)=>s+subtotalOf(o,it),0);
+}
 function totalOf(o,d){return d.items.reduce((s,it)=>{if(it.qtyError||it.priceError)return s;const p=priceFor(o,it);return s+(p!=null&&it.quantity>0?Math.round(it.quantity*p):0)},0)}
 
 async function updatePrinterStatus(){
@@ -597,7 +636,8 @@ function buildTalonarioView(t){
   const phone = rawPhone.replace(/^(\+?57)/, '');
   const address = t.address || '';
   const showPrices = t.showPrices === true;
-  const totalStr = showPrices && t.totalFormatted ? t.totalFormatted : '&nbsp;';
+  const allItemsPriced = items.length > 0 && items.every(it => isMoneyOrder(it) || (it.manualPrice && Number(it.manualPrice) > 0) || (it.subtotal && Number(it.subtotal) > 0));
+  const totalStr = (allItemsPriced && showPrices && t.totalFormatted) ? t.totalFormatted : "&nbsp;";
 
   let pagesHtml = '';
 
@@ -622,26 +662,33 @@ function buildTalonarioView(t){
       const globalIdx = from + i + 1;
       if (i < pageItems.length) {
         const it = pageItems[i];
-        const u = (it.unit || '').trim().toUpperCase();
-        const isMoneyOrder = ['VALOR', 'PESOS', 'COP', '$', 'DINERO', 'PLATA'].includes(u) ||
-                             (!it.quantity && (it.subtotal || it.price)) ||
-                             (Number(it.quantity || 0) >= 1000 && (!u || !['LB', 'LBS', 'KG', 'KGS', 'UN', 'UND', 'UNIDAD', 'UNIDADES'].includes(u)));
+        const u = (it.unit || "").trim().toUpperCase();
+        const isMoney = isMoneyOrder(it);
 
-        let cant = '';
-        let vUnit = '&nbsp;';
-        let vTot = '&nbsp;';
+        let cant = "";
+        let vUnit = "&nbsp;";
+        let vTot = "&nbsp;";
 
-        if (isMoneyOrder) {
-          cant = ''; // En blanco para que en bodega pesen y escriban a mano
+        if (isMoney) {
+          cant = ""; // En blanco para que en bodega pesen y escriban a mano
           const val = (it.subtotal && Number(it.subtotal) > 0) ? it.subtotal :
-                      ((it.price && Number(it.price) > 0) ? it.price : it.quantity);
-          if (val) vTot = '$ ' + Number(val).toLocaleString('es-CO');
+                      ((it.price && Number(it.price) > 0) ? it.price : (it.manualPrice || it.quantity));
+          if (val) vTot = "$ " + Number(val).toLocaleString("es-CO");
         } else {
-          cant = it.cant || (it.quantity ? (it.quantity + (it.unit ? ' ' + it.unit : '')) : '');
-          if (showPrices && it.price && Number(it.price) > 0) vUnit = '$ ' + Number(it.price).toLocaleString('es-CO');
-          if (showPrices && it.subtotal && Number(it.subtotal) > 0) vTot = '$ ' + Number(it.subtotal).toLocaleString('es-CO');
+          const qVal = it.quantity != null ? String(it.quantity) : (it.cant || "");
+          const uStr = (u && u !== "NO_UNIT" && u !== "NULL") ? (" " + (u === "UNIDAD" ? "UNIDAD" : u)) : "";
+          cant = qVal ? (qVal + uStr) : "";
+
+          if (it.manualPrice && Number(it.manualPrice) > 0) {
+            vUnit = "$ " + Number(it.manualPrice).toLocaleString("es-CO");
+            if (it.quantity && Number(it.quantity) > 0) {
+              vTot = "$ " + Math.round(Number(it.quantity) * Number(it.manualPrice)).toLocaleString("es-CO");
+            }
+          } else if (showPrices && it.price && Number(it.price) > 0) {
+            vUnit = "$ " + Number(it.price).toLocaleString("es-CO");
+            if (it.subtotal && Number(it.subtotal) > 0) vTot = "$ " + Number(it.subtotal).toLocaleString("es-CO");
+          }
         }
-        const desc = (it.name || '').toUpperCase();
         rowsHtml += `<tr>
           <td style="text-align:center;font-weight:700;padding:4.5px 3px;border:1px solid #000;font-size:11px;color:#111">${globalIdx}</td>
           <td style="text-align:center;font-weight:900;padding:4.5px 3px;border:1px solid #000;font-size:11.5px">${cant}</td>
@@ -1394,25 +1441,40 @@ function card(o){
   const rows=new Map();                                   // línea -> {tr, pn, q, calc}: acceso directo, sin buscar en el DOM
   const tb=h('tbody');
   const totalEl=h('span',{class:'total'});
-  const upd=()=>{totalEl.textContent=cop(totalOf(o,view))};
+  const upd=()=>{
+    const tot=totalOf(o,view);
+    totalEl.textContent=tot!=null?cop(tot):"—";
+  };
   const mark=()=>{S.draft[o.id]=view};
   const removeRow=it=>{const i=view.items.indexOf(it);if(i>=0)view.items.splice(i,1);rows.get(it)?.tr.remove();rows.delete(it);upd()};
 
   const rowFor=it=>{
     const p0=S.products.find(x=>x.id===it.productId);
-    const sub=h('td',{class:'sub'});
-    const errEl=h('div',{class:'prob'});
+    const sub=h("td",{class:"sub"});
+    const errEl=h("div",{class:"prob"});
+    const isMoney=isMoneyOrder(it);
     const showErr=()=>{
       const pCur=S.products.find(x=>x.id===it.productId);
-      const unitWarn=pCur&&it.unit&&it.unit!==pCur.unit?`En catálogo se vende por ${pCur.unit==='UNIDAD'?'UNIDAD':pCur.unit}`:null;
-      errEl.textContent=[it.qtyError,it.priceError,unitWarn].filter(Boolean).join(' · ');
+      const unitWarn=(pCur&&it.unit&&pCur.unit&&it.unit!==pCur.unit)
+        ? `En catálogo se vende por ${pCur.unit==="UNIDAD"?"UNIDAD":pCur.unit}`:null;
+      errEl.textContent=[it.qtyError,it.priceError,unitWarn].filter(Boolean).join(" · ");
       setBad(q,!!it.qtyError);setBad(pr,!!it.priceError);setBad(us,!!unitWarn);
     };
-    const calc=()=>{const p=priceFor(o,it);sub.textContent=!it.qtyError&&!it.priceError&&p!=null&&it.quantity>0?cop(it.quantity*p):'—';upd()};
-    const q=h('input',{class:'q',type:'number',step:'0.5',min:'0',max:MAX_QTY,inputmode:'decimal',value:it.quantity??'',onkeydown:blockKeys,
+    const calc=()=>{
+      const st=subtotalOf(o,it);
+      sub.textContent=(!it.qtyError&&!it.priceError&&st!=null)?cop(st):"—";
+      upd();
+    };
+    const q=h("input",{class:"q",type:"number",step:"0.5",min:"0",max:MAX_QTY,inputmode:"decimal",
+      value:isMoney?"":(it.quantity??""),placeholder:isMoney?"Por pesar":"",onkeydown:blockKeys,
       oninput:e=>{const r=parseQty(e.target.value);it.quantity=r.value;it.qtyError=r.ok?null:r.error;showErr();calc()}});
-    const us=h('select',{onchange:e=>{it.unit=e.target.value;showErr();calc()}},['LB','KG','UNIDAD'].map(u=>h('option',{value:u,selected:u===it.unit},u==='UNIDAD'?'UN':u)));
-    const pr=h('input',{class:'pr',type:'number',min:'0',max:MAX_PRICE,inputmode:'numeric',value:it.manualPrice??'',placeholder:p0?(p0.prices[o.customer.type]??''):'',onkeydown:blockKeys,
+    const unitOpts=[{v:"",l:"—"},{v:"LB",l:"LB"},{v:"KG",l:"KG"},{v:"KL",l:"KL"},{v:"UNIDAD",l:"UN"}];
+    const us=h("select",{onchange:e=>{it.unit=e.target.value;showErr();calc();mark()}},
+      unitOpts.map(u=>h("option",{value:u.v,selected:(it.unit||"")===u.v},u.l)));
+    const isWholesale=o&&o.customer&&(o.customer.type==="WHOLESALE"||o.customer.type==="RESTAURANTE");
+    const prVal=it.manualPrice??(isMoney?(it.subtotal??(Number(it.quantity)>=1000?it.quantity:"")):"");
+    const pr=h("input",{class:"pr",type:"number",min:"0",max:MAX_PRICE,inputmode:"numeric",
+      value:prVal,placeholder:isMoney?"Valor $":(isWholesale?"—":(p0?(p0.prices[o.customer.type]??""):"")),onkeydown:blockKeys,
       oninput:e=>{const r=parsePrice(e.target.value);it.manualPrice=r.value;it.priceError=r.ok?null:r.error;showErr();calc()}});
     const pn=h('input',{class:'pn',list:'dl',value:it.name,placeholder:'Producto',onchange:e=>{
       const p=byName(e.target.value);
@@ -1512,23 +1574,9 @@ function card(o){
   upd();return el}
 
 async function save(o,d){
-  // Auto-ajuste de unidades contra catálogo antes de guardar/aprobar
-  for(const it of d.items){
-    const p=S.products.find(x=>x.id===it.productId);
-    if(p&&it.unit&&it.unit!==p.unit){
-      if(it.unit==='KG'&&p.unit==='LB'&&it.quantity>0){
-        it.quantity=Math.round(it.quantity*2*10)/10;
-        toast(`Ajustado: ${p.name} se convirtió de KG a LB (${it.quantity} LB)`);
-      }else if(it.unit==='LB'&&p.unit==='KG'&&it.quantity>0){
-        it.quantity=Math.round(it.quantity*0.5*10)/10;
-        toast(`Ajustado: ${p.name} se convirtió de LB a KG (${it.quantity} KG)`);
-      }
-      it.unit=p.unit;
-    }
-  }
   const bad=d.items.find(i=>i.qtyError||i.priceError);
-  if(bad)throw Object.assign(new Error('Corrige '+(bad.name||'la línea')+': '+(bad.qtyError||bad.priceError)),{code:'LOCAL'});
-  if(d.items.some(i=>!i.productId||!(i.quantity>0)))throw Object.assign(new Error('Completa producto y cantidad de todas las líneas (o elimina la línea vacía)'),{code:'LOCAL'});
+  if(bad)throw Object.assign(new Error("Corrige "+(bad.name||"la línea")+": "+(bad.qtyError||bad.priceError)),{code:"LOCAL"});
+  if(d.items.some(i=>!i.productId||(!isMoneyOrder(i)&&!(i.quantity>0))))throw Object.assign(new Error("Completa producto y cantidad de todas las líneas (o elimina la línea vacía)"),{code:"LOCAL"});
   const items=payloadItems(d.items);                      // une repetidas antes de enviar; el servidor también las rechaza
   const body={version:d.version,customerName:d.customerName,address:d.address,notes:d.notes,deliveryPersonId:d.deliveryPersonId||null,items:items.map(i=>({id:i.id,productId:i.productId,quantity:i.quantity,unit:i.unit,manualPrice:i.manualPrice,priceChangeReason:i.reason}))};
   const r=await api(`/api/orders/${o.id}`,{method:'PUT',body});d.version=r.version;return r}

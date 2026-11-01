@@ -109,7 +109,7 @@ public class SaleService {
             QuoteLine l = (quote.lines() != null && i < quote.lines().size()) ? quote.lines().get(i) : null;
             String pName = l != null && l.productName() != null ? l.productName() : (it.aiProductName() != null ? it.aiProductName() : it.mentioned());
             Long pid = l != null ? l.productId() : it.productId();
-            String unit = l != null && l.unit() != null ? l.unit() : (it.unit() != null ? it.unit() : "UNIDAD");
+            String unit = l != null && l.unit() != null ? l.unit() : it.unit();
             BigDecimal qty = l != null && l.quantity() != null ? l.quantity() : (it.quantity() != null ? it.quantity() : BigDecimal.ONE);
             BigDecimal catPrice = l != null ? l.catalogPrice() : null;
             BigDecimal appPrice = l != null ? l.appliedPrice() : it.manualPrice();
