@@ -36,7 +36,7 @@ public class TalonarioRasterService {
 
             ProcessBuilder pbPdf = new ProcessBuilder(
                     "wkhtmltopdf", "-q", "-s", "A4",
-                    "-B", "0", "-T", "0", "-L", "0", "-R", "0",
+                    "-B", "6mm", "-T", "0", "-L", "0", "-R", "0",
                     tmpHtml.getAbsolutePath(), tmpPdf.getAbsolutePath()
             );
             pbPdf.redirectErrorStream(true);
@@ -144,6 +144,9 @@ public class TalonarioRasterService {
         String customer = (t.customer() != null ? t.customer() : "CLIENTE GENERAL").toUpperCase();
         String rawPhone = (t.phone() != null ? t.phone() : "").trim();
         String phone = rawPhone.replaceFirst("^\\+?57", "");
+        String address = (t.address() != null && !t.address().isBlank()) ? t.address().trim().toUpperCase() : "________________________________________________";
+        String notes = (t.notes() != null && !t.notes().isBlank()) ? t.notes().trim() : "";
+        String notesRow = !notes.isBlank() ? "<tr><td colspan=\"2\" style=\"padding-top:2px;font-size:10.5px;color:#222\"><b>OBS:</b> <span>" + notes + "</span></td></tr>\n" : "";
         String orderNum = String.format("%06d", t.orderNumber());
 
         var dt = t.at();
@@ -195,11 +198,11 @@ public class TalonarioRasterService {
                     }
                 }
 
-                rowsHtml.append("<tr style=\"height:26.2px\">\n")
-                        .append("  <td style=\"text-align:center;font-weight:bold;padding:4.5px 2px;border:1px solid #000;font-size:11.5px;color:#111\">").append(globalIdx).append("</td>\n")
-                        .append("  <td style=\"text-align:center;font-weight:900;padding:4.5px 3px;border:1px solid #000;font-size:12px\">").append(cant).append("</td>\n")
-                        .append("  <td style=\"padding:4.5px 5px;border:1px solid #000;text-transform:uppercase;font-size:11.5px;font-weight:bold;white-space:nowrap;overflow:hidden\">").append(name).append("</td>\n")
-                        .append("  <td style=\"text-align:right;padding:4.5px 5px;border:1px solid #000;font-size:11.5px\">").append(vrUnit).append("</td>\n")
+                rowsHtml.append("<tr style=\"height:24px\">\n")
+                        .append("  <td style=\"text-align:center;font-weight:bold;padding:3.5px 2px;border:1px solid #000;font-size:11px;color:#111\">").append(globalIdx).append("</td>\n")
+                        .append("  <td style=\"text-align:center;font-weight:900;padding:3.5px 3px;border:1px solid #000;font-size:11.5px\">").append(cant).append("</td>\n")
+                        .append("  <td style=\"padding:3.5px 5px;border:1px solid #000;text-transform:uppercase;font-size:11px;font-weight:bold;white-space:nowrap;overflow:hidden\">").append(name).append("</td>\n")
+                        .append("  <td style=\"text-align:right;padding:3.5px 4px;border:1px solid #000;font-size:11px\">").append(vrUnit).append("</td>\n")
                         .append("  <td style=\"text-align:right;padding:4.5px 5px;border:1px solid #000;font-size:11.5px\">").append(vrTotal).append("</td>\n")
                         .append("</tr>\n");
             }
@@ -234,12 +237,16 @@ public class TalonarioRasterService {
                         </tr>
                       </table>
                     </div>
-                    <div style="border:1.5px solid #000;border-radius:3px;padding:7px 10px;font-size:12.5px;margin-bottom:7px;line-height:1.35">
-                      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+                    <div style="border:1.5px solid #000;border-radius:3px;padding:5px 9px;font-size:11.5px;margin-bottom:6px;line-height:1.3">
+                      <table style="width:100%;border-collapse:collapse;font-size:11.5px">
                         <tr>
                           <td style="width:65%"><b>CLIENTE:</b> <span>{{CUSTOMER}}</span></td>
                           <td style="width:35%"><b>TEL:</b> <span>{{PHONE}}</span></td>
                         </tr>
+                        <tr>
+                          <td colspan="2" style="padding-top:2px"><b>DIR:</b> <span>{{ADDRESS}}</span></td>
+                        </tr>
+                        {{NOTES_ROW}}
                       </table>
                     </div>
                     """
@@ -249,7 +256,9 @@ public class TalonarioRasterService {
                     .replace("{{MONTH}}", month)
                     .replace("{{YEAR}}", year)
                     .replace("{{CUSTOMER}}", customer)
-                    .replace("{{PHONE}}", phone);
+                    .replace("{{PHONE}}", phone)
+                    .replace("{{ADDRESS}}", address)
+                    .replace("{{NOTES_ROW}}", notesRow);
             } else {
                 headerHtml = """
                     <div style="border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:7px">
@@ -278,16 +287,16 @@ public class TalonarioRasterService {
                 boolean allPriced = !lines.isEmpty() && lines.stream().allMatch(line -> isMoneyOrderLine(line) || (line.subtotal() != null && line.subtotal().signum() > 0));
                 String totalStr = (allPriced && t.total() != null && t.total().signum() > 0) ? "$" + MONEY_FMT.format(t.total()) : "&nbsp;";
                 footerHtml = """
-                    <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:flex-end">
-                      <div style="width:56%;border:1.5px solid #000;border-radius:4px;padding:9px 12px;font-size:11.5px">
+                    <div style="margin-top:9px;display:flex;justify-content:space-between;align-items:flex-end">
+                      <div style="width:56%;border:1.5px solid #000;border-radius:4px;padding:7px 10px;font-size:11px">
                         <b>RECIBÍ A CONFORMIDAD:</b> ___________________________<br>
                         <span style="font-size:10px;color:#555;margin-top:5px;display:inline-block">Firma y C.C. del cliente</span>
                       </div>
                       <div style="width:40%;text-align:right">
                         <table style="width:100%;border-collapse:collapse;border:2px solid #000;font-size:14px;font-weight:bold">
                           <tr style="background:#e5e7eb;color:#000">
-                            <td style="padding:8px 10px;border:1px solid #000;font-size:14px">TOTAL $</td>
-                            <td style="padding:8px 10px;border:1px solid #000;min-width:90px">{{TOTAL_STR}}</td>
+                            <td style="padding:6px 8px;border:1px solid #000;font-size:13px">TOTAL $</td>
+                            <td style="padding:6px 8px;border:1px solid #000;min-width:85px">{{TOTAL_STR}}</td>
                           </tr>
                         </table>
                       </div>
