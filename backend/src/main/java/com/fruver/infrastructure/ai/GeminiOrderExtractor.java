@@ -59,13 +59,10 @@ public class GeminiOrderExtractor implements OrderExtractor {
         }
         // Modelos de respaldo estándar en orden de capacidad/velocidad a más estables
         for (String m : java.util.List.of(
-                "gemini-2.5-flash",
-                "gemini-2.5-flash-lite",
-                "gemini-2.0-flash",
-                "gemini-1.5-flash",
-                "gemini-flash-latest",
                 "gemini-3.8-flash",
-                "gemini-3.5-flash-lite"
+                "gemini-3.5-flash-lite",
+                "gemini-3.5-flash",
+                "gemini-flash-latest"
         )) {
             if (!list.contains(m)) list.add(m);
         }

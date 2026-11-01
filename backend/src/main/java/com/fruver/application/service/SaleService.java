@@ -22,8 +22,13 @@ import java.util.Map;
  * "APROBAR E IMPRIMIR": valida, determina precios, recalcula y persiste la venta con snapshot,
  * y encola el trabajo de impresion. Soporta tanto modo POS detallado como comanda mayorista automática.
  */
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Service
 public class SaleService {
+
+    private static final Logger log = LoggerFactory.getLogger(SaleService.class);
 
     public record SaleResult(long saleId, long orderId, String printStatus, BigDecimal total) {}
 
@@ -76,6 +81,9 @@ public class SaleService {
         }
 
         List<ItemRow> items = orders.items(orderId);
+        if (items.isEmpty()) {
+            throw new ApiException(422, "EMPTY_ORDER", "No se puede facturar ni imprimir un pedido sin productos.");
+        }
         PriceType priceType = PriceType.forCustomer(CustomerType.valueOf(o.customerType()));
         Quote quote = quotes.quote(items, priceType);
 
@@ -160,6 +168,10 @@ public class SaleService {
         }
 
         List<ItemRow> items = orders.items(orderId);
+        if (items.isEmpty()) {
+            log.warn("Rechazando auto-aprobación para pedido #{}: el pedido no tiene productos.", orderId);
+            return null;
+        }
         PriceType priceType = PriceType.forCustomer(CustomerType.valueOf(o.customerType()));
         Quote quote = null;
         try {

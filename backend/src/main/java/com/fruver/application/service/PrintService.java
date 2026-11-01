@@ -81,6 +81,15 @@ public class PrintService {
 
         try {
             TicketData ticket = tickets.build(job.saleId(), job.reprint());
+            if (ticket.lines() == null || ticket.lines().isEmpty()) {
+                log.warn("Cancelando trabajo de impresión #{}: la venta #{} no contiene productos para imprimir.", job.id(), job.saleId());
+                jdbc.sql("UPDATE print_job SET status = 'FAILED', last_error = 'La orden no tiene productos para imprimir', updated_at = now() WHERE id = :id")
+                        .param("id", job.id()).update();
+                jdbc.sql("UPDATE sale SET print_status = 'PRINT_FAILED', print_error = 'Sin productos' WHERE id = :s")
+                        .param("s", job.saleId()).update();
+                jdbc.sql("SELECT order_id FROM sale WHERE id = :s").param("s", job.saleId()).query(Long.class).optional().ifPresent(hub::orderChanged);
+                return true;
+            }
             PrintStrategy strategy = strategyFactory.getStrategy(location);
             log.info("Despachando impresión de orden #{} con estrategia {} en {}", ticket.orderNumber(), strategy.getStrategyName(), location);
 

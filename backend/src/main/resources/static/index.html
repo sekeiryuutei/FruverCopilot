@@ -921,6 +921,13 @@ async function showTicket(saleId){try{const t=await api(`/api/sales/${saleId}/ti
 async function showTicketByOrder(orderId){try{const t=await api(`/api/orders/${orderId}/ticket`);showTicketModal(t)}catch(e){toast(e.message)}}
 
 async function validateOrderQuick(orderId, cardElement){
+  const draft = S.draft[orderId];
+  const orderObj = (S.orders || []).find(x => x.id === orderId);
+  const items = draft ? draft.items : (orderObj ? orderObj.items : []);
+  if (!items || !items.length) {
+    toast('⚠️ El pedido #' + orderId + ' no tiene productos para facturar ni imprimir.');
+    return;
+  }
   if(cardElement){
     cardElement.style.transition='all 0.25s ease-out';
     cardElement.style.transform='translateX(100%)';
@@ -1545,6 +1552,11 @@ function card(o){
 
   const approve=h('button',{class:'b main'},'APROBAR E IMPRIMIR');
   approve.onclick=async()=>{
+    const draftItems = view.items || [];
+    if (!draftItems.length) {
+      toast('⚠️ El pedido no tiene productos. Agrega al menos un producto antes de aprobar e imprimir.');
+      return;
+    }
     approve.disabled=true;
     approve.dataset.origHtml = approve.innerHTML;
     approve.innerHTML = '<span class="spin">⏳</span> Imprimiendo...';

@@ -44,6 +44,10 @@ final class SystemPrompts {
           * productoMencionado debe ser LITERAL lo que dijo el cliente (ej: "cabezona", "de la larga", "2 de la larga").
           * productoNormalizado puede ser el producto del catálogo más cercano si existe (ej: "Cebolla larga", "Cebolla cabezona"), o null si no estás seguro.
           * NUNCA preguntes al cliente qué variedad quiso decir ni pidas aclaración. ambiguo=false siempre. En la tienda ya conocen a sus clientes y el operario completará los detalles.
+        - GUAYABA vs GUAYABA PERA / GUAYABA MANZANA:
+          * Si el cliente pide "guayaba" a secas (o "guayaba pintona", "guayaba gruesa"), DEBES normalizar a "Guayaba" (NUNCA a "Guayaba pera" ni "Guayaba manzana", a menos que el cliente use expresamente la palabra "pera" o "manzana").
+        - HABICHUELA vs AHUYAMA:
+          * Si en el audio o mensaje menciona "habichuela" (o similar como "abichuela", "habichuela gruesa", "6 de habichuela"), normaliza a "Habichuela". No confundir con "Ahuyama".
 
         PEDIDOS POR VALOR EN DINERO (MUY COMÚN EN COLOMBIA, ej: "2000 de cilantro", "mil de cilantro", "500 de cilantro")
         - En Colombia las hierbas (cilantro, perejil, apio, cebolla junca) se piden típicamente por valor en dinero (ej: "2000 de cilantro", "mil de cilantro").

@@ -380,11 +380,11 @@ public class OrderProcessingService {
                     String storageKey = null;
                     String mime = null;
                     if (isAudio) {
-                        var aRow = jdbc.sql("SELECT storage_key, mime_type FROM audio WHERE message_id = :m")
+                        var aRow = jdbc.sql("SELECT storage_key, mime_type FROM audio WHERE message_id = :m ORDER BY id DESC LIMIT 1")
                                 .param("m", msgId).query((rs, n) -> new String[]{rs.getString(1), rs.getString(2)}).optional().orElse(null);
                         if (aRow != null) { storageKey = aRow[0]; mime = aRow[1]; }
                     } else if (isImage) {
-                        var iRow = jdbc.sql("SELECT storage_key, mime_type FROM media_image WHERE message_id = :m")
+                        var iRow = jdbc.sql("SELECT storage_key, mime_type FROM media_image WHERE message_id = :m AND storage_key IS NOT NULL AND storage_key <> '' ORDER BY id DESC LIMIT 1")
                                 .param("m", msgId).query((rs, n) -> new String[]{rs.getString(1), rs.getString(2)}).optional().orElse(null);
                         if (iRow != null) { storageKey = iRow[0]; mime = iRow[1]; }
                     }

@@ -35,9 +35,14 @@ public class GeminiSpeechToText implements SpeechToTextService {
         this.http = builder.baseUrl(props.ai().gemini().baseUrl()).build();
         java.util.List<String> list = new java.util.ArrayList<>();
         if (props.ai().gemini().model() != null && !props.ai().gemini().model().isBlank()) {
-            list.add(props.ai().gemini().model().strip());
+            for (String m : props.ai().gemini().model().split("[,;|]")) {
+                String trimmed = m.strip();
+                if (!trimmed.isEmpty() && !list.contains(trimmed)) {
+                    list.add(trimmed);
+                }
+            }
         }
-        for (String m : java.util.List.of("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-flash-latest")) {
+        for (String m : java.util.List.of("gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest")) {
             if (!list.contains(m)) list.add(m);
         }
         this.candidateModels = java.util.List.copyOf(list);
@@ -50,23 +55,34 @@ public class GeminiSpeechToText implements SpeechToTextService {
         String base64Audio = Base64.getEncoder().encodeToString(audio);
         String cleanMime = sanitizeMime(mimeType);
 
+        String systemInstruction = """
+                Eres un transcriptor experto de notas de voz de WhatsApp para una tienda de frutas y verduras (Fruver) en Colombia.
+                REGLAS CRÍTICAS:
+                1. Transcribe el audio COMPLETO, de principio a fin, palabra por palabra, hasta el último segundo sin omitir ni cortar nada. Este audio puede durar varios minutos y contiene una lista larga de muchos productos. NO te detengas hasta transcribir la última palabra dicha.
+                2. FONÉTICA Y VOCABULARIO CLAVE DE FRUVER COLOMBIANO:
+                   - 'habichuela': verdura verde delgada (por libras o kilos), muy común en pedidos. Si suena similar a 'ahuyama', pero es verdura de pedido, transcribe 'habichuela'.
+                   - 'guayaba': si el cliente dice guayaba, transcribe 'guayaba'.
+                   - Otros términos comunes: papa criolla, papa pastusa, papa parda, cebolla cabezona, cebolla larga, cilantro, cimarrón, espinaca, champiñones, lulo, maracuyá, tomate chonto, banano, plátano verde, plátano maduro, arveja, fríjol, yuca, arracacha, batata, batavia, calabacín, brócoli, piña, cidra, ulluco, etc.
+                3. Devuelve ÚNICAMENTE el texto transcrito sin explicaciones ni saludos.
+                """;
+
         Map<String, Object> payload = Map.of(
                 "system_instruction", Map.of(
-                        "parts", List.of(Map.of("text",
-                                "Eres un transcriptor experto de notas de voz de WhatsApp para una tienda de frutas y verduras (Fruver) en Colombia. " +
-                                "Transcribe el audio palabra por palabra con precisión, respetando términos colombianos como piña, papa criolla, " +
-                                "tomate chonto, cebolla cabezona, plátano, etc. Devuelve ÚNICAMENTE el texto transcrito sin explicaciones ni saludos."))
+                        "parts", List.of(Map.of("text", systemInstruction))
                 ),
                 "contents", List.of(
                         Map.of(
                                 "role", "user",
                                 "parts", List.of(
                                         Map.of("inline_data", Map.of("mime_type", cleanMime, "data", base64Audio)),
-                                        Map.of("text", "Transcribe este audio de WhatsApp en español colombiano.")
+                                        Map.of("text", "Transcribe TODO este audio completo de principio a fin sin omitir ninguna frase ni producto.")
                                 )
                         )
                 ),
-                "generationConfig", Map.of("temperature", 0.0)
+                "generationConfig", Map.of(
+                        "temperature", 0.0,
+                        "maxOutputTokens", 8192
+                )
         );
 
         JsonNode root = null;

@@ -154,6 +154,9 @@ public class OrderWriter {
                                 INSERT INTO order_item(order_id, line_no, mentioned, ai_product_name, ai_quantity, ai_unit, ai_ambiguous,
                                                        observation, product_id, quantity, unit)
                                 VALUES (:o, :ln, :m, :apn, :aq, :au, :aa, :obs, :pid, :q, :u)
+                                ON CONFLICT (order_id, product_id, unit) WHERE product_id IS NOT NULL
+                                DO UPDATE SET quantity = COALESCE(order_item.quantity, 0) + COALESCE(EXCLUDED.quantity, 0),
+                                              ai_quantity = COALESCE(order_item.ai_quantity, 0) + COALESCE(EXCLUDED.ai_quantity, 0)
                                 """).param("o", orderId).param("ln", nextLine++).param("m", ni.mentioned()).param("apn", ni.aiProductName())
                                 .param("aq", ni.aiQuantity()).param("au", ni.aiUnit()).param("aa", ni.aiAmbiguous())
                                 .param("obs", ni.observation()).param("pid", ni.productId()).param("q", ni.quantity())
