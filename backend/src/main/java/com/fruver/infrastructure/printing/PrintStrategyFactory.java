@@ -47,10 +47,14 @@ public class PrintStrategyFactory {
         String normalized = type.trim().toUpperCase();
         if (normalized.contains("EMAIL") || normalized.contains("CORREO")) {
             return emailStrategy;
-        } else if (normalized.contains("IPP") || port == 631) {
-            return ippStrategy;
-        } else if (normalized.contains("ESCPOS") || normalized.contains("TERMICA") || port == 9100) {
+        } else if (normalized.contains("ESCPOS") || normalized.contains("TERMICA")) {
             return escPosStrategy;
+        } else if (normalized.contains("IPP")) {
+            return ippStrategy;
+        } else if (port == 9100) {
+            return escPosStrategy;
+        } else if (port == 631) {
+            return ippStrategy;
         }
 
         return emailStrategy;

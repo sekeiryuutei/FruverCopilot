@@ -1942,26 +1942,92 @@ async function renderPrinterConfig(){
     const locName = cfg.activePrinter==='OFICINA' ? `🏪 FRUVER (${fruverStart}-${fruverEnd})` : `🏠 CASA (${fruverEnd}-${fruverStart})`;
 
     // Fruver - Tipo de Impresión
-    const officePrintTypeSelect = h('select',{style:'font-size:14px;padding:8px;font-weight:700;width:100%'},
-      h('option',{value:'EMAIL',selected:(cfg.officePrintType||'EMAIL')==='EMAIL'},'✉️ Correo Brother Cloud (print.brother.com)'),
-      h('option',{value:'IPP',selected:cfg.officePrintType==='IPP'},'🌐 Red IP Directa (IPP 631)'),
-      h('option',{value:'ESCPOS',selected:cfg.officePrintType==='ESCPOS'},'🧾 Red Térmica (RAW 9100)')
+    const officePrintTypeSelect = h('select',{style:'font-size:14px;padding:9px;font-weight:700;width:100%'},
+      h('option',{value:'EMAIL',selected:(cfg.officePrintType||'EMAIL')==='EMAIL'},'✉️ Correo Brother Cloud (Media Carta / A5)'),
+      h('option',{value:'IPP',selected:cfg.officePrintType==='IPP'},'🌐 Impresora de Red Directa (Media Carta / A5)'),
+      h('option',{value:'ESCPOS',selected:cfg.officePrintType==='ESCPOS'},'🧾 Impresora Térmica de Tickets (80mm)')
     );
     const officeEmailInput = h('input',{value:cfg.officeEmail||'23363927290@print.brother.com',placeholder:'ej: 23363927290@print.brother.com',style:'font-size:14px;font-weight:700;width:100%'});
-    const officeHostInput = h('input',{value:cfg.officeHost||'127.0.0.1',placeholder:'IP Impresora Fruver',style:'font-size:14px;font-weight:700;width:100%'});
+    const officeHostLabel = h('span',{class:'mut',style:'font-size:12px'},'IP / Host de la Impresora');
+    const officeHostInput = h('input',{value:cfg.officeHost||'127.0.0.1',placeholder:'ej: 191.95.160.24 o 192.168.1.10',style:'font-size:14px;font-weight:700;width:100%'});
+    const officePortLabel = h('span',{class:'mut',style:'font-size:12px'},'Puerto');
     const officePortInput = h('input',{type:'number',value:cfg.officePort||631,placeholder:'Puerto',style:'font-size:14px;font-weight:700;width:110px'});
     const scheduleOfficeStartInput = h('input',{type:'time',value:fruverStart,style:'font-size:14px;font-weight:700;padding:6px;width:115px;text-align:center'});
     const scheduleOfficeEndInput = h('input',{type:'time',value:fruverEnd,style:'font-size:14px;font-weight:700;padding:6px;width:115px;text-align:center'});
 
+    const officeEmailRow = h('div',{style:'margin-bottom:10px'},
+      h('span',{class:'mut',style:'font-size:12px;display:block;margin-bottom:4px'},'Correo de la Impresora Brother Cloud:'),
+      officeEmailInput
+    );
+    const officeNetworkRow = h('div',{style:'display:flex;gap:10px;margin-bottom:10px'},
+      h('div',{style:'flex:1'},officeHostLabel,officeHostInput),
+      h('div',{},officePortLabel,officePortInput)
+    );
+
+    function syncOfficeFields() {
+      const val = officePrintTypeSelect.value;
+      if (val === 'EMAIL') {
+        officeEmailRow.style.display = 'block';
+        officeNetworkRow.style.display = 'none';
+      } else if (val === 'IPP') {
+        officeEmailRow.style.display = 'none';
+        officeNetworkRow.style.display = 'flex';
+        officeHostLabel.textContent = 'IP de la Impresora de Red (IPP):';
+        officePortLabel.textContent = 'Puerto (ej: 631):';
+        if (!officePortInput.value || officePortInput.value === '9100') officePortInput.value = '631';
+      } else {
+        officeEmailRow.style.display = 'none';
+        officeNetworkRow.style.display = 'flex';
+        officeHostLabel.textContent = 'IP de la Impresora Térmica:';
+        officePortLabel.textContent = 'Puerto RAW (ej: 9100):';
+        if (!officePortInput.value || officePortInput.value === '631') officePortInput.value = '9100';
+      }
+    }
+    officePrintTypeSelect.onchange = syncOfficeFields;
+    syncOfficeFields();
+
     // Casa - Tipo de Impresión
-    const homePrintTypeSelect = h('select',{style:'font-size:14px;padding:8px;font-weight:700;width:100%'},
-      h('option',{value:'ESCPOS',selected:(cfg.homePrintType||'ESCPOS')==='ESCPOS'},'🧾 Red Térmica (RAW 9100)'),
-      h('option',{value:'EMAIL',selected:cfg.homePrintType==='EMAIL'},'✉️ Correo Brother Cloud (print.brother.com)'),
-      h('option',{value:'IPP',selected:cfg.homePrintType==='IPP'},'🌐 Red IP Directa (IPP 631)')
+    const homePrintTypeSelect = h('select',{style:'font-size:14px;padding:9px;font-weight:700;width:100%'},
+      h('option',{value:'ESCPOS',selected:(cfg.homePrintType||'ESCPOS')==='ESCPOS'},'🧾 Impresora Térmica de Tickets (80mm)'),
+      h('option',{value:'EMAIL',selected:cfg.homePrintType==='EMAIL'},'✉️ Correo Brother Cloud (Media Carta / A5)'),
+      h('option',{value:'IPP',selected:cfg.homePrintType==='IPP'},'🌐 Impresora de Red Directa (Media Carta / A5)')
     );
     const homeEmailInput = h('input',{value:cfg.homeEmail||'',placeholder:'ej: casa@print.brother.com',style:'font-size:14px;font-weight:700;width:100%'});
-    const homeHostInput = h('input',{value:cfg.homeHost||'127.0.0.1',placeholder:'IP Impresora Casa',style:'font-size:14px;font-weight:700;width:100%'});
+    const homeHostLabel = h('span',{class:'mut',style:'font-size:12px'},'IP / Host de la Impresora');
+    const homeHostInput = h('input',{value:cfg.homeHost||'127.0.0.1',placeholder:'ej: 192.168.1.5',style:'font-size:14px;font-weight:700;width:100%'});
+    const homePortLabel = h('span',{class:'mut',style:'font-size:12px'},'Puerto');
     const homePortInput = h('input',{type:'number',value:cfg.homePort||9100,placeholder:'Puerto',style:'font-size:14px;font-weight:700;width:110px'});
+
+    const homeEmailRow = h('div',{style:'margin-bottom:10px'},
+      h('span',{class:'mut',style:'font-size:12px;display:block;margin-bottom:4px'},'Correo Brother Cloud (para Casa):'),
+      homeEmailInput
+    );
+    const homeNetworkRow = h('div',{style:'display:flex;gap:10px;margin-bottom:10px'},
+      h('div',{style:'flex:1'},homeHostLabel,homeHostInput),
+      h('div',{},homePortLabel,homePortInput)
+    );
+
+    function syncHomeFields() {
+      const val = homePrintTypeSelect.value;
+      if (val === 'EMAIL') {
+        homeEmailRow.style.display = 'block';
+        homeNetworkRow.style.display = 'none';
+      } else if (val === 'IPP') {
+        homeEmailRow.style.display = 'none';
+        homeNetworkRow.style.display = 'flex';
+        homeHostLabel.textContent = 'IP de la Impresora de Red (IPP):';
+        homePortLabel.textContent = 'Puerto (ej: 631):';
+        if (!homePortInput.value || homePortInput.value === '9100') homePortInput.value = '631';
+      } else {
+        homeEmailRow.style.display = 'none';
+        homeNetworkRow.style.display = 'flex';
+        homeHostLabel.textContent = 'IP de la Impresora Térmica:';
+        homePortLabel.textContent = 'Puerto RAW (ej: 9100):';
+        if (!homePortInput.value || homePortInput.value === '631') homePortInput.value = '9100';
+      }
+    }
+    homePrintTypeSelect.onchange = syncHomeFields;
+    syncHomeFields();
 
     const modeSelect = h('select',{style:'font-size:15px;padding:9px;font-weight:700;width:100%'},
       h('option',{value:'AUTO',selected:cfg.mode==='AUTO'},`⏱️ Horario Automático (${fruverStart} a ${fruverEnd} en Fruver / resto en Casa)`),
@@ -2015,11 +2081,11 @@ async function renderPrinterConfig(){
           method:'PUT',
           body:{
             officeHost: officeHostInput.value.trim(),
-            officePort: Number(officePortInput.value)||631,
+            officePort: Number(officePortInput.value) || (officePrintTypeSelect.value === 'IPP' ? 631 : 9100),
             officePrintType: officePrintTypeSelect.value,
             officeEmail: officeEmailInput.value.trim(),
             homeHost: homeHostInput.value.trim(),
-            homePort: Number(homePortInput.value)||9100,
+            homePort: Number(homePortInput.value) || (homePrintTypeSelect.value === 'IPP' ? 631 : 9100),
             homePrintType: homePrintTypeSelect.value,
             homeEmail: homeEmailInput.value.trim(),
             scheduleOfficeStart: scheduleOfficeStartInput.value.trim() || '04:00',
@@ -2067,7 +2133,7 @@ async function renderPrinterConfig(){
         )
       ),
       h('div',{class:'banner',style:'background:#1e293b;border-left:4px solid var(--g);margin-bottom:16px;font-size:13px'},
-        'Configura cómo y dónde imprime cada sede (Correo Brother Cloud o Red IP directa) y los horarios automáticos sin valores fijos.'
+        'Configura el método de impresión para cada sede (Correo Brother Cloud, Red Directa o Térmica) y los horarios de atención.'
       ),
       h('div',{style:'display:flex;flex-direction:column;gap:14px'},
         // SEDE FRUVER
@@ -2077,17 +2143,11 @@ async function renderPrinterConfig(){
             testOfficeBtn
           ),
           h('div',{style:'margin-bottom:10px'},
-            h('span',{class:'mut',style:'font-size:12px;display:block;margin-bottom:4px'},'Tipo de Conexión:'),
+            h('span',{class:'mut',style:'font-size:12px;display:block;margin-bottom:4px'},'Tipo de Impresora / Conexión:'),
             officePrintTypeSelect
           ),
-          h('div',{style:'margin-bottom:10px'},
-            h('span',{class:'mut',style:'font-size:12px;display:block;margin-bottom:4px'},'Correo Brother Cloud:'),
-            officeEmailInput
-          ),
-          h('div',{style:'display:flex;gap:10px;margin-bottom:10px'},
-            h('div',{style:'flex:1'},h('span',{class:'mut',style:'font-size:12px'},'IP / Host LAN (si usa red directa)'),officeHostInput),
-            h('div',{},h('span',{class:'mut',style:'font-size:12px'},'Puerto'),officePortInput)
-          ),
+          officeEmailRow,
+          officeNetworkRow,
           h('div',{style:'border-top:1px dashed var(--line);padding-top:8px;margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap'},
             h('span',{style:'font-size:13px;font-weight:700;color:#93c5fd'},'Horario de Atención Fruver:'),
             h('span',{style:'font-size:12px'},'De'),
@@ -2103,17 +2163,11 @@ async function renderPrinterConfig(){
             testHomeBtn
           ),
           h('div',{style:'margin-bottom:10px'},
-            h('span',{class:'mut',style:'font-size:12px;display:block;margin-bottom:4px'},'Tipo de Conexión:'),
+            h('span',{class:'mut',style:'font-size:12px;display:block;margin-bottom:4px'},'Tipo de Impresora / Conexión:'),
             homePrintTypeSelect
           ),
-          h('div',{style:'margin-bottom:10px'},
-            h('span',{class:'mut',style:'font-size:12px;display:block;margin-bottom:4px'},'Correo Brother Cloud (opcional para casa):'),
-            homeEmailInput
-          ),
-          h('div',{style:'display:flex;gap:10px'},
-            h('div',{style:'flex:1'},h('span',{class:'mut',style:'font-size:12px'},'IP / Host LAN'),homeHostInput),
-            h('div',{},h('span',{class:'mut',style:'font-size:12px'},'Puerto'),homePortInput)
-          )
+          homeEmailRow,
+          homeNetworkRow
         ),
         // ENRUTAMIENTO
         h('div',{style:'background:rgba(255,255,255,0.03);padding:14px;border-radius:8px;border:1px solid var(--line)'},
@@ -2177,7 +2231,7 @@ async function renderPrinterConfig(){
       )
     );
 
-    const isStandalone = (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) || (typeof window !== 'undefined' && window.navigator && window.navigator.standalone === true);
+        const isStandalone = (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) || (typeof window !== 'undefined' && window.navigator && window.navigator.standalone === true);
 
     const pwaCard = h('div',{class:'card',style:'max-width:640px;margin:14px auto;padding:18px'},
       h('div',{style:'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px'},
