@@ -39,5 +39,12 @@ public record InterpretedOrder(
             String observation,
             Long productId,
             BigDecimal quantity,
-            UnitOfMeasure unit) {}
+            UnitOfMeasure unit,
+            BigDecimal manualPrice) {
+
+        public Item(String mentioned, String aiProductName, BigDecimal aiQuantity, String aiUnit,
+                    boolean aiAmbiguous, String observation, Long productId, BigDecimal quantity, UnitOfMeasure unit) {
+            this(mentioned, aiProductName, aiQuantity, aiUnit, aiAmbiguous, observation, productId, quantity, unit, null);
+        }
+    }
 }

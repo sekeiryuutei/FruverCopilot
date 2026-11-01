@@ -28,7 +28,7 @@ public class TicketService {
         ZoneId zone = ZoneId.of(props.timezone());
         return jdbc.sql("""
                 SELECT order_id, created_at, customer_name, customer_phone, customer_type, total, address, notes,
-                       delivery_person_name, COALESCE(requires_verification, FALSE), verification_reason
+                       delivery_person_name, COALESCE(requires_verification, FALSE), verification_reason, input_type
                 FROM sale WHERE id = :s
                 """)
                 .param("s", saleId)
@@ -46,7 +46,8 @@ public class TicketService {
                         reprint,
                         rs.getString(9),
                         rs.getBoolean(10),
-                        rs.getString(11))).single();
+                        rs.getString(11),
+                        rs.getString(12))).single();
     }
 
     public TicketData buildFromOrder(long orderId) {
@@ -73,7 +74,7 @@ public class TicketService {
                 SELECT o.id, o.received_at, COALESCE(o.customer_name, c.name, 'Cliente'),
                        COALESCE(o.customer_phone, c.phone, ''), COALESCE(c.customer_type, 'RETAIL'),
                        o.address, o.notes, o.delivery_person_name,
-                       COALESCE(o.requires_verification, FALSE), o.verification_reason
+                       COALESCE(o.requires_verification, FALSE), o.verification_reason, o.input_type
                 FROM orders o
                 LEFT JOIN customer c ON c.id = o.customer_id
                 WHERE o.id = :o
@@ -93,6 +94,7 @@ public class TicketService {
                         false,
                         rs.getString(8),
                         rs.getBoolean(9),
-                        rs.getString(10))).single();
+                        rs.getString(10),
+                        rs.getString(11))).single();
     }
 }

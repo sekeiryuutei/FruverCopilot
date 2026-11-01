@@ -53,9 +53,13 @@ public final class TicketFormatter {
             if (p.startsWith("57") && p.length() == 12) p = p.substring(2);
             out.add(new TicketLine("TEL: " + p, false));
         }
+        if ("AUDIO".equalsIgnoreCase(t.inputType())) {
+            out.add(new TicketLine("ORIGEN: AUDIO", false));
+        } else if ("IMAGE".equalsIgnoreCase(t.inputType())) {
+            out.add(new TicketLine("ORIGEN: IMAGEN / FOTO", false));
+        }
         if (t.address() != null && !t.address().isBlank()) wrap("DIRECCION: " + t.address(), cols, false, out);
         if (t.deliveryPersonName() != null && !t.deliveryPersonName().isBlank()) wrap("REPARTIDOR: " + t.deliveryPersonName(), cols, true, out);
-        if (t.notes() != null && !t.notes().isBlank()) wrap("OBS: " + t.notes(), cols, false, out);
 
         out.add(new TicketLine(doubleSep, false));
         // Cabecera de la tabla: CANTIDAD / UNIDAD primero, luego DESCRIPCION y VALOR
@@ -78,10 +82,6 @@ public final class TicketFormatter {
         // Espacio manual para que el personal anote el total a mano (modulo de precios desactivado)
         String totalValue = (cols >= 40 ? "                    " : "              ");
         out.add(new TicketLine(leftRight("TOTAL $:", totalValue, cols), true));
-        out.add(new TicketLine(sep, false));
-        // Firma del receptor
-        String nitFill = "_".repeat(Math.max(4, cols - 9));
-        out.add(new TicketLine("RECIBI: " + nitFill, false));
         out.add(new TicketLine(sep, false));
         return out;
     }

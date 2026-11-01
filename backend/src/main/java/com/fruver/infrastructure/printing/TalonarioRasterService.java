@@ -145,8 +145,12 @@ public class TalonarioRasterService {
         String rawPhone = (t.phone() != null ? t.phone() : "").trim();
         String phone = rawPhone.replaceFirst("^\\+?57", "");
         String address = (t.address() != null && !t.address().isBlank()) ? t.address().trim().toUpperCase() : "________________________________________________";
-        String notes = (t.notes() != null && !t.notes().isBlank()) ? t.notes().trim() : "";
-        String notesRow = !notes.isBlank() ? "<tr><td colspan=\"2\" style=\"padding-top:2px;font-size:10.5px;color:#222\"><b>OBS:</b> <span>" + notes + "</span></td></tr>\n" : "";
+        String originInfo = "";
+        if ("AUDIO".equalsIgnoreCase(t.inputType())) {
+            originInfo = "<b>ORIGEN:</b> &#127908; AUDIO";
+        } else if ("IMAGE".equalsIgnoreCase(t.inputType())) {
+            originInfo = "<b>ORIGEN:</b> &#128247; IMAGEN / LISTA";
+        }
         String orderNum = String.format("%06d", t.orderNumber());
 
         var dt = t.at();
@@ -244,9 +248,9 @@ public class TalonarioRasterService {
                           <td style="width:35%"><b>TEL:</b> <span>{{PHONE}}</span></td>
                         </tr>
                         <tr>
-                          <td colspan="2" style="padding-top:2px"><b>DIR:</b> <span>{{ADDRESS}}</span></td>
+                          <td style="width:65%;padding-top:2px"><b>DIR:</b> <span>{{ADDRESS}}</span></td>
+                          <td style="width:35%;padding-top:2px;font-size:11px">{{ORIGIN_INFO}}</td>
                         </tr>
-                        {{NOTES_ROW}}
                       </table>
                     </div>
                     """
@@ -258,7 +262,7 @@ public class TalonarioRasterService {
                     .replace("{{CUSTOMER}}", customer)
                     .replace("{{PHONE}}", phone)
                     .replace("{{ADDRESS}}", address)
-                    .replace("{{NOTES_ROW}}", notesRow);
+                    .replace("{{ORIGIN_INFO}}", originInfo);
             } else {
                 headerHtml = """
                     <div style="border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:7px">
@@ -287,11 +291,7 @@ public class TalonarioRasterService {
                 boolean allPriced = !lines.isEmpty() && lines.stream().allMatch(line -> isMoneyOrderLine(line) || (line.subtotal() != null && line.subtotal().signum() > 0));
                 String totalStr = (allPriced && t.total() != null && t.total().signum() > 0) ? "$" + MONEY_FMT.format(t.total()) : "&nbsp;";
                 footerHtml = """
-                    <div style="margin-top:9px;display:flex;justify-content:space-between;align-items:flex-end">
-                      <div style="width:56%;border:1.5px solid #000;border-radius:4px;padding:7px 10px;font-size:11px">
-                        <b>RECIBÍ A CONFORMIDAD:</b> ___________________________<br>
-                        <span style="font-size:10px;color:#555;margin-top:5px;display:inline-block">Firma y C.C. del cliente</span>
-                      </div>
+                    <div style="margin-top:9px;display:flex;justify-content:flex-end;align-items:center">
                       <div style="width:40%;text-align:right">
                         <table style="width:100%;border-collapse:collapse;border:2px solid #000;font-size:14px;font-weight:bold">
                           <tr style="background:#e5e7eb;color:#000">

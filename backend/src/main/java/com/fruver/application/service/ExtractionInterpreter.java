@@ -55,10 +55,22 @@ public class ExtractionInterpreter {
             if (mentioned.isBlank()) mentioned = clip(d.productoNormalizado(), 200);
             if (mentioned.isBlank()) mentioned = "(sin texto)";
 
+            // Regla de negocio: pedidos por valor en dinero (ej: "10.000 de papa", "2000 espinaca")
+            BigDecimal manualPrice = null;
+            boolean isMoneyOrder = (d.unidadMedida() != null && (d.unidadMedida().equalsIgnoreCase("VALOR") || d.unidadMedida().equalsIgnoreCase("PESOS") || d.unidadMedida().equals("$")))
+                    || (d.observacion() != null && (d.observacion().toLowerCase().contains("valor") || d.observacion().contains("$")))
+                    || (d.cantidad() != null && d.cantidad().compareTo(new BigDecimal("500")) >= 0 && unit == null);
+
+            if (isMoneyOrder) {
+                manualPrice = d.cantidad() != null ? d.cantidad().setScale(0, RoundingMode.HALF_UP) : null;
+                qty = null;
+                unit = null;
+            }
+
             items.add(new Item(mentioned, blankToNull(clip(d.productoNormalizado(), 200)), storableAiQuantity(d.cantidad()),
                     d.unidadMedida() == null ? null : clip(d.unidadMedida(), 20), d.ambiguo(),
                     blankToNull(clip(d.observacion(), 300)),
-                    res.matches() == 1 ? res.productId() : null, qty, unit));
+                    res.matches() == 1 ? res.productId() : null, qty, unit, manualPrice));
             assessments.add(new ItemAssessment(res.matches() == 1 && res.productId() != null,
                     res.matches(), qty, unit, d.ambiguo()));
         }

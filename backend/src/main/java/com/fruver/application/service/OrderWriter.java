@@ -113,12 +113,13 @@ public class OrderWriter {
                 for (InterpretedOrder.Item i : io.items()) {
                     jdbc.sql("""
                             INSERT INTO order_item(order_id, line_no, mentioned, ai_product_name, ai_quantity, ai_unit, ai_ambiguous,
-                                                   observation, product_id, quantity, unit)
-                            VALUES (:o, :ln, :m, :apn, :aq, :au, :aa, :obs, :pid, :q, :u)
+                                                   observation, product_id, quantity, unit, manual_price)
+                            VALUES (:o, :ln, :m, :apn, :aq, :au, :aa, :obs, :pid, :q, :u, :mp)
                             """).param("o", orderId).param("ln", line++).param("m", i.mentioned()).param("apn", i.aiProductName())
                             .param("aq", i.aiQuantity()).param("au", i.aiUnit()).param("aa", i.aiAmbiguous())
                             .param("obs", i.observation()).param("pid", i.productId()).param("q", i.quantity())
-                            .param("u", i.unit() == null ? null : i.unit().name()).update();
+                            .param("u", i.unit() == null ? null : i.unit().name())
+                            .param("mp", i.manualPrice()).update();
                 }
             } else {
                 // Fusión inteligente: preservar ítems existentes y anexar o actualizar nuevos
@@ -131,36 +132,28 @@ public class OrderWriter {
                             .findFirst().orElse(null);
 
                     if (match != null) {
-                        boolean aiReturnedFullList = io.items().size() >= existingItems.size();
-                        if (aiReturnedFullList) {
-                            jdbc.sql("""
-                                    UPDATE order_item SET quantity = :q, unit = :u, ai_quantity = :aq, ai_unit = :au,
-                                           ai_ambiguous = :aa, observation = :obs
-                                    WHERE id = :id
-                                    """).param("q", ni.quantity()).param("u", ni.unit() == null ? null : ni.unit().name())
-                                    .param("aq", ni.aiQuantity()).param("au", ni.aiUnit()).param("aa", ni.aiAmbiguous())
-                                    .param("obs", ni.observation()).param("id", match.id()).update();
-                        } else {
-                            java.math.BigDecimal addQty = ni.quantity() != null ? ni.quantity() : ni.aiQuantity();
-                            if (addQty != null && addQty.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                                java.math.BigDecimal curQty = match.quantity() != null ? match.quantity() : (match.aiQuantity() != null ? match.aiQuantity() : java.math.BigDecimal.ZERO);
-                                java.math.BigDecimal totalQty = curQty.add(addQty);
-                                jdbc.sql("UPDATE order_item SET quantity = :q, ai_quantity = :aq WHERE id = :id")
-                                        .param("q", totalQty).param("aq", totalQty).param("id", match.id()).update();
-                            }
-                        }
+                        jdbc.sql("""
+                                UPDATE order_item SET quantity = :q, unit = :u, ai_quantity = :aq, ai_unit = :au,
+                                       ai_ambiguous = :aa, observation = :obs, manual_price = COALESCE(:mp, order_item.manual_price)
+                                WHERE id = :id
+                                """).param("q", ni.quantity()).param("u", ni.unit() == null ? null : ni.unit().name())
+                                .param("aq", ni.aiQuantity()).param("au", ni.aiUnit()).param("aa", ni.aiAmbiguous())
+                                .param("obs", ni.observation()).param("mp", ni.manualPrice()).param("id", match.id()).update();
                     } else {
                         jdbc.sql("""
                                 INSERT INTO order_item(order_id, line_no, mentioned, ai_product_name, ai_quantity, ai_unit, ai_ambiguous,
-                                                       observation, product_id, quantity, unit)
-                                VALUES (:o, :ln, :m, :apn, :aq, :au, :aa, :obs, :pid, :q, :u)
+                                                       observation, product_id, quantity, unit, manual_price)
+                                VALUES (:o, :ln, :m, :apn, :aq, :au, :aa, :obs, :pid, :q, :u, :mp)
                                 ON CONFLICT (order_id, product_id, unit) WHERE product_id IS NOT NULL
-                                DO UPDATE SET quantity = COALESCE(order_item.quantity, 0) + COALESCE(EXCLUDED.quantity, 0),
-                                              ai_quantity = COALESCE(order_item.ai_quantity, 0) + COALESCE(EXCLUDED.ai_quantity, 0)
+                                DO UPDATE SET quantity = EXCLUDED.quantity,
+                                              ai_quantity = EXCLUDED.ai_quantity,
+                                              manual_price = COALESCE(EXCLUDED.manual_price, order_item.manual_price),
+                                              observation = EXCLUDED.observation
                                 """).param("o", orderId).param("ln", nextLine++).param("m", ni.mentioned()).param("apn", ni.aiProductName())
                                 .param("aq", ni.aiQuantity()).param("au", ni.aiUnit()).param("aa", ni.aiAmbiguous())
                                 .param("obs", ni.observation()).param("pid", ni.productId()).param("q", ni.quantity())
-                                .param("u", ni.unit() == null ? null : ni.unit().name()).update();
+                                .param("u", ni.unit() == null ? null : ni.unit().name())
+                                .param("mp", ni.manualPrice()).update();
                     }
                 }
             }

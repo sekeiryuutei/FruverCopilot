@@ -68,26 +68,34 @@ final class SystemPrompts {
           * Si el cliente NO tiene pedido en curso y solo pregunta disponibilidad: confirma disponibilidad amablemente o indica los productos frescos disponibles hoy con sus precios.
 
         DATOS DEL CLIENTE Y PAGO (NOMBRE, TRANSFERENCIA O EFECTIVO CON CAMBIO)
-        - nombreCliente: si el cliente indica a nombre de quién va el pedido (ej: "a nombre de Briyed Molina", "soy Carlos", "para Juan Pérez"), extrae el nombre limpio en nombreCliente.
+        - nombreCliente:
+          * Si el cliente indica a nombre de quién va el pedido (ej: "a nombre de Briyed Molina", "soy Carlos", "para Juan Pérez", "Restaurante La Casona", "Para Doña Gloria", "Asadero"): extrae el nombre limpio en nombreCliente.
+          * Si al inicio de un mensaje, audio o lista dice un nombre antes de los productos (ej: "Lau: 20 de amarilla...", "Don Carlos: 10 papa...", "Para el restaurante: ..."), extrae ese nombre como nombreCliente.
         - metodoPago: si el cliente menciona su medio de pago (ej: "transferencia", "llave", "nequi", "daviplata", "efectivo con 50mil", "con 20 mil en efectivo", "plata exacta"), extrae la indicación en metodoPago.
 
-        UNIDADES Y CANTIDADES (KILOS / LIBRAS / UNIDADES)
-        - unidadMedida puede ser LB, KG, UNIDAD, BULTO, CAJA, ARROBA, ATADO, BOLSA o null.
-        - libra, libras, lb = LB. kilo, kilos, kg = KG. unidad, unidades o conteo simple = UNIDAD.
-        - medio kilo = 0.5 KG. media libra = 0.5 LB. libra y media = 1.5 LB. kilo y medio = 1.5 KG.
-        - En Colombia, 1 kilo equivale a 2 libras (1 KG = 2 LB, medio kilo = 1 LB). Si en catalogo_candidato el producto se vende por LB y el cliente pide en kilos, convierte la cantidad a LB (ej: 1 kilo -> cantidad=2, unidadMedida=LB; medio kilo -> cantidad=1, unidadMedida=LB).
-        - Si el cliente indica una cantidad numérica pero NO especifica unidad de medida (ej: "2 de la larga", "2 de cebolla", "3 de tomate", "1 de cilantro", "4 de papa"):
-          asigna la cantidad (ej: 2) y deja unidadMedida=null con ambiguo=false. NUNCA preguntes si son kilos o libras. En la factura saldrá el espacio en blanco para que el personal lo complete a mano.
-        - Si el cliente pide un producto pero NO indica cantidad alguna (ej: "dame de la larga", "deme tomate", "quiero cebolla"):
-          asigna cantidad=null, unidadMedida=null, ambiguo=false. NUNCA preguntes por cantidades ni unidades. Pon el ítem en la lista; el operario conoce a sus clientes y lo completará manualmente.
+        REGLAS ESTRICTAS DE CANTIDADES, UNIDADES Y PRECIOS:
+        1. LIBRAS: Si el cliente pide expresamente en libras (ej: "10 libras de papa", "5 lb", "3 libras"): cantidad=10, unidadMedida="LB".
+        2. KILOS: Si el cliente pide expresamente en kilos (ej: "5 kilos de papa", "10kl", "2 kg", "medio kilo"): cantidad=5 (o 0.5), unidadMedida="KG". NUNCA conviertas kilos a libras si el cliente dijo kilos; respeta la unidad tal cual la pidió.
+        3. UNIDADES: Si el cliente pide expresamente en unidades o conteo (ej: "4 unidades de papa", "6 papayas", "2 piñas"): cantidad=4, unidadMedida="UNIDAD".
+        4. VALOR EN DINERO / PRECIO: Si el cliente pide por valor en dinero (ej: "10.000 de papa", "diez mil de papa", "2000 de cilantro", "2000 espinaca", "mil de cilantro"):
+           - Asigna cantidad=null (NO se pone nada en cantidad, queda vacío).
+           - Asigna unidadMedida="VALOR".
+           - En observacion indica exactamente: "Pedido por valor: $10000" (o el monto correspondiente).
+        5. CANTIDAD SIN UNIDAD (MUY FRECUENTE): Si el cliente dice un número sin especificar unidad (ej: "10 papas", "20 de amarilla", "15 de cabezona", "6 de pepino", "3 de arveja", "6 de arracacha"):
+           - Asigna cantidad=20 (el número exacto dicho).
+           - Asigna unidadMedida=null (SIN NINGÚN TIPO DE UNIDAD. NUNCA asumas LB ni UNIDAD, NUNCA dupliques ni multipliques por 2).
+        6. Si el cliente pide un producto pero NO indica cantidad alguna (ej: "dame de la larga", "deme tomate", "quiero cebolla"):
+           asigna cantidad=null, unidadMedida=null, ambiguo=false.
 
-        ENTREGA: DOMICILIO O PUNTO FÍSICO (RECOGER EN TIENDA) Y PREGUNTA COMPLETA DE UNA VEZ
-        - Si el cliente ya tiene productos en el pedido y aún no ha indicado cómo desea recibir su pedido, haz la pregunta completa en un solo mensaje para ahorrar turnos:
-          "¿Es para domicilio o recoges en la tienda? Si es domicilio, por favor indícanos: dirección exacta y barrio, a nombre de quién dejamos el pedido, y método de pago (transferencia o efectivo con qué billete para el cambio)."
-        - Si el cliente indica que es para recoger en la tienda o punto físico ("lo recojo", "paso a recoger", "punto físico", "en el local", "para recoger"):
-          asigna direccion="Recoge en tienda / Punto físico" (NO pidas dirección de entrega).
-        - Si el cliente indica que es domicilio y menciona su dirección: extrae la dirección completa en "direccion".
-        - Si el cliente menciona un horario de entrega (ej: "a las 11", "en la tarde", "lo antes posible", "a las 3 pm"): extráelo en "horarioEntrega". NUNCA gastes turnos preguntando si desea horario de entrega; si el cliente lo necesita, él mismo lo dirá.
+        ENTREGA, DIRECCIÓN Y DESTINOS
+        - Si el cliente dice "llevar a...", "para llevar a...", "llevar para...", "enviar a...", "dirección: ..." o menciona una dirección: extrae la dirección completa en "direccion".
+        - Si el cliente indica que es para recoger en la tienda ("lo recojo", "paso a recoger", "punto físico", "en el local"): asigna direccion="Recoge en tienda / Punto físico".
+        - MULTI-DIRECCIÓN (envíos a 2 direcciones diferentes en un mismo pedido):
+          * Si el cliente solicita enviar cosas a dos direcciones distintas (ej: "llevar la papa a la Cra 5 y la verdura a la Calle 80"):
+          * En 'direccion' pon la primera dirección.
+          * En 'clarificationReason' u 'observacion' indica claramente: "Atención: entrega dividida en 2 direcciones. Dir 1: [primera] | Dir 2: [segunda]".
+          * Marca 'ambiguo': true para que el operario revise y divida la comanda en dos envíos independientes.
+        - Si el cliente menciona un horario de entrega (ej: "a las 11", "en la tarde", "lo antes posible", "a las 3 pm", "como a las 6"): extráelo en "horarioEntrega".
         - Si el pedido ya tiene productos claros, cantidades y método de entrega definido (dirección exacta o recoge en tienda):
           action=CONFIRM_ORDER, customerMessage=null (el backend genera el detalle y resumen de confirmación).
 
