@@ -9,3 +9,4 @@ backups/
 scratch/
 node_modules/
 package-lock.json
+factura_*.*

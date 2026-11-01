@@ -622,79 +622,96 @@ function buildTalonarioView(t){
       const globalIdx = from + i + 1;
       if (i < pageItems.length) {
         const it = pageItems[i];
-        const cant = it.cant || (it.quantity ? (it.quantity + ' ' + (it.unit || '')) : '');
-        const desc = it.name || '';
-        const vUnit = showPrices && it.price ? '$ ' + Number(it.price).toLocaleString('es-CO') : '&nbsp;';
-        const vTot = showPrices && it.subtotal ? '$ ' + Number(it.subtotal).toLocaleString('es-CO') : '&nbsp;';
+        const u = (it.unit || '').trim().toUpperCase();
+        const isMoneyOrder = ['VALOR', 'PESOS', 'COP', '$', 'DINERO', 'PLATA'].includes(u) ||
+                             (!it.quantity && (it.subtotal || it.price)) ||
+                             (Number(it.quantity || 0) >= 1000 && (!u || !['LB', 'LBS', 'KG', 'KGS', 'UN', 'UND', 'UNIDAD', 'UNIDADES'].includes(u)));
+
+        let cant = '';
+        let vUnit = '&nbsp;';
+        let vTot = '&nbsp;';
+
+        if (isMoneyOrder) {
+          cant = ''; // En blanco para que en bodega pesen y escriban a mano
+          const val = (it.subtotal && Number(it.subtotal) > 0) ? it.subtotal :
+                      ((it.price && Number(it.price) > 0) ? it.price : it.quantity);
+          if (val) vTot = '$ ' + Number(val).toLocaleString('es-CO');
+        } else {
+          cant = it.cant || (it.quantity ? (it.quantity + (it.unit ? ' ' + it.unit : '')) : '');
+          if (showPrices && it.price && Number(it.price) > 0) vUnit = '$ ' + Number(it.price).toLocaleString('es-CO');
+          if (showPrices && it.subtotal && Number(it.subtotal) > 0) vTot = '$ ' + Number(it.subtotal).toLocaleString('es-CO');
+        }
+        const desc = (it.name || '').toUpperCase();
         rowsHtml += `<tr>
-          <td style="text-align:center;font-weight:700;padding:4.5px 3px;border:1px solid #1e40af;font-size:11px;color:#475569">${globalIdx}</td>
-          <td style="text-align:center;font-weight:700;padding:4.5px 3px;border:1px solid #1e40af;font-size:11px">${cant}</td>
-          <td style="padding:4.5px 5px;border:1px solid #1e40af;text-transform:uppercase;font-size:11px;font-weight:normal">${desc}</td>
-          <td style="text-align:right;padding:4.5px 3px;border:1px solid #1e40af;font-size:11px">${vUnit}</td>
-          <td style="text-align:right;padding:4.5px 3px;border:1px solid #1e40af;font-size:11px">${vTot}</td>
+          <td style="text-align:center;font-weight:700;padding:4.5px 3px;border:1px solid #000;font-size:11px;color:#111">${globalIdx}</td>
+          <td style="text-align:center;font-weight:900;padding:4.5px 3px;border:1px solid #000;font-size:11.5px">${cant}</td>
+          <td style="padding:4.5px 5px;border:1px solid #000;text-transform:uppercase;font-size:11px;font-weight:bold;white-space:nowrap;overflow:hidden">${desc}</td>
+          <td style="text-align:right;padding:4.5px 3px;border:1px solid #000;font-size:11px">${vUnit}</td>
+          <td style="text-align:right;padding:4.5px 3px;border:1px solid #000;font-size:11px">${vTot}</td>
         </tr>`;
       } else {
         rowsHtml += `<tr>
-          <td style="height:20px;text-align:center;color:#94a3b8;font-size:11px;border:1px solid #1e40af">${globalIdx}</td>
-          <td style="border:1px solid #1e40af">&nbsp;</td>
-          <td style="border:1px solid #1e40af">&nbsp;</td>
-          <td style="border:1px solid #1e40af">&nbsp;</td>
-          <td style="border:1px solid #1e40af">&nbsp;</td>
+          <td style="height:22px;text-align:center;color:#666;font-size:11px;border:1px solid #000">${globalIdx}</td>
+          <td style="border:1px solid #000">&nbsp;</td>
+          <td style="border:1px solid #000">&nbsp;</td>
+          <td style="border:1px solid #000">&nbsp;</td>
+          <td style="border:1px solid #000">&nbsp;</td>
         </tr>`;
       }
     }
 
     let headerHtml = '';
     if (isFirstPage) {
-      const pageIndicator = pagesCount > 1 ? `<span style="font-size:9.5px;color:#64748b">(Pág 1/${pagesCount})</span>` : '';
+      const pageIndicator = pagesCount > 1 ? `<span style="font-size:10px;color:#333">(1/${pagesCount})</span>` : '';
       headerHtml = `
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px;padding-bottom:3px;border-bottom:2px solid #1e40af">
-        <div>
-          <div style="font-size:18px;font-weight:900;letter-spacing:0.5px;color:#1e40af;line-height:1.05">FRUVER EL OASIS</div>
-          <div style="font-size:10.5px;font-weight:600;color:#334155;margin-top:2px">Frutas y Verduras al por Mayor</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="padding:3px 7px;border:1.5px solid #1e40af;border-radius:4px;font-weight:800;font-size:12px;color:#1e40af;white-space:nowrap">
-            FACTURA / PEDIDO N° ${orderNum} ${pageIndicator}
+      <div style="border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:22px;font-weight:900;letter-spacing:0.3px;color:#000;line-height:1.05">FRUVER EL OASIS</div>
+            <div style="font-size:11.5px;font-weight:bold;color:#333;margin-top:2px">Frutas y Verduras al por Mayor</div>
           </div>
-          <table style="border-collapse:collapse;border:1.5px solid #1e40af;font-size:8.5px;text-align:center;width:85px">
-            <thead>
-              <tr style="background:#e0e7ff;color:#1e40af;font-weight:800">
-                <th style="padding:1px;border:1px solid #1e40af;width:33%">DIA</th>
-                <th style="padding:1px;border:1px solid #1e40af;width:33%">MES</th>
-                <th style="padding:1px;border:1px solid #1e40af;width:34%">AÑO</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style="font-size:10px;font-weight:800;height:14px;color:#0f172a">
-                <td style="border:1px solid #1e40af">${d}</td>
-                <td style="border:1px solid #1e40af">${m}</td>
-                <td style="border:1px solid #1e40af">${y}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="padding:4px 8px;border:2px solid #000;border-radius:3px;font-weight:900;font-size:13px;color:#000;white-space:nowrap">
+              FACTURA N° ${orderNum} ${pageIndicator}
+            </div>
+            <table style="border-collapse:collapse;border:1.5px solid #000;font-size:9.5px;text-align:center;width:95px">
+              <thead>
+                <tr style="background:#e5e7eb;color:#000;font-weight:bold">
+                  <th style="padding:1px;border:1px solid #000;width:33%">D</th>
+                  <th style="padding:1px;border:1px solid #000;width:33%">M</th>
+                  <th style="padding:1px;border:1px solid #000;width:34%">A</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="font-size:11px;font-weight:bold;height:16px;color:#000">
+                  <td style="border:1px solid #000">${d}</td>
+                  <td style="border:1px solid #000">${m}</td>
+                  <td style="border:1px solid #000">${y}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-      <div style="border:1.5px solid #1e40af;border-radius:4px;padding:3px 6px;font-size:10px;margin-bottom:5px;line-height:1.25">
-        <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:4px">
-          <div><b style="color:#1e40af">CLIENTE:</b> <span>${customerName}</span></div>
-          <div><b style="color:#1e40af">NIT./ C.C.:</b> <span>${t.customerDoc || ''}</span></div>
+      <div style="border:1.5px solid #000;border-radius:3px;padding:5px 8px;font-size:11.5px;margin-bottom:6px;line-height:1.3">
+        <div style="display:flex;justify-content:space-between">
+          <div style="width:65%"><b>CLIENTE:</b> <span>${customerName}</span></div>
+          <div style="width:35%"><b>TEL:</b> <span>${phone}</span></div>
         </div>
-        <div style="display:grid;grid-template-columns:1.8fr 1fr;gap:4px;margin-top:1px">
-          <div><b style="color:#1e40af">DIRECCION:</b> <span>${address}</span></div>
-          <div><b style="color:#1e40af">TEL.:</b> <span>${phone}</span></div>
-        </div>
-        ${t.notes ? `<div style="margin-top:1px;font-size:9.5px;color:#475569"><b style="color:#1e40af">OBS:</b> ${t.notes}</div>` : ''}
+        ${address ? `<div style="margin-top:2px"><b>DIRECCIÓN:</b> <span>${address}</span></div>` : ''}
+        ${t.notes ? `<div style="margin-top:2px;font-size:10.5px;color:#333"><b>OBS:</b> ${t.notes}</div>` : ''}
       </div>`;
     } else {
       headerHtml = `
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;padding-bottom:3px;border-bottom:2px solid #1e40af">
-        <div>
-          <span style="font-size:16px;font-weight:900;color:#1e40af">FRUVER EL OASIS</span>
-          <span style="font-size:10.5px;color:#475569;margin-left:8px">— Continuación Pedido</span>
-        </div>
-        <div style="padding:2px 7px;border:1.5px solid #1e40af;border-radius:4px;font-weight:800;font-size:11px;color:#1e40af">
-          FACTURA N° ${orderNum} (Pág ${p + 1}/${pagesCount})
+      <div style="border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <span style="font-size:18px;font-weight:900;color:#000">FRUVER EL OASIS</span>
+            <span style="font-size:11.5px;color:#333;margin-left:8px;font-weight:bold">— Continuación Pedido</span>
+          </div>
+          <div style="padding:3px 8px;border:2px solid #000;border-radius:3px;font-weight:900;font-size:12px;color:#000">
+            FACTURA N° ${orderNum} (Pág ${p + 1}/${pagesCount})
+          </div>
         </div>
       </div>`;
     }
@@ -702,18 +719,23 @@ function buildTalonarioView(t){
     let footerHtml = '';
     if (isLastPage) {
       footerHtml = `
-      <div class="talonario-footer" style="display:grid;grid-template-columns:1fr 145px;align-items:center;margin-top:6px;gap:8px;page-break-inside:avoid;break-inside:avoid">
-        <div style="font-size:10px;font-weight:700;color:#1e40af;padding-top:4px">
-          RECIBI: <span style="display:inline-block;width:150px;border-bottom:1.5px solid #1e40af">&nbsp;</span>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:8px">
+        <div style="width:56%;border:1.5px solid #000;border-radius:3px;padding:6px 10px;font-size:11px">
+          <b>RECIBÍ A CONFORMIDAD:</b> ___________________________<br>
+          <span style="font-size:9.5px;color:#555;margin-top:3px;display:inline-block">Firma y C.C. del cliente</span>
         </div>
-        <div style="border:1.5px solid #1e40af;padding:3px 6px;display:flex;justify-content:space-between;align-items:center;font-weight:900;font-size:11px;background:#f8fafc">
-          <span style="color:#1e40af">TOTAL $</span>
-          <span style="font-size:12px;color:#0f172a">${totalStr}</span>
+        <div style="width:40%;text-align:right">
+          <table style="width:100%;border-collapse:collapse;border:2px solid #000;font-size:12.5px;font-weight:bold">
+            <tr style="background:#e5e7eb;color:#000">
+              <td style="padding:6px 8px;border:1px solid #000">TOTAL $</td>
+              <td style="padding:6px 8px;border:1px solid #000;min-width:80px">${totalStr}</td>
+            </tr>
+          </table>
         </div>
       </div>`;
     } else {
       footerHtml = `
-      <div style="margin-top:6px;text-align:right;font-size:10px;font-weight:700;color:#64748b">
+      <div style="margin-top:6px;text-align:right;font-size:10.5px;font-weight:bold;color:#444">
         Continúa en la siguiente página (Pág ${p + 2}/${pagesCount}) ➔
       </div>`;
     }
@@ -723,14 +745,14 @@ function buildTalonarioView(t){
     pagesHtml += `
     <div class="talonario-page" style="${pageBreak}">
       ${headerHtml}
-      <table style="width:100%;border-collapse:collapse;border:1.5px solid #1e40af;font-size:11px;table-layout:fixed">
+      <table style="width:100%;border-collapse:collapse;border:2px solid #000;font-size:11px;table-layout:fixed">
         <thead>
-          <tr style="background:#e0e7ff;color:#1e40af;font-size:10px;font-weight:800;text-align:center">
-            <th style="width:7%;padding:4px 2px;border:1px solid #1e40af">#</th>
-            <th style="width:17%;padding:4px 2px;border:1px solid #1e40af">CANT.</th>
-            <th style="width:38%;padding:4px 4px;border:1px solid #1e40af;text-align:left">DESCRIPCION ARTICULO.</th>
-            <th style="width:19%;padding:4px 2px;border:1px solid #1e40af;text-align:right">VR. UNIT</th>
-            <th style="width:19%;padding:4px 2px;border:1px solid #1e40af;text-align:right">VR. TOTAL</th>
+          <tr style="background:#e5e7eb;color:#000;font-size:10.5px;font-weight:900;text-align:center;height:24px">
+            <th style="width:6%;padding:3px;border:1px solid #000">#</th>
+            <th style="width:16%;padding:3px;border:1px solid #000">CANT.</th>
+            <th style="width:36%;padding:3px 5px;border:1px solid #000;text-align:left">DESCRIPCIÓN</th>
+            <th style="width:21%;padding:3px 5px;border:1px solid #000;text-align:right">VR. UNIT</th>
+            <th style="width:21%;padding:3px 5px;border:1px solid #000;text-align:right">VR. TOTAL</th>
           </tr>
         </thead>
         <tbody>
@@ -755,7 +777,14 @@ function showTicketModal(t){
     style:'display:none;background:var(--bg);color:var(--ink);padding:14px;border-radius:8px;white-space:pre-wrap;font-family:monospace;font-size:13px;overflow-x:auto;line-height:1.3'
   }, t.text);
 
-  const printTo=async(printerLoc)=>{
+  const printTo=async(printerLoc, clickedBtn)=>{
+    if(clickedBtn){
+      clickedBtn.disabled=true;
+      clickedBtn.dataset.origHtml=clickedBtn.innerHTML;
+      clickedBtn.innerHTML='<span class="spin">⏳</span> Imprimiendo...';
+    }
+    btnBrotherPrint.disabled=true;
+    thermalGroup.querySelectorAll('button').forEach(b=>{b.disabled=true});
     try{
       const q = printerLoc ? `?printer=${printerLoc}` : '';
       const endpoint = t.orderId ? `/api/orders/${t.orderId}/reprint${q}` : `/api/sales/${t.saleId}/reprint${q}`;
@@ -764,14 +793,21 @@ function showTicketModal(t){
       overlay.remove();
       await updatePrinterStatus();
       if(typeof loadOrders === 'function') await loadOrders();
-    }catch(e){toast(e.message)}
+    }catch(e){
+      toast('Error al imprimir: '+e.message);
+      if(clickedBtn && clickedBtn.dataset.origHtml){
+        clickedBtn.innerHTML=clickedBtn.dataset.origHtml;
+      }
+      btnBrotherPrint.disabled=false;
+      thermalGroup.querySelectorAll('button').forEach(b=>{b.disabled=false});
+    }
   };
 
   const btnBrotherPrint = h('button',{
     class:'b main',
     style:'font-size:13px;padding:7px 14px;font-weight:800;background:#1e40af;border-color:#1e40af;display:inline-flex;align-items:center;gap:6px',
-    title:'Enviar directamente a la impresora Brother de Fruver (IPP Red)',
-    onclick:()=>printTo('OFICINA')
+    title:'Enviar a imprimir en Fruver',
+    onclick:(e)=>printTo('OFICINA', e.currentTarget)
   }, '🖨️ Imprimir en Fruver');
 
   const btnLocalPrint = h('button',{
@@ -783,9 +819,9 @@ function showTicketModal(t){
 
   const thermalGroup = h('div',{style:'display:inline-flex;gap:4px;align-items:center;background:var(--bg);padding:3px 6px;border-radius:6px;border:1px solid var(--line)'},
     h('span',{style:'font-size:11px;color:var(--mut);font-weight:700;padding-right:2px'},'Imprimir:'),
-    h('button',{class:'b',style:'font-size:12px;padding:5px 8px;font-weight:700',title:'Enviar a impresora de Fruver',onclick:()=>printTo('OFICINA')},'🏪 Fruver'),
-    h('button',{class:'b',style:'font-size:12px;padding:5px 8px;font-weight:700',title:'Enviar a térmica de Casa',onclick:()=>printTo('CASA')},'🏠 Casa'),
-    h('button',{class:'b',style:'font-size:12px;padding:5px 8px;font-weight:700',title:'Enviar según horario automático ('+(S.printerStatus?.activePrinter||'HORARIO')+')',onclick:()=>printTo()},'⚙️ Auto')
+    h('button',{class:'b',style:'font-size:12px;padding:5px 8px;font-weight:700',title:'Enviar a impresora de Fruver',onclick:(e)=>printTo('OFICINA', e.currentTarget)},'🏪 Fruver'),
+    h('button',{class:'b',style:'font-size:12px;padding:5px 8px;font-weight:700',title:'Enviar a térmica de Casa',onclick:(e)=>printTo('CASA', e.currentTarget)},'🏠 Casa'),
+    h('button',{class:'b',style:'font-size:12px;padding:5px 8px;font-weight:700',title:'Enviar según horario automático ('+(S.printerStatus?.activePrinter||'HORARIO')+')',onclick:(e)=>printTo(null, e.currentTarget)},'⚙️ Auto')
   );
 
   const btnTabTalonario = h('button',{
@@ -1021,13 +1057,19 @@ function doneCard(o){
   const ps=o.printStatus;
   const cardEl=h('div',{class:'card GREEN',dataset:{id:o.id}});
   const printerLoc = o.printedPrinter || o.targetPrinter || (S.printerStatus?.activePrinter || 'OFICINA');
+  const isPrinting = ps === 'PRINTING';
   const printPill = o.isOffline
     ? h('span',{class:'pill',style:'font-weight:800;font-size:12.5px;background:#b45309;color:#fff'},'⚡ GUARDADO LOCAL (SIN CONEXIÓN)')
-    : (ps==='PRINTED'
-      ? h('span',{class:'pill GREEN',style:'font-weight:800;font-size:12.5px;background:#15803d;color:#fff'},`✅ VENDIDA (🖨️ IMPRESO EN ${printerLoc})`)
-      : ps==='PRINT_FAILED'
-        ? h('span',{class:'pill RED',style:'font-weight:800'},`🔴 FALLÓ IMPRESIÓN (${printerLoc})`)
-        : h('span',{class:'pill YELLOW'},`🖨️ EN COLA (${printerLoc})`));
+    : (isPrinting
+      ? h('span',{class:'pill YELLOW',style:'font-weight:800;font-size:12.5px;background:#d97706;color:#fff;display:inline-flex;align-items:center;gap:6px'},
+          h('span',{class:'spin',style:'display:inline-block'},'⏳'),
+          `IMPRIMIENDO (${printerLoc})...`
+        )
+      : (ps==='PRINTED'
+        ? h('span',{class:'pill GREEN',style:'font-weight:800;font-size:12.5px;background:#15803d;color:#fff'},`✅ VENDIDA (🖨️ IMPRESO EN ${printerLoc})`)
+        : ps==='PRINT_FAILED'
+          ? h('span',{class:'pill RED',style:'font-weight:800'},`🔴 FALLÓ IMPRESIÓN (${printerLoc})`)
+          : h('span',{class:'pill YELLOW'},`🖨️ EN COLA (${printerLoc})`)));
 
   const inputPill = o.inputType==='IMAGE'
     ? h('span',{class:'pill',style:'background:#7c3aed;color:#fff'},'📷 FOTO')
@@ -1075,7 +1117,7 @@ function doneCard(o){
     tools.append(h('button',{class:'b main',style:'background:#b45309;border-color:#b45309;color:#fff;font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>syncOfflineOrders()},'⚡ Sincronizar con Servidor'));
   }else{
     tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',onclick:()=>o.saleId?showTicket(o.saleId):showTicketByOrder(o.id)},'🧾 Ver Factura'));
-    tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',title:'Ver formato y elegir impresora (Brother / Térmica)',onclick:()=>o.saleId?showTicket(o.saleId):showTicketByOrder(o.id)},ps==='PRINT_FAILED'?'🔴 REINTENTAR / IMPRIMIR':'🖨️ REIMPRIMIR'));
+    tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700',disabled:isPrinting,title:'Ver formato y elegir impresora (Brother / Térmica)',onclick:()=>o.saleId?showTicket(o.saleId):showTicketByOrder(o.id)},isPrinting?'⏳ IMPRIMIENDO...':(ps==='PRINT_FAILED'?'🔴 REINTENTAR / IMPRIMIR':'🖨️ REIMPRIMIR')));
 
     tools.append(h('button',{class:'b',style:'font-size:14px;padding:9px 15px;font-weight:700;background:rgba(59,130,246,0.15);color:#60a5fa;border:1px solid rgba(59,130,246,0.3)',title:'Reabrir la orden para agregar o modificar productos',onclick:async()=>{
       if(!confirm(`¿Deseas agregar más cosas al Pedido #${o.id}? La comanda volverá al tablero para que puedas ajustar productos y volver a imprimirla.`))return;
@@ -1895,16 +1937,34 @@ async function renderPrinterConfig(){
   m.replaceChildren(h('div',{class:'card',style:'text-align:center;padding:24px'},'Cargando configuración de impresoras... ⏳'));
   try{
     const cfg = await api('/api/printer/config');
-    const locName = cfg.activePrinter==='OFICINA'?'🏪 FRUVER (4am-7pm)':'🏠 CASA (7pm-4am)';
+    const fruverStart = cfg.scheduleOfficeStart || '04:00';
+    const fruverEnd = cfg.scheduleOfficeEnd || '19:00';
+    const locName = cfg.activePrinter==='OFICINA' ? `🏪 FRUVER (${fruverStart}-${fruverEnd})` : `🏠 CASA (${fruverEnd}-${fruverStart})`;
 
-    const officeHostInput = h('input',{value:cfg.officeHost||'127.0.0.1',placeholder:'IP Impresora Fruver',style:'font-size:15px;font-weight:700;width:100%'});
-    const officePortInput = h('input',{type:'number',value:cfg.officePort||631,placeholder:'Puerto (631 IPP / 9100 RAW)',style:'font-size:15px;font-weight:700;width:130px'});
+    // Fruver - Tipo de Impresión
+    const officePrintTypeSelect = h('select',{style:'font-size:14px;padding:8px;font-weight:700;width:100%'},
+      h('option',{value:'EMAIL',selected:(cfg.officePrintType||'EMAIL')==='EMAIL'},'✉️ Correo Brother Cloud (print.brother.com)'),
+      h('option',{value:'IPP',selected:cfg.officePrintType==='IPP'},'🌐 Red IP Directa (IPP 631)'),
+      h('option',{value:'ESCPOS',selected:cfg.officePrintType==='ESCPOS'},'🧾 Red Térmica (RAW 9100)')
+    );
+    const officeEmailInput = h('input',{value:cfg.officeEmail||'23363927290@print.brother.com',placeholder:'ej: 23363927290@print.brother.com',style:'font-size:14px;font-weight:700;width:100%'});
+    const officeHostInput = h('input',{value:cfg.officeHost||'127.0.0.1',placeholder:'IP Impresora Fruver',style:'font-size:14px;font-weight:700;width:100%'});
+    const officePortInput = h('input',{type:'number',value:cfg.officePort||631,placeholder:'Puerto',style:'font-size:14px;font-weight:700;width:110px'});
+    const scheduleOfficeStartInput = h('input',{type:'time',value:fruverStart,style:'font-size:14px;font-weight:700;padding:6px;width:115px;text-align:center'});
+    const scheduleOfficeEndInput = h('input',{type:'time',value:fruverEnd,style:'font-size:14px;font-weight:700;padding:6px;width:115px;text-align:center'});
 
-    const homeHostInput = h('input',{value:cfg.homeHost||'127.0.0.1',placeholder:'IP Impresora Casa',style:'font-size:15px;font-weight:700;width:100%'});
-    const homePortInput = h('input',{type:'number',value:cfg.homePort||631,placeholder:'Puerto',style:'font-size:15px;font-weight:700;width:100px'});
+    // Casa - Tipo de Impresión
+    const homePrintTypeSelect = h('select',{style:'font-size:14px;padding:8px;font-weight:700;width:100%'},
+      h('option',{value:'ESCPOS',selected:(cfg.homePrintType||'ESCPOS')==='ESCPOS'},'🧾 Red Térmica (RAW 9100)'),
+      h('option',{value:'EMAIL',selected:cfg.homePrintType==='EMAIL'},'✉️ Correo Brother Cloud (print.brother.com)'),
+      h('option',{value:'IPP',selected:cfg.homePrintType==='IPP'},'🌐 Red IP Directa (IPP 631)')
+    );
+    const homeEmailInput = h('input',{value:cfg.homeEmail||'',placeholder:'ej: casa@print.brother.com',style:'font-size:14px;font-weight:700;width:100%'});
+    const homeHostInput = h('input',{value:cfg.homeHost||'127.0.0.1',placeholder:'IP Impresora Casa',style:'font-size:14px;font-weight:700;width:100%'});
+    const homePortInput = h('input',{type:'number',value:cfg.homePort||9100,placeholder:'Puerto',style:'font-size:14px;font-weight:700;width:110px'});
 
     const modeSelect = h('select',{style:'font-size:15px;padding:9px;font-weight:700;width:100%'},
-      h('option',{value:'AUTO',selected:cfg.mode==='AUTO'},'⏱️ Horario Automático (Fruver 4am-7pm / Casa 7pm-4am)'),
+      h('option',{value:'AUTO',selected:cfg.mode==='AUTO'},`⏱️ Horario Automático (${fruverStart} a ${fruverEnd} en Fruver / resto en Casa)`),
       h('option',{value:'OFICINA',selected:cfg.mode==='OFICINA'},'🏪 Forzar SIEMPRE Fruver'),
       h('option',{value:'CASA',selected:cfg.mode==='CASA'},'🏠 Forzar SIEMPRE Casa')
     );
@@ -1955,9 +2015,15 @@ async function renderPrinterConfig(){
           method:'PUT',
           body:{
             officeHost: officeHostInput.value.trim(),
-            officePort: Number(officePortInput.value)||9100,
+            officePort: Number(officePortInput.value)||631,
+            officePrintType: officePrintTypeSelect.value,
+            officeEmail: officeEmailInput.value.trim(),
             homeHost: homeHostInput.value.trim(),
             homePort: Number(homePortInput.value)||9100,
+            homePrintType: homePrintTypeSelect.value,
+            homeEmail: homeEmailInput.value.trim(),
+            scheduleOfficeStart: scheduleOfficeStartInput.value.trim() || '04:00',
+            scheduleOfficeEnd: scheduleOfficeEndInput.value.trim() || '19:00',
             enabled: enabledChk.checked,
             mode: modeSelect.value,
             orderGraceSeconds: isNaN(graceM) || graceM < 0 ? 300 : Math.round(graceM * 60),
@@ -1966,7 +2032,7 @@ async function renderPrinterConfig(){
             customerDebounceSeconds: isNaN(debounceS) || debounceS < 0 ? 20 : Math.round(debounceS)
           }
         });
-        toast('✓ Configuración y tiempos de espera guardados correctamente');
+        toast('✓ Configuración, horarios y tipos de impresión guardados');
         await updatePrinterStatus();
         renderPrinterConfig();
       }catch(e){toast('Error al guardar: '+e.message)}
@@ -2001,29 +2067,55 @@ async function renderPrinterConfig(){
         )
       ),
       h('div',{class:'banner',style:'background:#1e293b;border-left:4px solid var(--g);margin-bottom:16px;font-size:13px'},
-        'Configura las IP locales de las impresoras térmicas ESC/POS (puerto RAW 9100). El sistema enruta pedidos automáticamente entre la Oficina y la Casa.'
+        'Configura cómo y dónde imprime cada sede (Correo Brother Cloud o Red IP directa) y los horarios automáticos sin valores fijos.'
       ),
       h('div',{style:'display:flex;flex-direction:column;gap:14px'},
+        // SEDE FRUVER
         h('div',{style:'background:rgba(255,255,255,0.03);padding:14px;border-radius:8px;border:1px solid var(--line)'},
-          h('div',{style:'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'},
-            h('b',{style:'font-size:15px;color:#93c5fd'},'🏢 Impresora Oficina / Fruver (04:00 - 19:00)'),
+          h('div',{style:'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px'},
+            h('b',{style:'font-size:15px;color:#93c5fd'},'🏢 Impresora Fruver / Local'),
             testOfficeBtn
           ),
-          h('div',{style:'display:flex;gap:10px'},
-            h('div',{style:'flex:1'},h('span',{class:'mut',style:'font-size:12px'},'IP / Host LAN'),officeHostInput),
+          h('div',{style:'margin-bottom:10px'},
+            h('span',{class:'mut',style:'font-size:12px;display:block;margin-bottom:4px'},'Tipo de Conexión:'),
+            officePrintTypeSelect
+          ),
+          h('div',{style:'margin-bottom:10px'},
+            h('span',{class:'mut',style:'font-size:12px;display:block;margin-bottom:4px'},'Correo Brother Cloud:'),
+            officeEmailInput
+          ),
+          h('div',{style:'display:flex;gap:10px;margin-bottom:10px'},
+            h('div',{style:'flex:1'},h('span',{class:'mut',style:'font-size:12px'},'IP / Host LAN (si usa red directa)'),officeHostInput),
             h('div',{},h('span',{class:'mut',style:'font-size:12px'},'Puerto'),officePortInput)
+          ),
+          h('div',{style:'border-top:1px dashed var(--line);padding-top:8px;margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap'},
+            h('span',{style:'font-size:13px;font-weight:700;color:#93c5fd'},'Horario de Atención Fruver:'),
+            h('span',{style:'font-size:12px'},'De'),
+            scheduleOfficeStartInput,
+            h('span',{style:'font-size:12px'},'a'),
+            scheduleOfficeEndInput
           )
         ),
+        // SEDE CASA
         h('div',{style:'background:rgba(255,255,255,0.03);padding:14px;border-radius:8px;border:1px solid var(--line)'},
-          h('div',{style:'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'},
-            h('b',{style:'font-size:15px;color:#fcd34d'},'🏠 Impresora Casa (19:00 - 04:00)'),
+          h('div',{style:'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px'},
+            h('b',{style:'font-size:15px;color:#fcd34d'},'🏠 Impresora Casa'),
             testHomeBtn
+          ),
+          h('div',{style:'margin-bottom:10px'},
+            h('span',{class:'mut',style:'font-size:12px;display:block;margin-bottom:4px'},'Tipo de Conexión:'),
+            homePrintTypeSelect
+          ),
+          h('div',{style:'margin-bottom:10px'},
+            h('span',{class:'mut',style:'font-size:12px;display:block;margin-bottom:4px'},'Correo Brother Cloud (opcional para casa):'),
+            homeEmailInput
           ),
           h('div',{style:'display:flex;gap:10px'},
             h('div',{style:'flex:1'},h('span',{class:'mut',style:'font-size:12px'},'IP / Host LAN'),homeHostInput),
             h('div',{},h('span',{class:'mut',style:'font-size:12px'},'Puerto'),homePortInput)
           )
         ),
+        // ENRUTAMIENTO
         h('div',{style:'background:rgba(255,255,255,0.03);padding:14px;border-radius:8px;border:1px solid var(--line)'},
           h('b',{style:'font-size:14px;display:block;margin-bottom:6px'},'⏱️ Enrutamiento de Impresión'),
           modeSelect
@@ -2031,13 +2123,13 @@ async function renderPrinterConfig(){
         h('div',{style:'display:flex;align-items:center;gap:12px;background:rgba(255,255,255,0.03);padding:14px;border-radius:8px;border:1px solid var(--line)'},
           enabledChk,
           h('div',{},
-            h('b',{style:'font-size:14px'},'Habilitar Impresión Térmica Automática'),
-            h('div',{class:'mut',style:'font-size:12px'},'Si se desmarca, los pedidos se aprueban pero no intentan abrir conexión de red a la impresora.')
+            h('b',{style:'font-size:14px'},'Habilitar Impresión Automática'),
+            h('div',{class:'mut',style:'font-size:12px'},'Si se desmarca, los pedidos se facturan pero no intentan enviar trabajo de impresión.')
           )
         ),
         h('div',{style:'background:rgba(255,255,255,0.03);padding:14px;border-radius:8px;border:1px solid var(--line)'},
           h('b',{style:'font-size:15px;display:flex;align-items:center;gap:6px;color:#60a5fa;margin-bottom:12px'},'⏱️ Tiempos de Espera del Sistema'),
-          
+
           h('div',{style:'display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap'},
             h('div',{style:'flex:1;min-width:200px'},
               h('b',{style:'font-size:13.5px;display:block'},'🤖 Tiempo de espera antes de enviar a la IA (Ráfagas)'),
@@ -2063,7 +2155,7 @@ async function renderPrinterConfig(){
           h('div',{style:'display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap'},
             h('div',{style:'flex:1;min-width:200px'},
               h('b',{style:'font-size:13.5px;display:block'},'🖨️ Tiempo de espera para imprimir'),
-              h('span',{class:'mut',style:'font-size:12px'},'Segundos máximos de respuesta de la impresora térmica en red LAN antes de reportar fallo de impresión.')
+              h('span',{class:'mut',style:'font-size:12px'},'Segundos máximos de respuesta de la impresora en red antes de reportar fallo de impresión.')
             ),
             h('div',{style:'display:flex;align-items:center;gap:6px'},
               printTimeoutInput,

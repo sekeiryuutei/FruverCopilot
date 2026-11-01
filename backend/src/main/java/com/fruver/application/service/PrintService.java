@@ -1,11 +1,9 @@
 package com.fruver.application.service;
 
 import com.fruver.application.port.MessagingGateway;
-import com.fruver.application.port.ThermalPrinterService;
+import com.fruver.application.port.PrintStrategy;
 import com.fruver.config.AppProperties;
-import com.fruver.infrastructure.printing.EscPosEncoder;
-import com.fruver.infrastructure.printing.IppClient;
-import com.fruver.infrastructure.printing.TalonarioRasterService;
+import com.fruver.infrastructure.printing.PrintStrategyFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -17,8 +15,9 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Worker de impresion (patron outbox sobre print_job). Reclama trabajos con FOR UPDATE SKIP LOCKED,
- * imprime enrutando a OFICINA (04:00 - 19:00) o CASA (19:00 - 04:00), y registra que impresora ejecuto.
+ * Worker de impresión (patrón outbox sobre print_job y Strategy + Factory para despacho).
+ * Reclama trabajos con FOR UPDATE SKIP LOCKED, selecciona la estrategia (Correo Brother, IPP, ESC/POS)
+ * y emite eventos en tiempo real para reflejar el estado (PRINTING -> PRINTED / PRINT_FAILED) con spinner.
  */
 @Service
 public class PrintService {
@@ -29,29 +28,27 @@ public class PrintService {
 
     private final JdbcClient jdbc;
     private final TicketService tickets;
-    private final ThermalPrinterService printer;
+    private final PrintStrategyFactory strategyFactory;
     private final TransactionTemplate tx;
     private final AppProperties props;
     private final AppMetrics metrics;
     private final SseHub hub;
     private final MessagingGateway gateway;
     private final PrinterConfigService printerConfig;
-    private final TalonarioRasterService talonarioRaster;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public PrintService(JdbcClient jdbc, TicketService tickets, ThermalPrinterService printer, TransactionTemplate tx,
-                        AppProperties props, AppMetrics metrics, SseHub hub, MessagingGateway gateway,
-                        PrinterConfigService printerConfig, TalonarioRasterService talonarioRaster) {
+    public PrintService(JdbcClient jdbc, TicketService tickets, PrintStrategyFactory strategyFactory,
+                        TransactionTemplate tx, AppProperties props, AppMetrics metrics, SseHub hub,
+                        MessagingGateway gateway, PrinterConfigService printerConfig) {
         this.jdbc = jdbc;
         this.tickets = tickets;
-        this.printer = printer;
+        this.strategyFactory = strategyFactory;
         this.tx = tx;
         this.props = props;
         this.metrics = metrics;
         this.hub = hub;
         this.gateway = gateway;
         this.printerConfig = printerConfig;
-        this.talonarioRaster = talonarioRaster;
     }
 
     @Scheduled(fixedDelayString = "${app.printing.poll-ms:1000}")
@@ -71,18 +68,24 @@ public class PrintService {
         Optional<Job> claimed = claim();
         if (claimed.isEmpty()) return false;
         Job job = claimed.get();
-        String location = job.targetPrinter() != null ? job.targetPrinter() : props.printing().currentTargetPrinter(props.timezone());
+        String location = job.targetPrinter() != null ? job.targetPrinter() : printerConfig.currentTargetPrinter("AUTO");
+
+        // Notificar de inmediato que la venta pasó a estado PRINTING (spinner en UI)
         try {
-            int port = printerConfig.portFor(location);
-            String host = printerConfig.hostFor(location);
-            if (port == 631) {
-                TicketData ticket = tickets.build(job.saleId(), job.reprint());
-                byte[] raster = talonarioRaster.renderTicketToPwgRaster(ticket);
-                IppClient.printRaster(host, port, "Pedido_" + ticket.orderNumber(), raster);
-            } else {
-                byte[] payload = EscPosEncoder.encode(TicketFormatter.format(tickets.build(job.saleId(), job.reprint()), props.printing().columns()));
-                printer.print(payload, location);
-            }
+            jdbc.sql("UPDATE sale SET print_status = 'PRINTING', print_error = NULL WHERE id = :s AND print_status <> 'PRINTED'")
+                    .param("s", job.saleId()).update();
+            jdbc.sql("SELECT order_id FROM sale WHERE id = :s").param("s", job.saleId()).query(Long.class).optional().ifPresent(hub::orderChanged);
+        } catch (Exception e) {
+            log.debug("No se pudo notificar inicio de impresión: {}", e.getMessage());
+        }
+
+        try {
+            TicketData ticket = tickets.build(job.saleId(), job.reprint());
+            PrintStrategy strategy = strategyFactory.getStrategy(location);
+            log.info("Despachando impresión de orden #{} con estrategia {} en {}", ticket.orderNumber(), strategy.getStrategyName(), location);
+
+            strategy.print(ticket, location);
+
             tx.executeWithoutResult(s -> {
                 jdbc.sql("UPDATE print_job SET status = 'DONE', last_error = NULL, printed_printer = :p, updated_at = now() WHERE id = :id")
                         .param("id", job.id()).param("p", location).update();
@@ -123,7 +126,7 @@ public class PrintService {
 
     /** Reintenta de inmediato todos los pedidos con fallo de impresion o pendientes por papel/red */
     public int reprintAllPending() {
-        String target = props.printing().currentTargetPrinter(props.timezone());
+        String target = printerConfig.currentTargetPrinter("AUTO");
         int updated = jdbc.sql("""
                 UPDATE print_job SET status = 'PENDING', attempts = 0, last_error = NULL,
                        target_printer = :tp, next_attempt_at = now(), updated_at = now()
@@ -144,7 +147,7 @@ public class PrintService {
     }
 
     private Optional<Job> claim() {
-        String currentTarget = props.printing().currentTargetPrinter(props.timezone());
+        String currentTarget = printerConfig.currentTargetPrinter("AUTO");
         return jdbc.sql("""
                 UPDATE print_job SET status = 'PRINTING', attempts = attempts + 1, updated_at = now(),
                        target_printer = COALESCE(target_printer, :tp)

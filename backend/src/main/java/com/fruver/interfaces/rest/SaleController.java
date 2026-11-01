@@ -83,10 +83,16 @@ public class SaleController {
     public record PrinterConfigUpdateRequest(
             String officeHost,
             Integer officePort,
+            String officePrintType,
+            String officeEmail,
             String homeHost,
             Integer homePort,
+            String homePrintType,
+            String homeEmail,
             Boolean enabled,
             String mode,
+            String scheduleOfficeStart,
+            String scheduleOfficeEnd,
             Integer orderGraceSeconds,
             Integer printTimeoutSeconds,
             Boolean autoPrintWholesale,
@@ -96,7 +102,7 @@ public class SaleController {
                 String officeHost, Integer officePort, String homeHost, Integer homePort,
                 Boolean enabled, String mode, Integer orderGraceSeconds, Integer printTimeoutSeconds,
                 Boolean autoPrintWholesale) {
-            this(officeHost, officePort, homeHost, homePort, enabled, mode, orderGraceSeconds, printTimeoutSeconds, autoPrintWholesale, null);
+            this(officeHost, officePort, "EMAIL", null, homeHost, homePort, "ESCPOS", null, enabled, mode, "04:00", "19:00", orderGraceSeconds, printTimeoutSeconds, autoPrintWholesale, null);
         }
     }
 
@@ -119,8 +125,10 @@ public class SaleController {
     @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public com.fruver.application.service.PrinterConfigService.PrinterConfig updatePrinterConfig(@RequestBody PrinterConfigUpdateRequest req) {
         return printerConfig.update(
-                req.officeHost(), req.officePort(), req.homeHost(), req.homePort(),
+                req.officeHost(), req.officePort(), req.officePrintType(), req.officeEmail(),
+                req.homeHost(), req.homePort(), req.homePrintType(), req.homeEmail(),
                 req.enabled(), req.mode(),
+                req.scheduleOfficeStart(), req.scheduleOfficeEnd(),
                 req.orderGraceSeconds(), req.printTimeoutSeconds(), req.autoPrintWholesale(),
                 req.customerDebounceSeconds()
         );
