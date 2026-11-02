@@ -122,6 +122,21 @@ public class PrintService {
                 long orderId = Long.parseLong(saleInfo[0]);
                 String phone = saleInfo[1];
                 String confirmMsg = "🙏👍";
+
+                // Buscar external_message_id para reaccionar directamente al mensaje del pedido
+                String externalMsgId = jdbc.sql("SELECT external_message_id FROM conversation_message WHERE order_id = :o AND direction = 'INBOUND' AND external_message_id IS NOT NULL ORDER BY id DESC LIMIT 1")
+                        .param("o", orderId).query(String.class).optional().orElse(null);
+
+                if (gateway instanceof com.fruver.infrastructure.whatsapp.strategy.WhatsAppServiceContext ctx) {
+                    if (externalMsgId != null && !externalMsgId.isBlank()) {
+                        try {
+                            ctx.sendReaction(phone, externalMsgId, "👍");
+                        } catch (Exception re) {
+                            log.debug("No se pudo enviar reacción emoji: {}", re.getMessage());
+                        }
+                    }
+                }
+
                 var status = gateway.sendText(phone, confirmMsg).name();
                 jdbc.sql("INSERT INTO conversation_message(order_id, direction, message_type, content, delivery_status) VALUES (:o, 'OUTBOUND', 'TEXT', :c, :d)")
                         .param("o", orderId).param("c", confirmMsg).param("d", status).update();

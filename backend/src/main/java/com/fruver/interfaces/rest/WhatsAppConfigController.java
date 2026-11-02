@@ -37,3 +37,4 @@ public class WhatsAppConfigController {
         return ResponseEntity.ok(context.getStatus());
     }
 }
+

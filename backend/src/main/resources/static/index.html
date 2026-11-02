@@ -2372,7 +2372,9 @@ async function renderPrinterConfig(){
     }
 
     function renderWaContent(wa) {
+      const isBoth = wa.provider === 'BOTH';
       const isBaileys = wa.provider === 'BAILEYS_QR';
+      const isMeta = wa.provider === 'META_CLOUD_API';
       const isConnected = wa.status === 'CONNECTED';
       const isQr = wa.status === 'QR_READY';
 
@@ -2388,12 +2390,12 @@ async function renderPrinterConfig(){
           const newProv = e.target.value;
           modeSelect.disabled = true;
           try {
-            toast('Cambiando proveedor de WhatsApp...');
+            toast('Cambiando modo de WhatsApp...');
             const updated = await api('/api/whatsapp/provider', {
               method: 'POST',
               body: JSON.stringify({ provider: newProv })
             });
-            toast('✓ Modo WhatsApp actualizado');
+            toast('✓ Modo WhatsApp actualizado a: ' + newProv);
             renderWaContent(updated);
           } catch(err) {
             toast('Error: ' + err.message);
@@ -2402,14 +2404,15 @@ async function renderPrinterConfig(){
           }
         }
       },
-        h('option', { value: 'BAILEYS_QR', selected: isBaileys }, '📱 WhatsApp Normal / QR (Modo Coexistencia - Celular Libre)'),
-        h('option', { value: 'META_CLOUD_API', selected: !isBaileys }, '🏢 API Oficial de Meta (Cloud API)')
+        h('option', { value: 'BOTH', selected: isBoth }, '🔄 Modo Híbrido (Escuchar por QR y Meta simultáneamente)'),
+        h('option', { value: 'BAILEYS_QR', selected: isBaileys }, '📱 Solo WhatsApp QR (Modo Coexistencia - Celular Libre)'),
+        h('option', { value: 'META_CLOUD_API', selected: isMeta }, '🏢 Solo API Oficial de Meta (Cloud API)')
       );
 
       let detailContent = null;
-      if (!isBaileys) {
+      if (isMeta) {
         detailContent = h('div', { class: 'banner', style: 'background:#1e293b;border-left:4px solid #3b82f6;margin-top:12px;font-size:13px;line-height:1.5' },
-          h('b', {}, 'Modo API Oficial de Meta activo'),
+          h('b', {}, '🏢 Modo API Oficial de Meta activo'),
           h('p', { style: 'margin:4px 0 0 0;color:#94a3b8' },
             'Los mensajes y pedidos ingresan directamente por el webhook de Meta Cloud API configurado en developers.facebook.com.'
           )

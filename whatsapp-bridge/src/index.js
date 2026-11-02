@@ -59,7 +59,14 @@ async function startWhatsApp() {
     logger: pino({ level: 'silent' }),
     printQRInTerminal: false,
     generateHighQualityLinkPreview: false,
-    syncFullHistory: false
+    syncFullHistory: false,
+    browser: ['FruverCopilot', 'Chrome', '124.0.0.0'],
+    keepAliveIntervalMs: 25000,
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 60000,
+    retryRequestDelayMs: 250,
+    maxMsgRetryCount: 5,
+    markOnlineOnConnect: true
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -336,4 +343,11 @@ app.get('/health', (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   logger.info(`Microservicio whatsapp-bridge escuchando en puerto ${PORT}`);
   startWhatsApp();
+});
+
+process.on('uncaughtException', (err) => {
+  logger.error({ err: err.message }, 'Excepción no capturada en whatsapp-bridge (protegido contra cierre)');
+});
+process.on('unhandledRejection', (reason) => {
+  logger.error({ reason }, 'Promesa rechazada en whatsapp-bridge (protegido contra cierre)');
 });

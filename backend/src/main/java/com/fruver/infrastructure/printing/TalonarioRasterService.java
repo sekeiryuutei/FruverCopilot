@@ -293,8 +293,17 @@ public class TalonarioRasterService {
 
             String footerHtml = "";
             if (isLastPage) {
-                boolean allPriced = !lines.isEmpty() && lines.stream().allMatch(line -> isMoneyOrderLine(line) || (line.subtotal() != null && line.subtotal().signum() > 0));
-                String totalStr = (allPriced && t.total() != null && t.total().signum() > 0) ? "$" + MONEY_FMT.format(t.total()) : "&nbsp;";
+                // Regla estricta: Solo si el cliente pidió TODO por precios se imprime el total general
+                boolean allMoneyOrders = !lines.isEmpty() && lines.stream().allMatch(this::isMoneyOrderLine);
+                String totalStr = "&nbsp;";
+                if (allMoneyOrders && t.total() != null && t.total().signum() > 0) {
+                    totalStr = "$" + MONEY_FMT.format(t.total());
+                } else if (allMoneyOrders) {
+                    BigDecimal sum = lines.stream()
+                            .map(line -> line.subtotal() != null ? line.subtotal() : (line.price() != null ? line.price() : BigDecimal.ZERO))
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    if (sum.signum() > 0) totalStr = "$" + MONEY_FMT.format(sum);
+                }
                 footerHtml = """
                     <div style="margin-top:9px;display:flex;justify-content:flex-end;align-items:center">
                       <div style="width:40%;text-align:right">

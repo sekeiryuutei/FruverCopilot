@@ -1,19 +1,18 @@
 package com.fruver.infrastructure.whatsapp;
 
+import java.net.URI;
+import java.util.Map;
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fruver.application.port.MediaDownloader;
 import com.fruver.application.port.MessagingGateway;
 import com.fruver.application.port.MessagingUnavailableException;
 import com.fruver.config.AppProperties;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
-
-import java.net.URI;
-import java.util.Map;
 
 /**
  * Adaptador de WhatsApp Cloud API (Meta). Es el unico lugar que la conoce: cambiar de proveedor

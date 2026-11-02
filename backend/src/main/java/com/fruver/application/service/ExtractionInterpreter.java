@@ -55,15 +55,10 @@ public class ExtractionInterpreter {
             if (mentioned.isBlank()) mentioned = clip(d.productoNormalizado(), 200);
             if (mentioned.isBlank()) mentioned = "(sin texto)";
 
-            // Regla de negocio: pedidos por valor en dinero (ej: "10.000 de papa", "2000 espinaca")
-            BigDecimal manualPrice = null;
-            boolean isMoneyOrder = (d.unidadMedida() != null && (d.unidadMedida().equalsIgnoreCase("VALOR") || d.unidadMedida().equalsIgnoreCase("PESOS") || d.unidadMedida().equals("$")))
-                    || (d.observacion() != null && (d.observacion().toLowerCase().contains("valor") || d.observacion().contains("$")))
-                    || (d.cantidad() != null && d.cantidad().compareTo(new BigDecimal("500")) >= 0 && unit == null);
-
-            if (isMoneyOrder) {
-                manualPrice = d.cantidad() != null ? d.cantidad().setScale(0, RoundingMode.HALF_UP) : null;
-                qty = null;
+            // Regla de negocio: pedidos por valor en dinero (ej: "10.000 de papa", "2000 de cilantro", "mil de cilantro")
+            BigDecimal manualPrice = extractMoneyValue(d, unit);
+            if (manualPrice != null) {
+                qty = null;   // No se pone cantidad en la comanda, se pesa en bodega
                 unit = null;
             }
 
@@ -136,4 +131,47 @@ public class ExtractionInterpreter {
     }
 
     private static String blankToNull(String s) { return s == null || s.isBlank() ? null : s; }
+    private static BigDecimal extractMoneyValue(ItemSugeridoDTO d, UnitOfMeasure unit) {
+        String u = d.unidadMedida() != null ? d.unidadMedida().trim().toUpperCase() : "";
+        String obs = d.observacion() != null ? d.observacion().trim() : "";
+        String ment = d.productoMencionado() != null ? d.productoMencionado().trim() : "";
+        boolean isValUnit = u.equals("VALOR") || u.equals("PESOS") || u.equals("$") || u.equals("COP") || u.equals("DINERO");
+        boolean hasValObs = obs.toLowerCase().contains("valor") || obs.contains("$") || obs.toLowerCase().contains("pesos");
+
+        // 1. Extraer valor numérico explícito en la observación (ej: "Pedido por valor: $3000" o "$1500")
+        if (!obs.isBlank()) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\$?\\s*(\\d[\\d.,]*)").matcher(obs);
+            if (m.find()) {
+                try {
+                    String clean = m.group(1).replace(".", "").replace(",", "");
+                    BigDecimal val = new BigDecimal(clean);
+                    if (val.compareTo(new BigDecimal("100")) >= 0) {
+                        return val.setScale(0, RoundingMode.HALF_UP);
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        // 2. Si la cantidad es >= 500 (ej: 5000, 10000, 2000, 1000, 1500)
+        if (d.cantidad() != null && d.cantidad().compareTo(new BigDecimal("500")) >= 0 && (unit == null || isValUnit)) {
+            return d.cantidad().setScale(0, RoundingMode.HALF_UP);
+        }
+
+        // 3. Si la IA extrajo 1, 2, 3 pero es pedido por valor o dijo 'mil' (ej: 1 -> 1000, 2 -> 2000)
+        if (d.cantidad() != null && d.cantidad().compareTo(BigDecimal.ZERO) > 0 && d.cantidad().compareTo(new BigDecimal("100")) < 0) {
+            if (isValUnit || hasValObs || obs.toLowerCase().contains("mil") || ment.toLowerCase().contains("mil")) {
+                return d.cantidad().multiply(new BigDecimal("1000")).setScale(0, RoundingMode.HALF_UP);
+            }
+        }
+
+        if (isValUnit || hasValObs) {
+            if (d.cantidad() != null && d.cantidad().compareTo(BigDecimal.ZERO) > 0) {
+                return d.cantidad().compareTo(new BigDecimal("100")) >= 0
+                        ? d.cantidad().setScale(0, RoundingMode.HALF_UP)
+                        : d.cantidad().multiply(new BigDecimal("1000")).setScale(0, RoundingMode.HALF_UP);
+            }
+        }
+
+        return null;
+    }
 }

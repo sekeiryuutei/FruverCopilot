@@ -18,3 +18,4 @@ public interface WhatsAppProviderStrategy {
 
     MediaDownloader.MediaFile downloadMedia(String mediaId);
 }
+

@@ -173,12 +173,14 @@ public class SaleService {
             return null;
         }
         PriceType priceType = PriceType.forCustomer(CustomerType.valueOf(o.customerType()));
-        Quote quote = null;
-        try {
-            quote = quotes.quote(items, priceType);
-        } catch (Exception ignored) {}
-
-        BigDecimal total = (quote != null && quote.complete()) ? quote.total() : null;
+        // Regla estricta Fruver mayorista:
+        // Solo se calcula y guarda el total general si el cliente pidió TODOS los artículos por precio/dinero.
+        // Si hay artículos pedidos por peso, conteo o sin precio, el total NO se calcula (queda NULL).
+        boolean allOrderedByPrice = !items.isEmpty() && items.stream().allMatch(it -> it.manualPrice() != null && it.manualPrice().compareTo(BigDecimal.ZERO) > 0);
+        BigDecimal total = null;
+        if (allOrderedByPrice) {
+            total = items.stream().map(ItemRow::manualPrice).reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
         String targetPrinter = props.printing().currentTargetPrinter(props.timezone());
 
         long saleId = jdbc.sql("""
@@ -196,10 +198,14 @@ public class SaleService {
         for (ItemRow it : items) {
             String pName = it.aiProductName() != null && !it.aiProductName().isBlank() ? it.aiProductName() : it.mentioned();
             if (pName == null || pName.isBlank()) pName = "Artículo";
-            String unit = it.unit() != null ? it.unit() : (it.aiUnit() != null ? it.aiUnit() : null);
-            BigDecimal qty = it.quantity() != null && it.quantity().compareTo(BigDecimal.ZERO) > 0
-                    ? it.quantity()
-                    : (it.aiQuantity() != null && it.aiQuantity().compareTo(BigDecimal.ZERO) > 0 ? it.aiQuantity() : BigDecimal.ONE);
+            boolean isMoneyOrder = it.manualPrice() != null && it.manualPrice().compareTo(BigDecimal.ZERO) > 0;
+            String unit = isMoneyOrder ? "VALOR" : (it.unit() != null ? it.unit() : (it.aiUnit() != null ? it.aiUnit() : null));
+            BigDecimal qty = isMoneyOrder ? BigDecimal.ONE
+                    : (it.quantity() != null && it.quantity().compareTo(BigDecimal.ZERO) > 0
+                        ? it.quantity()
+                        : (it.aiQuantity() != null && it.aiQuantity().compareTo(BigDecimal.ZERO) > 0 ? it.aiQuantity() : BigDecimal.ONE));
+            BigDecimal appPrice = it.manualPrice();
+            BigDecimal subtotal = isMoneyOrder ? it.manualPrice() : null;
 
             jdbc.sql("""
                     INSERT INTO sale_item(sale_id, product_id, product_name, unit, quantity, price_type, catalog_price, applied_price,
@@ -207,8 +213,8 @@ public class SaleService {
                     VALUES (:s, :p, :n, :u, :q, :pt, :cp, :ap, :m, :r, :st)
                     """).param("s", saleId).param("p", it.productId()).param("n", pName).param("u", unit)
                     .param("q", qty).param("pt", priceType.name()).param("cp", null)
-                    .param("ap", it.manualPrice()).param("m", it.manualPrice() != null).param("r", it.priceChangeReason())
-                    .param("st", null).update();
+                    .param("ap", appPrice).param("m", it.manualPrice() != null).param("r", it.priceChangeReason())
+                    .param("st", subtotal).update();
         }
 
         jdbc.sql("""
