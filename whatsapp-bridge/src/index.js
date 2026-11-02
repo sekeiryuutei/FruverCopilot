@@ -6,12 +6,14 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const pino = require('pino');
+const { NodeCache } = require('@cacheable/node-cache');
 const {
   default: makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
-  downloadMediaMessage
+  downloadMediaMessage,
+  proto
 } = require('@whiskeysockets/baileys');
 
 const app = express();
@@ -77,6 +79,51 @@ function saveLidMap() {
 
 loadLidMap();
 
+// Cache de mensajes persistente para reintentos criptográficos (Anti "Esperando mensaje...")
+const messageCache = new Map();
+const MSG_CACHE_FILE = path.join(AUTH_DIR, 'messages_cache.json');
+const MAX_CACHED_MESSAGES = 3000;
+
+function loadMessageCache() {
+  if (fs.existsSync(MSG_CACHE_FILE)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(MSG_CACHE_FILE, 'utf8'));
+      for (const [id, msg] of Object.entries(data)) {
+        messageCache.set(id, msg);
+      }
+      logger.info({ count: messageCache.size }, 'Caché de mensajes cargado para resolución de reintentos');
+    } catch (e) {
+      logger.error('Error cargando messages_cache.json:', e);
+    }
+  }
+}
+
+let saveMsgCacheTimer = null;
+function saveMessageCacheDebounced() {
+  if (saveMsgCacheTimer) return;
+  saveMsgCacheTimer = setTimeout(() => {
+    saveMsgCacheTimer = null;
+    try {
+      const entries = Array.from(messageCache.entries()).slice(-MAX_CACHED_MESSAGES);
+      fs.writeFileSync(MSG_CACHE_FILE, JSON.stringify(Object.fromEntries(entries)));
+    } catch (e) {
+      logger.error('Error guardando messages_cache.json:', e);
+    }
+  }, 3000);
+}
+
+function cacheMessage(id, messageProto) {
+  if (!id || !messageProto) return;
+  messageCache.set(id, messageProto);
+  if (messageCache.size > MAX_CACHED_MESSAGES * 1.5) {
+    const keysToDelete = Array.from(messageCache.keys()).slice(0, messageCache.size - MAX_CACHED_MESSAGES);
+    for (const k of keysToDelete) messageCache.delete(k);
+  }
+  saveMessageCacheDebounced();
+}
+
+loadMessageCache();
+
 async function startWhatsApp() {
   if (!fs.existsSync(AUTH_DIR)) {
     fs.mkdirSync(AUTH_DIR, { recursive: true });
@@ -87,10 +134,15 @@ async function startWhatsApp() {
 
   logger.info({ version }, 'Iniciando socket Baileys WhatsApp...');
 
+  const msgRetryCounterCache = new NodeCache({
+    stdTTL: 3600,
+    useClones: false
+  });
+
   sock = makeWASocket({
     version,
     auth: state,
-    logger: pino({ level: 'silent' }),
+    logger: pino({ level: 'warn' }),
     printQRInTerminal: false,
     generateHighQualityLinkPreview: false,
     syncFullHistory: false,
@@ -100,7 +152,20 @@ async function startWhatsApp() {
     defaultQueryTimeoutMs: 60000,
     retryRequestDelayMs: 250,
     maxMsgRetryCount: 5,
-    markOnlineOnConnect: true
+    msgRetryCounterCache,
+    markOnlineOnConnect: true,
+    getMessage: async (key) => {
+      const cached = messageCache.get(key.id);
+      if (cached) {
+        logger.info({ id: key.id, remoteJid: key.remoteJid }, 'Respondiendo reintento de llaves con mensaje en caché');
+        return proto.Message.fromObject(cached);
+      }
+      if (key.fromMe) {
+        logger.warn({ id: key.id, remoteJid: key.remoteJid }, 'Reintento de mensaje saliente no en caché, respondiendo con confirmación');
+        return proto.Message.fromObject({ conversation: '🙏 👍' });
+      }
+      return undefined;
+    }
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -180,7 +245,11 @@ async function startWhatsApp() {
 
     for (const msg of upsert.messages) {
       try {
-        if (!msg.message || msg.key.fromMe) continue;
+        if (!msg.message) continue;
+        if (msg.key?.id) {
+          cacheMessage(msg.key.id, msg.message);
+        }
+        if (msg.key.fromMe) continue;
         const remoteJid = msg.key.remoteJid || '';
         if (remoteJid.endsWith('@g.us') || remoteJid.endsWith('@broadcast')) continue;
 
@@ -371,12 +440,18 @@ app.post('/messages', async (req, res) => {
   }
 
   const cleanPhone = to.replace(/[^\d]/g, '');
-  const jid = `${cleanPhone}@s.whatsapp.net`;
+  let jid;
+  if (cleanPhone.length > 12 && !cleanPhone.startsWith('57') && lidPhoneMap.has(cleanPhone)) {
+    jid = `${lidPhoneMap.get(cleanPhone)}@s.whatsapp.net`;
+  } else {
+    jid = `${cleanPhone}@s.whatsapp.net`;
+  }
 
   try {
+    let sent = null;
     // 3a. Reacción con Emoji a un mensaje específico
     if (reaction && messageId) {
-      await sock.sendMessage(jid, {
+      sent = await sock.sendMessage(jid, {
         react: {
           text: reaction,
           key: {
@@ -386,22 +461,31 @@ app.post('/messages', async (req, res) => {
           }
         }
       });
-      return res.json({ success: true, type: 'reaction' });
+      if (sent?.key?.id && sent?.message) {
+        cacheMessage(sent.key.id, sent.message);
+      }
+      return res.json({ success: true, type: 'reaction', messageId: sent?.key?.id });
     }
 
     // 3b. Imagen
     if (imageUrl) {
-      await sock.sendMessage(jid, {
+      sent = await sock.sendMessage(jid, {
         image: { url: imageUrl },
         caption: caption || ''
       });
-      return res.json({ success: true, type: 'image' });
+      if (sent?.key?.id && sent?.message) {
+        cacheMessage(sent.key.id, sent.message);
+      }
+      return res.json({ success: true, type: 'image', messageId: sent?.key?.id });
     }
 
     // 3c. Texto
     if (text) {
-      await sock.sendMessage(jid, { text: text });
-      return res.json({ success: true, type: 'text' });
+      sent = await sock.sendMessage(jid, { text: text });
+      if (sent?.key?.id && sent?.message) {
+        cacheMessage(sent.key.id, sent.message);
+      }
+      return res.json({ success: true, type: 'text', messageId: sent?.key?.id });
     }
 
     return res.status(400).json({ error: 'Debe especificar text, reaction o imageUrl' });

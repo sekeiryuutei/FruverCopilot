@@ -221,6 +221,32 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
     break-inside: avoid !important;
   }
 }
+
+/* ── MÓDULO CHATS (Estilo WhatsApp) ──────────────────────────────────── */
+.chats-wrap{display:flex;height:calc(100vh - 72px);background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:6px 0}
+.chats-sidebar{width:380px;min-width:300px;border-right:1px solid var(--line);display:flex;flex-direction:column;background:var(--card)}
+.chats-search{padding:12px;border-bottom:1px solid var(--line);background:var(--bg)}
+.chats-list{flex:1;overflow-y:auto}
+.chat-item{padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;flex-direction:column;gap:4px;transition:background .15s}
+.chat-item:hover{background:rgba(31,157,85,0.06)}
+.chat-item.active{background:rgba(31,157,85,0.14) !important;border-left:4px solid #16a34a !important}
+.chats-main{flex:1;display:flex;flex-direction:column;background:#0b141a;min-width:0;position:relative}
+.chat-header{padding:10px 16px;border-bottom:1px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;min-height:58px}
+.chat-messages{flex:1;padding:16px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;background:radial-gradient(ellipse at center, rgba(16,29,37,0.85) 0%, rgba(11,20,26,0.98) 100%)}
+.chat-bubble{max-width:75%;padding:8px 12px;border-radius:10px;font-size:14px;line-height:1.42;word-break:break-word;position:relative;box-shadow:0 1px 2px rgba(0,0,0,0.15)}
+.chat-bubble.inbound{align-self:flex-start;background:#202c33;color:#e9edef;border-bottom-left-radius:2px}
+.chat-bubble.outbound{align-self:flex-end;background:#005c4b;color:#e9edef;border-bottom-right-radius:2px}
+.chat-bubble-time{font-size:11px;opacity:0.65;margin-top:4px;text-align:right}
+.chat-compose{padding:10px 14px;background:var(--card);border-top:1px solid var(--line);display:flex;gap:10px;align-items:center}
+.chat-back-btn{display:none}
+@media (max-width:768px){
+  .chats-wrap{height:calc(100vh - 120px)}
+  .chats-sidebar{width:100%;height:100%;display:flex}
+  .chats-main{display:none;width:100%;height:100%}
+  .chats-wrap.chat-open .chats-sidebar{display:none}
+  .chats-wrap.chat-open .chats-main{display:flex}
+  .chat-back-btn{display:inline-flex}
+}
 </style></head><body>
 <!-- ── Header ─────────────────────────────────────── -->
 <header>
@@ -259,6 +285,7 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
 <datalist id="dl"></datalist>
 <script>
 const $=s=>document.querySelector(s);
+const $$=(s,p=document)=>[...p.querySelectorAll(s)];
 const cop=n=>n==null?'—':'$'+Math.round(n).toLocaleString('es-CO');
 const cleanPhone=p=>(p||'').replace(/^57(?=\d{10}$)/,'');
 const num=v=>v===''||v==null?null:Number(v);
@@ -2560,6 +2587,241 @@ async function renderPrices(){const m=$('#main');const q=h('input',{placeholder:
     h('h3',{},'Nuevo producto'),h('div',{class:'row'},n,u,r,w,imgInp,h('button',{class:'b main',onclick:async()=>{const rp=parsePrice(r.value),wp=parsePrice(w.value);if(!rp.ok||!wp.ok){toast(rp.error||wp.error);return}try{await api('/api/products',{method:'POST',body:{name:n.value,unit:u.value,retailPrice:rp.value,wholesalePrice:wp.value,imageUrl:imgInp.value.trim()||null}});toast('Creado');n.value='';imgInp.value='';load()}catch(e){toast(e.message)}}},'Crear')));
   q.addEventListener('keydown',e=>e.key==='Enter'&&load());load()}
 
+/* ---------- Chats / WhatsApp ---------- */
+let activeChatPhone = null;
+
+async function renderChats() {
+  const m = $('#main');
+  m.replaceChildren();
+
+  const wrap = h('div', { class: 'chats-wrap' });
+  const sidebar = h('div', { class: 'chats-sidebar' });
+  const mainChat = h('div', { class: 'chats-main' });
+
+  const qInp = h('input', {
+    type: 'text',
+    placeholder: '🔍 Buscar contacto o teléfono…',
+    style: 'width:100%;padding:9px 12px;font-size:13.5px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)'
+  });
+  const searchBar = h('div', { class: 'chats-search' }, qInp);
+  const chatList = h('div', { class: 'chats-list' });
+  sidebar.append(searchBar, chatList);
+
+  const chatHeader = h('div', { class: 'chat-header' });
+  const messagesBox = h('div', { class: 'chat-messages' });
+  const composeBar = h('div', { class: 'chat-compose' });
+  const composeInp = h('input', {
+    type: 'text',
+    placeholder: 'Escribir mensaje manual al cliente (Enter para enviar)...',
+    style: 'flex:1;padding:10px 14px;border-radius:20px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-family:inherit;font-size:14px'
+  });
+  const sendBtn = h('button', {
+    class: 'b main',
+    style: 'border-radius:20px;padding:9px 18px;font-weight:700',
+    title: 'Enviar mensaje manual'
+  }, 'Enviar ➤');
+
+  composeBar.append(composeInp, sendBtn);
+  mainChat.append(chatHeader, messagesBox, composeBar);
+  wrap.append(sidebar, mainChat);
+  m.append(wrap);
+
+  let allChats = [];
+
+  const loadChatList = async () => {
+    try {
+      chatList.replaceChildren(h('div', { style: 'padding:20px;text-align:center;color:var(--mut)' }, 'Cargando conversaciones…'));
+      allChats = await api('/api/chats?q=' + encodeURIComponent(qInp.value.trim()));
+      if (!allChats || allChats.length === 0) {
+        chatList.replaceChildren(h('div', { style: 'padding:30px;text-align:center;color:var(--mut)' }, 'No se encontraron conversaciones.'));
+        return;
+      }
+      chatList.replaceChildren(...allChats.map(c => {
+        const isSelected = activeChatPhone === c.phone;
+        const timeStr = c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+        const dateStr = c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' }) : '';
+
+        let prefix = '';
+        if (c.lastMessageType === 'AUDIO') prefix = '🎤 Audio: ';
+        else if (c.lastMessageType === 'IMAGE') prefix = '📷 Foto: ';
+        else if (c.lastDirection === 'OUTBOUND') prefix = '✓ ';
+
+        let badgeClass = 'gray';
+        let badgeLabel = 'Chat';
+        if (c.hasOrder && c.lastOrderStatus !== 'CANCELLED') {
+          badgeClass = 'green';
+          badgeLabel = '🛍️ Pedido ' + (c.lastOrderStatus === 'APPROVED' ? 'Aprobado' : 'Activo');
+        } else if (c.lastMessage && (c.lastMessage.toLowerCase().includes('pago') || c.lastMessage.toLowerCase().includes('comprobante') || c.lastMessage.toLowerCase().includes('transferencia'))) {
+          badgeClass = 'amber';
+          badgeLabel = '💳 Pago';
+        }
+
+        const phoneDisplay = c.phone && c.phone.length > 12 && !c.phone.startsWith('573') ? 'WhatsApp Web (LID)' : ('+' + c.phone);
+
+        const item = h('div', {
+          class: 'chat-item' + (isSelected ? ' active' : ''),
+          onclick: () => selectChat(c)
+        },
+          h('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
+            h('b', { style: 'font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px' }, c.name || 'Cliente'),
+            h('span', { style: 'font-size:11.5px;color:var(--mut)' }, dateStr + ' ' + timeStr)
+          ),
+          h('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
+            h('span', { style: 'font-size:12px;color:var(--mut)' }, phoneDisplay),
+            h('span', { class: 'pill ' + badgeClass, style: 'font-size:10.5px;padding:2px 6px' }, badgeLabel)
+          ),
+          h('div', { style: 'font-size:13px;color:var(--ink);opacity:0.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px' },
+            prefix + (c.lastMessage || (c.lastMessageType === 'IMAGE' ? 'Foto / Comprobante' : 'Nota de voz'))
+          )
+        );
+        return item;
+      }));
+
+      if (!activeChatPhone && allChats.length > 0) {
+        selectChat(allChats[0]);
+      }
+    } catch (e) {
+      chatList.replaceChildren(h('div', { style: 'padding:20px;color:var(--r)' }, 'Error cargando chats: ' + e.message));
+    }
+  };
+
+  const selectChat = async (c) => {
+    activeChatPhone = c.phone;
+    wrap.classList.add('chat-open');
+    chatList.querySelectorAll('.chat-item').forEach((el, idx) => {
+      if (allChats[idx] && allChats[idx].phone === c.phone) el.classList.add('active');
+      else el.classList.remove('active');
+    });
+
+    const phoneDisplay = c.phone && c.phone.length > 12 && !c.phone.startsWith('573') ? 'WhatsApp Web' : ('+' + c.phone);
+
+    const backBtn = h('button', {
+      class: 'b chat-back-btn',
+      style: 'padding:5px 9px;font-size:13px;align-items:center',
+      onclick: () => wrap.classList.remove('chat-open')
+    }, '← Volver');
+
+    chatHeader.replaceChildren(
+      h('div', { style: 'display:flex;align-items:center;gap:10px' },
+        backBtn,
+        h('div', { style: 'width:38px;height:38px;border-radius:50%;background:#1f9d55;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0' }, (c.name || 'C')[0].toUpperCase()),
+        h('div', {},
+          h('div', { style: 'font-weight:700;font-size:15px;line-height:1.2' }, c.name || 'Cliente'),
+          h('div', { style: 'font-size:12px;color:var(--mut)' }, phoneDisplay + (c.lastOrderId ? ' • Factura / Pedido #' + c.lastOrderId : ''))
+        )
+      ),
+      h('div', { style: 'display:flex;gap:8px;align-items:center' },
+        c.hasOrder && c.lastOrderId ? h('button', {
+          class: 'b',
+          style: 'padding:6px 12px;font-size:13px;background:#1e3a5f;color:#93c5fd',
+          onclick: () => { S.tab = 'ops'; nav(); show(); }
+        }, '📋 Ir a Operación') : null,
+        h('button', {
+          class: 'b',
+          style: 'padding:6px 12px;font-size:13px',
+          onclick: () => loadMessages(c.phone)
+        }, '🔄 Actualizar')
+      )
+    );
+
+    await loadMessages(c.phone);
+    composeInp.focus();
+  };
+
+  const loadMessages = async (phone) => {
+    try {
+      messagesBox.replaceChildren(h('div', { style: 'padding:30px;text-align:center;color:var(--mut)' }, 'Cargando mensajes…'));
+      const msgs = await api('/api/chats/' + encodeURIComponent(phone) + '/messages');
+      if (!msgs || msgs.length === 0) {
+        messagesBox.replaceChildren(h('div', { style: 'padding:40px;text-align:center;color:var(--mut)' }, 'No hay mensajes en este chat.'));
+        return;
+      }
+      messagesBox.replaceChildren(...msgs.map(m => {
+        const isIn = m.direction === 'INBOUND';
+        const timeStr = m.createdAt ? new Date(m.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+        const dateStr = m.createdAt ? new Date(m.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' }) : '';
+
+        const bubble = h('div', { class: 'chat-bubble ' + (isIn ? 'inbound' : 'outbound') });
+
+        if (m.messageType === 'AUDIO' && m.audioId) {
+          bubble.append(
+            h('div', { style: 'display:flex;align-items:center;gap:6px;margin-bottom:6px' },
+              h('span', { style: 'font-size:16px' }, '🎤'),
+              h('b', { style: 'font-size:13px' }, 'Nota de voz')
+            ),
+            h('audio', {
+              controls: true,
+              src: '/api/chats/audio/' + m.audioId,
+              style: 'width:240px;height:36px;outline:none'
+            })
+          );
+        } else if (m.messageType === 'IMAGE' && m.imageId) {
+          bubble.append(
+            h('img', {
+              src: '/api/chats/images/' + m.imageId,
+              style: 'max-width:260px;max-height:260px;border-radius:8px;display:block;cursor:pointer',
+              title: 'Clic para ver imagen en tamaño completo',
+              onclick: () => window.open('/api/chats/images/' + m.imageId, '_blank')
+            })
+          );
+          if (m.content) {
+            bubble.append(h('div', { style: 'margin-top:6px;white-space:pre-wrap' }, m.content));
+          }
+        } else {
+          bubble.append(h('div', { style: 'white-space:pre-wrap' }, m.content || ''));
+        }
+
+        bubble.append(
+          h('div', { class: 'chat-bubble-time' }, dateStr + ' ' + timeStr + (isIn ? '' : ' ✓'))
+        );
+
+        return bubble;
+      }));
+      messagesBox.scrollTop = messagesBox.scrollHeight;
+    } catch (e) {
+      messagesBox.replaceChildren(h('div', { style: 'padding:20px;color:var(--r)' }, 'Error: ' + e.message));
+    }
+  };
+
+  const doSendManual = async () => {
+    const text = composeInp.value.trim();
+    if (!text) return;
+    if (!activeChatPhone) {
+      toast('Selecciona una conversación primero');
+      return;
+    }
+    sendBtn.disabled = true;
+    try {
+      await api('/api/chats/' + encodeURIComponent(activeChatPhone) + '/messages', {
+        method: 'POST',
+        body: { text }
+      });
+      composeInp.value = '';
+      toast('✓ Mensaje enviado');
+      await loadMessages(activeChatPhone);
+      await loadChatList();
+    } catch (e) {
+      toast('Error enviando mensaje: ' + e.message);
+    } finally {
+      sendBtn.disabled = false;
+    }
+  };
+
+  sendBtn.onclick = doSendManual;
+  composeInp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      doSendManual();
+    }
+  });
+
+  qInp.addEventListener('input', () => {
+    loadChatList();
+  });
+
+  loadChatList();
+}
+
 /* ---------- Clientes ---------- */
 async function renderCustomers(){
   const m=$('#main');
@@ -3071,11 +3333,11 @@ window.addEventListener('resize',applyNavLayout);
 function fillDl(){$('#dl').replaceChildren(...S.products.filter(p=>p.active).map(p=>h('option',{value:p.name})))}
 
 /* Iconos y etiquetas para el bottom nav mobile */
-const TAB_ICONS={ops:['📋','Pedidos'],sales:['🧾','Ventas'],config:['⚙️','Ajustes'],customers:['👥','Clientes'],'delivery-persons':['🚴','Repartos'],users:['👤','Usuarios'],prices:['💲','Precios'],zones:['📍','Zonas'],reports:['📊','Reportes']};
+const TAB_ICONS={ops:['📋','Pedidos'],chats:['💬','Chats'],sales:['🧾','Ventas'],config:['⚙️','Ajustes'],customers:['👥','Clientes'],'delivery-persons':['🚴','Repartos'],users:['👤','Usuarios'],prices:['💲','Precios'],zones:['📍','Zonas'],reports:['📊','Reportes']};
 const DISABLED_TABS=new Set(['customers','users','prices']);
 
 function nav(){
-  const tabs=[['ops','Operación'],['sales','Ventas'],['config','Ajustes'],['customers','Clientes']];
+  const tabs=[['ops','Operación'],['chats','💬 Chats'],['sales','Ventas'],['config','Ajustes'],['customers','Clientes']];
   if(S.me.role==='ADMIN')tabs.push(['delivery-persons','Repartidores'],['users','Usuarios'],['prices','Precios'],['zones','Zonas Domicilio'],['reports','Reportes']);
   // Desktop nav (tabs horizontales)
   $('#desktopNav').replaceChildren(...tabs.map(([k,l])=>{
@@ -3091,7 +3353,7 @@ function nav(){
     },l);
   }));
   // Mobile bottom nav
-  const mobileCore=[['ops','Pedidos'],['sales','Ventas'],['config','Ajustes'],['customers','Clientes']];
+  const mobileCore=[['ops','Pedidos'],['chats','Chats'],['sales','Ventas'],['config','Ajustes'],['customers','Clientes']];
   const mobileAdmin=[['users','Usuarios'],['prices','Precios']];
   const mobileTabs=S.me.role==='ADMIN'?[...mobileCore,...mobileAdmin]:mobileCore;
   $('#bnav').replaceChildren(...mobileTabs.map(([k])=>{
@@ -3111,7 +3373,7 @@ function nav(){
   const n=mobileTabs.length;
   $('#bnav').style.gridTemplateColumns=`repeat(${n},1fr)`;
 }
-function show(){({ops:()=>{renderOps()},sales:renderSales,config:renderPrinterConfig,'delivery-persons':renderDeliveryPersons,users:renderUsers,prices:renderPrices,customers:renderCustomers,zones:renderDeliveryZones,reports:renderReports})[S.tab]?.()}
+function show(){({ops:()=>{renderOps()},chats:renderChats,sales:renderSales,config:renderPrinterConfig,'delivery-persons':renderDeliveryPersons,users:renderUsers,prices:renderPrices,customers:renderCustomers,zones:renderDeliveryZones,reports:renderReports})[S.tab]?.()}
 $('#logoutBtn').onclick=doLogout;
 (async()=>{
   if(typeof window !== 'undefined'){
