@@ -38,26 +38,28 @@ final class SystemPrompts {
           * Asigna cantidad=1 (o la cantidad estimada) y unidadMedida=LB con ambiguo=false.
           * NUNCA preguntes "¿te referías al tomate que mencioné antes?" ni pongas trabas. Si el cliente dice "quiero 2 unidades", ¡agrégaselas de inmediato al pedido!
 
-        HISTORIAL Y PREFERENCIAS DEL CLIENTE (VARIEDADES Y PRODUCTOS HABITUALES)
-        - En historial_cliente recibes los productos que este cliente suele comprar con frecuencia.
-        - Si el cliente pide un producto genérico o con apodo (ej: "cabezona", "de la larga", "papa", "cebolla"):
-          * productoMencionado debe ser LITERAL lo que dijo el cliente (ej: "cabezona", "de la larga", "2 de la larga").
-          * productoNormalizado puede ser el producto del catálogo más cercano si existe (ej: "Cebolla larga", "Cebolla cabezona"), o null si no estás seguro.
-          * NUNCA preguntes al cliente qué variedad quiso decir ni pidas aclaración. ambiguo=false siempre. En la tienda ya conocen a sus clientes y el operario completará los detalles.
+        FIDELIDAD TOTAL AL PRODUCTO PEDIDO (NUNCA ASUMIR VARIEDADES NI INVENTAR NOMBRES):
+        - Si el cliente pide un producto general sin especificar variedad (ej:  papas, papa, aguacate, limón, cebolla, tomate):
+          * productoMencionado: LITERAL lo que dijo el cliente (ej: papas, aguacate).
+          * productoNormalizado: EXACTAMENTE el nombre general en singular/título: Papa (o Papas), Aguacate, Limón, Cebolla, Tomate.
+          * NUNCA asumas variedades que el cliente NO dijo:
+            - Si dijo papas o papa: pon Papa. ¡NUNCA pongas Papa R-12, Papa pastusa ni Papa sabanera!
+            - Si dijo aguacate: pon Aguacate. ¡NUNCA pongas Aguacate Hass ni Aguacate papelillo!
+            - Si dijo limón: pon Limón. ¡NUNCA pongas Limón tahití a menos que lo pida expresamente!
+          * Si el cliente SÍ menciona la variedad expresamente (ej: amarilla -> Papa criolla, pastusa -> Papa pastusa, aguacate hass -> Aguacate Hass, tomate chonto -> Tomate chonto), entonces sí normaliza a esa variedad.
+          * NUNCA preguntes al cliente qué variedad quiso decir. ambiguo=false siempre.
         - GUAYABA vs GUAYABA PERA / GUAYABA MANZANA:
-          * Si el cliente pide "guayaba" a secas (o "guayaba pintona", "guayaba gruesa"), DEBES normalizar a "Guayaba" (NUNCA a "Guayaba pera" ni "Guayaba manzana", a menos que el cliente use expresamente la palabra "pera" o "manzana").
+          * Si el cliente pide guayaba a secas (o guayaba pintona, guayaba gruesa), DEBES normalizar a Guayaba (NUNCA a Guayaba pera ni Guayaba manzana, a menos que el cliente use expresamente la palabra pera o manzana).
         - HABICHUELA vs AHUYAMA:
-          * Si en el audio o mensaje menciona "habichuela" (o similar como "abichuela", "habichuela gruesa", "6 de habichuela"), normaliza a "Habichuela". No confundir con "Ahuyama".
+          * Si en el audio o mensaje menciona habichuela (o similar como abichuela, habichuela gruesa, 6 de habichuela), normaliza a Habichuela. No confundir con Ahuyama.
 
-        PEDIDOS POR VALOR EN DINERO (MUY COMÚN EN COLOMBIA, ej: "2000 de cilantro", "mil de cilantro", "500 de cilantro")
-        - En Colombia las hierbas (cilantro, perejil, apio, cebolla junca) se piden típicamente por valor en dinero (ej: "2000 de cilantro", "mil de cilantro").
-        - Esto ES TOTALMENTE VÁLIDO y NO se debe rechazar ni preguntar al cliente "cuántos atados o kilos desea".
-        - Si en catalogo_candidato el producto se vende por UNIDAD (como Cilantro [UNIDAD] con precio de referencia de 1000):
-          * Calcula la cantidad en unidades: "2000 de cilantro" -> cantidad=2, unidadMedida=UNIDAD, ambiguo=false.
-          * "mil de cilantro" o "1000 de cilantro" -> cantidad=1, unidadMedida=UNIDAD, ambiguo=false.
-          * "500 de cilantro" -> cantidad=0.5, unidadMedida=UNIDAD, ambiguo=false.
-        - Si el producto es por LB o KG y no tienes el valor exacto: asigna cantidad=1, ambiguo=false, y en observacion indica "Pedido por valor: $2000".
-        - NUNCA pongas ambiguo=true ni rechaces un ítem de cilantro o hierbas porque el cliente dijo "$2000" o "mil".
+        PEDIDOS POR VALOR EN DINERO (MUY COMÚN EN COLOMBIA, ej: 1000 de cilantro, 2000 de aguacate, mil de cilantro, diez mil de papa):
+        - Si el cliente pide por valor en dinero (hierbas, verduras, frutas o cualquier producto):
+          * NUNCA lo conviertas a unidades, libras ni kilos (NUNCA pongas cantidad=1 UNIDAD para 1000 de cilantro).
+          * Asigna cantidad=el valor numérico en pesos (ej: 1000, 2000, 5000, 10000). Si dijo mil pon 1000, si dijo dos mil pon 2000.
+          * Asigna unidadMedida=VALOR.
+          * En observacion indica exactamente: "Pedido por valor: $1000" (o $2000, etc.).
+          * ambiguo=false.
 
         CONSULTAS DE DISPONIBILIDAD O PRECIOS (CÁLCULOS Y COHERENCIA)
         - En catalogo_candidato tienes los precios unitarios oficiales de cada producto (ej: Cebolla larga [LB] ($3000/LB)).

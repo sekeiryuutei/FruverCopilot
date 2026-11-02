@@ -115,13 +115,16 @@ public class SaleService {
         for (int i = 0; i < items.size(); i++) {
             ItemRow it = items.get(i);
             QuoteLine l = (quote.lines() != null && i < quote.lines().size()) ? quote.lines().get(i) : null;
-            String pName = l != null && l.productName() != null ? l.productName() : (it.aiProductName() != null ? it.aiProductName() : it.mentioned());
+            String pName = it.aiProductName() != null && !it.aiProductName().isBlank()
+                    ? it.aiProductName()
+                    : (l != null && l.productName() != null ? l.productName() : it.mentioned());
             Long pid = l != null ? l.productId() : it.productId();
-            String unit = l != null && l.unit() != null ? l.unit() : it.unit();
-            BigDecimal qty = l != null && l.quantity() != null ? l.quantity() : (it.quantity() != null ? it.quantity() : BigDecimal.ONE);
+            boolean isMoney = it.manualPrice() != null || "VALOR".equalsIgnoreCase(it.unit() != null ? it.unit() : (l != null ? l.unit() : null));
+            String unit = isMoney ? "VALOR" : (l != null && l.unit() != null ? l.unit() : it.unit());
+            BigDecimal qty = isMoney ? BigDecimal.ONE : (l != null && l.quantity() != null ? l.quantity() : (it.quantity() != null ? it.quantity() : BigDecimal.ONE));
             BigDecimal catPrice = l != null ? l.catalogPrice() : null;
-            BigDecimal appPrice = l != null ? l.appliedPrice() : it.manualPrice();
-            BigDecimal subtotal = l != null ? l.subtotal() : null;
+            BigDecimal appPrice = isMoney ? it.manualPrice() : (l != null ? l.appliedPrice() : it.manualPrice());
+            BigDecimal subtotal = isMoney ? it.manualPrice() : (l != null ? l.subtotal() : null);
             boolean manual = l != null ? l.manual() : it.manualPrice() != null;
 
             jdbc.sql("""

@@ -363,7 +363,7 @@ async function syncOfflineOrders(){
 
 async function api(path,opt={}){
   const o={method:'GET',headers:{},...opt};
-  if(o.body&&typeof o.body!=='string'){o.body=JSON.stringify(o.body);o.headers['Content-Type']='application/json'}
+  if(o.body){if(typeof o.body!=='string')o.body=JSON.stringify(o.body);if(!o.headers['Content-Type'])o.headers['Content-Type']='application/json'}
   if(o.method!=='GET')o.headers['X-XSRF-TOKEN']=csrf();
   let r;
   try{
@@ -476,6 +476,7 @@ function isMoneyOrder(it){
   if(!it)return false;
   const u=(it.unit||"").trim().toUpperCase();
   if(["VALOR","PESOS","COP","$","DINERO","PLATA"].includes(u))return true;
+  if(it.manualPrice&&Number(it.manualPrice)>=500&&(!it.quantity||Number(it.quantity)<=1))return true;
   if(!it.quantity&&(it.manualPrice||it.subtotal||it.price))return true;
   if(Number(it.quantity||0)>=1000&&(!u||!["LB","LBS","KG","KGS","KL","KLS","UN","UND","UNIDAD","UNIDADES","BULTO","CAJA","ARROBA","ATADO"].includes(u)))return true;
   const txt=((it.name||"")+" "+(it.mentioned||"")+" "+(it.observation||"")).toLowerCase();
@@ -747,7 +748,7 @@ function buildTalonarioView(t){
           <div style="width:35%"><b>TEL:</b> <span>${phone}</span></div>
         </div>
         <div style="margin-top:2px"><b>DIR:</b> <span>${address ? address : '________________________________________________'}</span></div>
-        ${t.notes ? `<div style="margin-top:2px;font-size:10.5px;color:#333"><b>OBS:</b> ${t.notes}</div>` : ''}
+        ${originInfo ? `<div style="margin-top:2px;font-size:10.5px;color:#222">${originInfo}</div>` : ''}
       </div>`;
     } else {
       headerHtml = `
@@ -767,11 +768,7 @@ function buildTalonarioView(t){
     let footerHtml = '';
     if (isLastPage) {
       footerHtml = `
-      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:8px">
-        <div style="width:56%;border:1.5px solid #000;border-radius:3px;padding:6px 10px;font-size:11px">
-          <b>RECIBÍ A CONFORMIDAD:</b> ___________________________<br>
-          <span style="font-size:9.5px;color:#555;margin-top:3px;display:inline-block">Firma y C.C. del cliente</span>
-        </div>
+      <div style="display:flex;justify-content:flex-end;align-items:flex-end;margin-top:8px">
         <div style="width:40%;text-align:right">
           <table style="width:100%;border-collapse:collapse;border:2px solid #000;font-size:12.5px;font-weight:bold">
             <tr style="background:#e5e7eb;color:#000">

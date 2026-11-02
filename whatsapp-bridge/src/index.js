@@ -43,6 +43,40 @@ setInterval(() => {
   }
 }, 15 * 60 * 1000);
 
+// Mapeo persistente de LID -> Teléfono
+const lidPhoneMap = new Map();
+const LID_MAP_FILE = path.join(AUTH_DIR, 'lid_map.json');
+
+function loadLidMap() {
+  if (fs.existsSync(LID_MAP_FILE)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(LID_MAP_FILE, 'utf8'));
+      for (const [k, v] of Object.entries(data)) {
+        lidPhoneMap.set(k, v);
+      }
+      logger.info({ count: lidPhoneMap.size }, 'Mapeos LID -> Teléfono cargados');
+    } catch (e) {
+      logger.error('Error cargando lid_map.json:', e);
+    }
+  }
+  // Semilla conocida de Victor
+  if (!lidPhoneMap.has('96701255786676')) {
+    lidPhoneMap.set('96701255786676', '573156793777');
+    saveLidMap();
+  }
+}
+
+function saveLidMap() {
+  try {
+    const obj = Object.fromEntries(lidPhoneMap);
+    fs.writeFileSync(LID_MAP_FILE, JSON.stringify(obj, null, 2));
+  } catch (e) {
+    logger.error('Error guardando lid_map.json:', e);
+  }
+}
+
+loadLidMap();
+
 async function startWhatsApp() {
   if (!fs.existsSync(AUTH_DIR)) {
     fs.mkdirSync(AUTH_DIR, { recursive: true });
@@ -70,6 +104,36 @@ async function startWhatsApp() {
   });
 
   sock.ev.on('creds.update', saveCreds);
+
+  sock.ev.on('contacts.upsert', (contacts) => {
+    let changed = false;
+    for (const c of (contacts || [])) {
+      if (c.lid && c.id && c.id.endsWith('@s.whatsapp.net')) {
+        const lidClean = c.lid.replace(/@.*/, '').replace(/:.*/, '');
+        const phoneClean = c.id.replace(/@.*/, '').replace(/:.*/, '');
+        if (lidClean && phoneClean && lidPhoneMap.get(lidClean) !== phoneClean) {
+          lidPhoneMap.set(lidClean, phoneClean);
+          changed = true;
+        }
+      }
+    }
+    if (changed) saveLidMap();
+  });
+
+  sock.ev.on('contacts.update', (updates) => {
+    let changed = false;
+    for (const c of (updates || [])) {
+      if (c.lid && c.id && c.id.endsWith('@s.whatsapp.net')) {
+        const lidClean = c.lid.replace(/@.*/, '').replace(/:.*/, '');
+        const phoneClean = c.id.replace(/@.*/, '').replace(/:.*/, '');
+        if (lidClean && phoneClean && lidPhoneMap.get(lidClean) !== phoneClean) {
+          lidPhoneMap.set(lidClean, phoneClean);
+          changed = true;
+        }
+      }
+    }
+    if (changed) saveLidMap();
+  });
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
@@ -120,7 +184,37 @@ async function startWhatsApp() {
         const remoteJid = msg.key.remoteJid || '';
         if (remoteJid.endsWith('@g.us') || remoteJid.endsWith('@broadcast')) continue;
 
-        const from = remoteJid.replace(/@.*/, '');
+        let rawId = remoteJid.replace(/@.*/, '').replace(/:.*/, '');
+        let resolvedPhone = null;
+
+        // 1. Revisar si Baileys incluyó un JID alternativo en el mensaje
+        const altJid = msg.key.remoteJidAlt || msg.key.participantAlt || msg.key.senderPn || msg.key.participant;
+        if (altJid && altJid.includes('@s.whatsapp.net')) {
+          resolvedPhone = altJid.replace(/@.*/, '').replace(/:.*/, '');
+        }
+
+        // 2. Si es un LID, consultar en memoria o repositorio Baileys
+        if (!resolvedPhone && remoteJid.endsWith('@lid')) {
+          if (lidPhoneMap.has(rawId)) {
+            resolvedPhone = lidPhoneMap.get(rawId);
+          } else if (sock?.signalRepository?.lidMapping?.getPNForLID) {
+            try {
+              const pn = await sock.signalRepository.lidMapping.getPNForLID(remoteJid);
+              if (pn) {
+                resolvedPhone = pn.replace(/@.*/, '').replace(/:.*/, '');
+                lidPhoneMap.set(rawId, resolvedPhone);
+                saveLidMap();
+              }
+            } catch (e) {}
+          }
+        }
+
+        // 3. Si no es LID (ya termina en @s.whatsapp.net), es el teléfono directo
+        if (!resolvedPhone && !remoteJid.endsWith('@lid')) {
+          resolvedPhone = rawId;
+        }
+
+        const from = resolvedPhone || rawId;
         const pushName = msg.pushName || '';
         const msgId = msg.key.id;
 

@@ -357,6 +357,7 @@ public class OrderProcessingService {
                 WHERE o.status = 'REVIEW'
                   AND o.ai_status = 'OK'
                   AND o.extracted_at <= NOW() - (:sec || ' seconds')::interval
+                  AND EXISTS (SELECT 1 FROM order_item oi WHERE oi.order_id = o.id)
                   AND NOT EXISTS (
                       SELECT 1 FROM conversation_message cm
                       WHERE cm.order_id = o.id

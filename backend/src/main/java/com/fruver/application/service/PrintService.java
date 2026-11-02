@@ -127,19 +127,21 @@ public class PrintService {
                 String externalMsgId = jdbc.sql("SELECT external_message_id FROM conversation_message WHERE order_id = :o AND direction = 'INBOUND' AND external_message_id IS NOT NULL ORDER BY id DESC LIMIT 1")
                         .param("o", orderId).query(String.class).optional().orElse(null);
 
+                boolean reacted = false;
                 if (gateway instanceof com.fruver.infrastructure.whatsapp.strategy.WhatsAppServiceContext ctx) {
                     if (externalMsgId != null && !externalMsgId.isBlank()) {
                         try {
-                            ctx.sendReaction(phone, externalMsgId, "👍");
+                            var st = ctx.sendReaction(phone, externalMsgId, "👍");
+                            reacted = (st == com.fruver.application.port.MessagingGateway.DeliveryStatus.SENT);
                         } catch (Exception re) {
                             log.debug("No se pudo enviar reacción emoji: {}", re.getMessage());
                         }
                     }
                 }
 
-                var status = gateway.sendText(phone, confirmMsg).name();
-                jdbc.sql("INSERT INTO conversation_message(order_id, direction, message_type, content, delivery_status) VALUES (:o, 'OUTBOUND', 'TEXT', :c, :d)")
-                        .param("o", orderId).param("c", confirmMsg).param("d", status).update();
+                var status = (!reacted) ? gateway.sendText(phone, confirmMsg).name() : "SENT";
+                jdbc.sql("INSERT INTO conversation_message(order_id, direction, message_type, content, delivery_status) VALUES (:o, 'OUTBOUND', :mt, :c, :d)")
+                        .param("o", orderId).param("mt", reacted ? "REACTION" : "TEXT").param("c", reacted ? "👍" : confirmMsg).param("d", status).update();
                 hub.orderChanged(orderId);
                 log.info("Confirmación '{}' enviada por WhatsApp al cliente {} para pedido #{}", confirmMsg, phone, orderId);
             }
@@ -170,6 +172,18 @@ public class PrintService {
         return updated;
     }
 
+    @Scheduled(fixedDelay = 60000)
+    public void autoCheckAndReprint() {
+        try {
+            int count = reprintAllPending();
+            if (count > 0) {
+                log.info("Auto-reintento de impresión: {} trabajos re-encolados automáticamente.", count);
+            }
+        } catch (Exception e) {
+            log.debug("Error en auto-reintento de impresión: {}", e.getMessage());
+        }
+    }
+
     private Optional<Job> claim() {
         String currentTarget = printerConfig.currentTargetPrinter("AUTO");
         return jdbc.sql("""
@@ -190,6 +204,12 @@ public class PrintService {
         log.warn("Impresion fallida (venta {}, intento {}): {}", job.saleId(), job.attempts(), msg);
         metrics.print("failed");
         final String error = msg;
+        if ("CASA".equalsIgnoreCase(job.targetPrinter())) {
+            log.warn("Impresora CASA no disponible para venta #{}. Cambiando destino a OFICINA (Email Brother)...", job.saleId());
+            jdbc.sql("UPDATE print_job SET status = 'PENDING', target_printer = 'OFICINA', attempts = 0, last_error = NULL, next_attempt_at = now() WHERE id = :id")
+                    .param("id", job.id()).update();
+            return;
+        }
         if (job.attempts() < props.printing().maxAttempts()) {
             jdbc.sql("UPDATE print_job SET status = 'PENDING', last_error = :e, next_attempt_at = now() + (:w * interval '1 second'), updated_at = now() WHERE id = :id")
                     .param("e", error).param("w", job.attempts() * 5).param("id", job.id()).update();
