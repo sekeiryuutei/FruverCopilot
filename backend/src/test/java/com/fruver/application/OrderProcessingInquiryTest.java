@@ -186,5 +186,62 @@ class OrderProcessingInquiryTest {
         );
         assertNull(service.getNextMissingRequirementQuestion(rowDeliveryCompleteCash));
     }
+
+    @Test
+    void detectsGratitudeAndCourtesyMessages() {
+        assertTrue(OrderProcessingService.isGratitudeOrCourtesyOnly("gracias"));
+        assertTrue(OrderProcessingService.isGratitudeOrCourtesyOnly("muchas gracias"));
+        assertTrue(OrderProcessingService.isGratitudeOrCourtesyOnly("muchas gracias don Carlos"));
+        assertTrue(OrderProcessingService.isGratitudeOrCourtesyOnly("Dios le pague"));
+        assertTrue(OrderProcessingService.isGratitudeOrCourtesyOnly("muy amable"));
+        assertTrue(OrderProcessingService.isGratitudeOrCourtesyOnly("ok"));
+        assertTrue(OrderProcessingService.isGratitudeOrCourtesyOnly("listo gracias"));
+        assertTrue(OrderProcessingService.isGratitudeOrCourtesyOnly("listo don Carlos"));
+        assertTrue(OrderProcessingService.isGratitudeOrCourtesyOnly("dale gracias"));
+        assertTrue(OrderProcessingService.isGratitudeOrCourtesyOnly("perfecto gracias"));
+        assertTrue(OrderProcessingService.isGratitudeOrCourtesyOnly("bueno gracias"));
+        assertTrue(OrderProcessingService.isGratitudeOrCourtesyOnly("👍"));
+        assertTrue(OrderProcessingService.isGratitudeOrCourtesyOnly("🙏"));
+        assertTrue(OrderProcessingService.isGratitudeOrCourtesyOnly("👍👍"));
+
+        // Mensajes con pedido o cantidades NO son solo cortesía:
+        assertFalse(OrderProcessingService.isGratitudeOrCourtesyOnly("gracias y me manda 5 de papa"));
+        assertFalse(OrderProcessingService.isGratitudeOrCourtesyOnly("gracias,deme 2 libras de tomate"));
+        assertFalse(OrderProcessingService.isGratitudeOrCourtesyOnly("10 de tomate gracias"));
+        assertFalse(OrderProcessingService.isGratitudeOrCourtesyOnly(null));
+        assertFalse(OrderProcessingService.isGratitudeOrCourtesyOnly(""));
+    }
+
+    @Test
+    void detectsUrlsAndGoogleMaps() {
+        assertTrue(OrderProcessingService.isUrlOnly("https://maps.google.com/?q=2.444,-76.606"));
+        assertTrue(OrderProcessingService.isUrlOnly("https://wa.me/p/123456789"));
+        assertTrue(OrderProcessingService.isUrlOnly("http://ejemplo.com/promo"));
+        assertFalse(OrderProcessingService.isUrlOnly("mándeme 2 de papa https://maps.google.com"));
+
+        assertTrue(OrderProcessingService.isGoogleMapsUrl("https://maps.app.goo.gl/abcdef123"));
+        assertTrue(OrderProcessingService.isGoogleMapsUrl("https://goo.gl/maps/xyz789"));
+        assertTrue(OrderProcessingService.isGoogleMapsUrl("https://www.google.com/maps?q=4.123,-73.456"));
+        assertFalse(OrderProcessingService.isGoogleMapsUrl("https://facebook.com/tienda"));
+    }
+
+    @Test
+    void detectsPaymentProofs() {
+        // Con imagen:
+        assertTrue(OrderProcessingService.isPaymentProof("comprobante nequi", true, false));
+        assertTrue(OrderProcessingService.isPaymentProof("transferencia daviplata", true, false));
+        assertTrue(OrderProcessingService.isPaymentProof("ya le transferí", true, false));
+        assertTrue(OrderProcessingService.isPaymentProof("", true, true)); // foto sin texto en pedido existente
+        assertTrue(OrderProcessingService.isPaymentProof("listo", true, true)); // foto con "listo" en pedido existente
+
+        // Sin imagen pero confirmando pago:
+        assertTrue(OrderProcessingService.isPaymentProof("listo don carlos, ya le transferí por Bancolombia", false, false));
+        assertTrue(OrderProcessingService.isPaymentProof("ya le mandé la plata al nequi", false, false));
+        assertTrue(OrderProcessingService.isPaymentProof("ahí le envié el comprobante", false, false));
+
+        // Pedido con método de pago NO es solo comprobante:
+        assertFalse(OrderProcessingService.isPaymentProof("mándeme 2 libras de papa y pago por nequi", false, false));
+        assertFalse(OrderProcessingService.isPaymentProof("deme 5 de tomate y transfiero", false, false));
+    }
 }
 

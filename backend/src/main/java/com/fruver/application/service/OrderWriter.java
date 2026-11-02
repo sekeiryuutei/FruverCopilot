@@ -227,6 +227,32 @@ public class OrderWriter {
     }
 
     @Transactional
+    public void updateAddress(long orderId, String address) {
+        if (address == null || address.isBlank()) return;
+        String clean = address.strip();
+        jdbc.sql("""
+                UPDATE orders SET address = :addr
+                WHERE id = :id
+                """).param("addr", clean).param("id", orderId).update();
+
+        jdbc.sql("""
+                UPDATE customer SET address = COALESCE(customer.address, :addr)
+                FROM orders o WHERE o.id = :id AND customer.id = o.customer_id
+                """).param("addr", clean).param("id", orderId).update();
+
+        jdbc.sql("""
+                INSERT INTO customer_address(customer_id, label, address, is_default)
+                SELECT o.customer_id, 'Ubicación', :addr, TRUE
+                FROM orders o
+                WHERE o.id = :id AND o.customer_id IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM customer_address ca
+                      WHERE ca.customer_id = o.customer_id AND lower(trim(ca.address)) = lower(trim(:addr))
+                  )
+                """).param("addr", clean).param("id", orderId).update();
+    }
+
+    @Transactional
     public void markInquiryHandled(long orderId, String note) {
         jdbc.sql("""
                 UPDATE orders SET status = 'REVIEW', review_status = 'YELLOW', ai_status = 'OK', ai_note = :note,

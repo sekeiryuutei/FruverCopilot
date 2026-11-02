@@ -181,6 +181,46 @@ public class OrderProcessingService {
             return;
         }
 
+        String incomingText = r.text() != null ? r.text().strip() : "";
+        boolean hasExistingItems = !writer.currentItems(orderId).isEmpty();
+        String activeCheckText = incomingText.isBlank() ? combinedText : incomingText;
+
+        // A. Comprobante de pago o transferencia (Nequi, Daviplata, Bancolombia, etc.) - Evitar consumo de tokens de IA
+        if (isPaymentProof(activeCheckText, !images.isEmpty(), hasExistingItems)) {
+            String note = "Comprobante de pago recibido" + (!incomingText.isBlank() ? ": " + incomingText : "");
+            writer.updatePaymentNote(orderId, note);
+            conversation.send(orderId, "¡Comprobante de pago recibido! Muchas gracias 👍 Enseguida lo confirmamos con el área de caja.", ConversationService.Kind.INFO, "ia");
+            writer.markInquiryHandled(orderId, "Comprobante de transferencia/pago registrado.");
+            hub.orderChanged(orderId);
+            return;
+        }
+
+        // B. Ubicación por enlace GPS (Google Maps) sin productos - Guardar directamente como dirección
+        if (images.isEmpty() && isGoogleMapsUrl(activeCheckText)) {
+            writer.updateAddress(orderId, activeCheckText.trim());
+            conversation.send(orderId, "¡Ubicación recibida! 📍 La hemos guardado para la entrega de tu pedido.", ConversationService.Kind.INFO, "ia");
+            writer.markInquiryHandled(orderId, "Ubicación GPS guardada.");
+            hub.orderChanged(orderId);
+            return;
+        }
+
+        // C. Enlaces web genéricos sin productos
+        if (images.isEmpty() && isUrlOnly(activeCheckText)) {
+            writer.markInquiryHandled(orderId, "Enlace web recibido sin productos.");
+            return;
+        }
+
+        // D. Mensajes de agradecimiento o cortesía pura (gracias, ok, listo, dale, emojis) - No enviar a IA
+        if (images.isEmpty() && isGratitudeOrCourtesyOnly(activeCheckText)) {
+            if (hasExistingItems || r.reply()) {
+                conversation.send(orderId, "¡Con mucho gusto! Para servirte 😊", ConversationService.Kind.INFO, "ia");
+            } else {
+                conversation.send(orderId, "¡Hola! Con todo gusto. Si deseas hacer un pedido, puedes enviarnos tu lista en cualquier momento 👍", ConversationService.Kind.INFO, "ia");
+            }
+            writer.markInquiryHandled(orderId, "Mensaje de cortesía/agradecimiento.");
+            return;
+        }
+
         // 1. Si es solo un saludo sin productos previos en el pedido y sin imágenes:
         if (images.isEmpty() && !r.reply() && isGreetingOnly(combinedText)) {
             boolean hasHistory = writer.hasPriorMessages(orderId);
@@ -830,6 +870,80 @@ public class OrderProcessingService {
                 || t.contains("consigue") || t.contains("consiguen")
                 || t.contains("queda") || t.contains("quedan")
                 || t.contains("disponible") || t.contains("disponibles") || t.contains("lista");
+    }
+
+    public static boolean isGratitudeOrCourtesyOnly(String text) {
+        if (text == null || text.isBlank()) return false;
+        if (text.matches(".*\\d.*")) return false;
+
+        String folded = TextTokens.fold(text).trim();
+        String clean = folded.replaceAll("[^a-z\\s]", " ").trim();
+        if (clean.isBlank()) {
+            return true;
+        }
+
+        String[] words = clean.split("\\s+");
+        java.util.Set<String> courtesyWords = java.util.Set.of(
+                "gracias", "muchas", "mil", "muchisimas", "muchisima",
+                "dios", "le", "te", "lo", "me", "pague", "bendiga", "guarde",
+                "muy", "amable", "amables", "atento", "atenta",
+                "ok", "oki", "okis", "vale", "listo", "lista", "dale", "bien", "bueno", "buena",
+                "perfecto", "perfecta", "excelente", "entendido", "de", "acuerdo",
+                "chao", "chau", "adios", "hasta", "luego", "pronto", "manana",
+                "don", "dona", "senor", "senora", "sr", "sra", "carlos", "amigo", "vecino", "vecina",
+                "si", "no", "por", "favor", "quedo",
+                "hola", "buenas", "buen", "dia", "dias", "tardes", "noches"
+        );
+
+        for (String w : words) {
+            if (!courtesyWords.contains(w)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static boolean isUrlOnly(String text) {
+        if (text == null || text.isBlank()) return false;
+        String t = text.trim();
+        return t.matches("(?i)^(https?://|www\\.|wa\\.me/)\\S+$");
+    }
+
+    public static boolean isGoogleMapsUrl(String text) {
+        if (text == null || text.isBlank()) return false;
+        String t = text.toLowerCase(java.util.Locale.ROOT).trim();
+        return t.contains("google.com/maps") || t.contains("goo.gl/maps") || t.contains("maps.app.goo.gl");
+    }
+
+    public static boolean isPaymentProof(String text, boolean hasImages, boolean hasExistingItems) {
+        if (text == null && !hasImages) return false;
+        String t = text != null ? TextTokens.fold(text).trim().toLowerCase(java.util.Locale.ROOT) : "";
+
+        boolean hasPaymentKeywords = t.contains("comprobante")
+                || t.contains("transferencia") || t.contains("transferi") || t.contains("transferido")
+                || t.contains("nequi") || t.contains("daviplata") || t.contains("bancolombia")
+                || t.contains("consignacion") || t.contains("consigne") || t.contains("consignado")
+                || t.contains("soporte de pago") || t.contains("soporte")
+                || t.contains("ya pague") || t.contains("ya le pague") || t.contains("ya le mande la plata")
+                || t.contains("ahi le mande la plata") || t.contains("ahi le envie el comprobante")
+                || t.contains("adjunto pago") || t.contains("adjunto soporte");
+
+        if (hasImages) {
+            if (hasPaymentKeywords) return true;
+            if (hasExistingItems && (t.isBlank() || isGratitudeOrCourtesyOnly(text) || t.contains("pago") || t.contains("listo") || t.contains("cancelado"))) {
+                return true;
+            }
+        }
+
+        if (!hasImages && hasPaymentKeywords) {
+            boolean hasOrderVerbs = t.contains("manda") || t.contains("deme") || t.contains("traiga")
+                    || t.contains("kilo") || t.contains("libra") || t.contains("libras");
+            if (!hasOrderVerbs) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public boolean isGreetingOnly(String text) {
