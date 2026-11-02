@@ -63,8 +63,9 @@ public class WhatsAppWebhookController {
         if (body == null) body = "";
         if (!validSignature(body, signature)) {
             String bridgeHeader = req.getHeader("X-Bridge-Origin");
-            if (!"fruver-baileys".equals(bridgeHeader)) {
-                log.warn("Firma WhatsApp invalida desde {}", req.getRemoteAddr());
+            String remoteAddr = req.getRemoteAddr();
+            if (!"fruver-baileys".equals(bridgeHeader) || !isInternalIp(remoteAddr)) {
+                log.warn("Firma WhatsApp invalida o intento de suplantacion desde {}", remoteAddr);
                 return ResponseEntity.status(403).build();
             }
         }
@@ -127,5 +128,21 @@ public class WhatsAppWebhookController {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private boolean isInternalIp(String ip) {
+        if (ip == null || ip.isBlank()) return false;
+        if (ip.equals("127.0.0.1") || ip.equals("::1") || ip.equals("0:0:0:0:0:0:0:1")) return true;
+        if (ip.startsWith("10.") || ip.startsWith("192.168.")) return true;
+        if (ip.startsWith("172.")) {
+            try {
+                String[] parts = ip.split("\\.");
+                if (parts.length >= 2) {
+                    int second = Integer.parseInt(parts[1]);
+                    return second >= 16 && second <= 31;
+                }
+            } catch (Exception ignored) {}
+        }
+        return false;
     }
 }

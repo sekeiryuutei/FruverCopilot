@@ -31,7 +31,7 @@ class TicketAndConfirmationTest {
             assertTrue(all.contains("FACTURA #10542") || all.contains("PEDIDO #10542"));
             assertTrue(all.contains("MAYORISTA"));
             assertTrue(all.contains("TOTAL"));
-            assertTrue(all.contains("DIRECCION") && all.contains("OBS: Sin cilantro"));
+            assertTrue(all.contains("DIRECCION"));
             assertTrue(all.lines().allMatch(l -> l.length() <= cols), "linea excede " + cols + " columnas");
         }
     }

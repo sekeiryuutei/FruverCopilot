@@ -204,15 +204,13 @@ public class PrintService {
         log.warn("Impresion fallida (venta {}, intento {}): {}", job.saleId(), job.attempts(), msg);
         metrics.print("failed");
         final String error = msg;
-        if ("CASA".equalsIgnoreCase(job.targetPrinter())) {
-            log.warn("Impresora CASA no disponible para venta #{}. Cambiando destino a OFICINA (Email Brother)...", job.saleId());
-            jdbc.sql("UPDATE print_job SET status = 'PENDING', target_printer = 'OFICINA', attempts = 0, last_error = NULL, next_attempt_at = now() WHERE id = :id")
-                    .param("id", job.id()).update();
-            return;
-        }
         if (job.attempts() < props.printing().maxAttempts()) {
             jdbc.sql("UPDATE print_job SET status = 'PENDING', last_error = :e, next_attempt_at = now() + (:w * interval '1 second'), updated_at = now() WHERE id = :id")
                     .param("e", error).param("w", job.attempts() * 5).param("id", job.id()).update();
+        } else if ("CASA".equalsIgnoreCase(job.targetPrinter())) {
+            log.warn("Impresora CASA agotó sus {} intentos para venta #{}. Cambiando destino a OFICINA (Email Brother)...", job.attempts(), job.saleId());
+            jdbc.sql("UPDATE print_job SET status = 'PENDING', target_printer = 'OFICINA', attempts = 0, last_error = NULL, next_attempt_at = now() WHERE id = :id")
+                    .param("id", job.id()).update();
         } else {
             tx.executeWithoutResult(s -> {
                 jdbc.sql("UPDATE print_job SET status = 'FAILED', last_error = :e, updated_at = now() WHERE id = :id").param("e", error).param("id", job.id()).update();

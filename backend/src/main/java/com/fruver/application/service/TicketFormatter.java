@@ -51,7 +51,9 @@ public final class TicketFormatter {
         if (t.phone() != null && !t.phone().isBlank()) {
             String p = t.phone().strip();
             if (p.startsWith("57") && p.length() == 12) p = p.substring(2);
-            out.add(new TicketLine("TEL: " + p, false));
+            if (p.length() <= 10 && p.matches("\\d{7,10}")) {
+                out.add(new TicketLine("TEL: " + p, false));
+            }
         }
         if (t.inputType() != null && !t.inputType().isBlank() && !"TEXT".equalsIgnoreCase(t.inputType())) {
             java.util.List<String> parts = new java.util.ArrayList<>();

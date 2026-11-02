@@ -44,6 +44,7 @@ public class SecurityConfig {
                     .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                     .ignoringRequestMatchers("/webhook/**", "/login"))
             .addFilterAfter(new CsrfCookieFilter(), BasicAuthenticationFilter.class)
+            .addFilterBefore(new HttpRateLimitFilter(), org.springframework.security.web.csrf.CsrfFilter.class)
             .addFilterBefore(new LoginBlockFilter(attempts), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
             .headers(h -> h
                     .frameOptions(f -> f.deny())

@@ -144,6 +144,9 @@ public class TalonarioRasterService {
         String customer = (t.customer() != null ? t.customer() : "CLIENTE GENERAL").toUpperCase();
         String rawPhone = (t.phone() != null ? t.phone() : "").trim();
         String phone = rawPhone.replaceFirst("^\\+?57", "");
+        if (phone.length() > 10 || !phone.matches("\\d{7,10}")) {
+            phone = "__________________";
+        }
         String address = (t.address() != null && !t.address().isBlank()) ? t.address().trim().toUpperCase() : "________________________________________________";
         String originInfo = "";
         if (t.inputType() != null && !t.inputType().isBlank() && !"TEXT".equalsIgnoreCase(t.inputType())) {

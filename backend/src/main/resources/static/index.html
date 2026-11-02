@@ -634,8 +634,20 @@ function buildTalonarioView(t){
   const orderNum = String(t.orderId || t.saleId || '').padStart(6, '0');
   const customerName = (t.customer || 'CLIENTE GENERAL').toUpperCase();
   const rawPhone = (t.phone || '').trim();
-  const phone = rawPhone.replace(/^(\+?57)/, '');
+  let phone = rawPhone.replace(/^(\+?57)/, '');
+  if (phone.length > 10 || !/^\d{7,10}$/.test(phone)) {
+    phone = '__________________';
+  }
   const address = t.address || '';
+  let originInfo = '';
+  const inType = (t.inputType || t.origin || '').toUpperCase();
+  if (inType && inType !== 'TEXT') {
+    const parts = [];
+    if (inType.includes('AUDIO')) parts.push('🎤 AUDIO');
+    if (inType.includes('IMAGE') || inType.includes('IMAGEN')) parts.push('📷 IMAGEN');
+    if (inType.includes('TEXT')) parts.push('📝 TEXTO');
+    if (parts.length > 0) originInfo = '<b>ORIGEN:</b> ' + parts.join(' + ');
+  }
   const showPrices = t.showPrices === true;
   const allItemsPriced = items.length > 0 && items.every(it => isMoneyOrder(it) || (it.manualPrice && Number(it.manualPrice) > 0) || (it.subtotal && Number(it.subtotal) > 0));
   const totalStr = (allItemsPriced && showPrices && t.totalFormatted) ? t.totalFormatted : "&nbsp;";

@@ -50,6 +50,7 @@ public class OrderProcessingService {
     private final SaleService sales;
     private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
     private final PrinterConfigService printerConfig;
+    private final WhatsAppSecurityLimiter securityLimiter;
 
     @org.springframework.beans.factory.annotation.Autowired
     public OrderProcessingService(OrderExtractor extractor, SpeechToTextService stt, AudioStorageService storage,
@@ -58,7 +59,8 @@ public class OrderProcessingService {
                                   ConversationService conversation, SseHub hub, AppMetrics metrics, AppProperties props,
                                   DeliveryZoneService zones, SaleService sales,
                                   org.springframework.jdbc.core.simple.JdbcClient jdbc,
-                                  PrinterConfigService printerConfig) {
+                                  PrinterConfigService printerConfig,
+                                  WhatsAppSecurityLimiter securityLimiter) {
         this.extractor = extractor;
         this.stt = stt;
         this.storage = storage;
@@ -76,6 +78,7 @@ public class OrderProcessingService {
         this.sales = sales;
         this.jdbc = jdbc;
         this.printerConfig = printerConfig;
+        this.securityLimiter = securityLimiter;
     }
 
     public OrderProcessingService(OrderExtractor extractor, SpeechToTextService stt, AudioStorageService storage,
@@ -84,7 +87,7 @@ public class OrderProcessingService {
                                   ConversationService conversation, SseHub hub, AppMetrics metrics, AppProperties props,
                                   DeliveryZoneService zones, SaleService sales,
                                   org.springframework.jdbc.core.simple.JdbcClient jdbc) {
-        this(extractor, stt, storage, media, catalog, interpreter, writer, orders, quotes, conversation, hub, metrics, props, zones, sales, jdbc, (PrinterConfigService) null);
+        this(extractor, stt, storage, media, catalog, interpreter, writer, orders, quotes, conversation, hub, metrics, props, zones, sales, jdbc, (PrinterConfigService) null, null);
     }
 
     @Async("aiExecutor")
@@ -277,6 +280,30 @@ public class OrderProcessingService {
         PaymentInfo extractedPayment = extractPaymentMethod(combinedText, currentTotal);
         if (extractedPayment != null) {
             writer.updatePaymentNote(orderId, extractedPayment.note());
+        }
+
+        // Escudo de proteccion de tokens contra saturacion o ataques intencionales
+        String clientPhone = currentRow != null ? currentRow.customerPhone() : null;
+        if (securityLimiter != null && clientPhone != null) {
+            var check = securityLimiter.evaluate(clientPhone, combinedText);
+            if (!check.allowed()) {
+                log.warn("[DEFENSA IA] Bloqueo preventivo de tokens activado para pedido {} (tel: {}): {}", orderId, clientPhone, check.reason());
+                writer.markFailed(orderId, "BLOCKED_SPAM", "ALERTA SEGURIDAD: " + check.reason());
+                jdbc.sql("""
+                        UPDATE orders SET requires_verification = TRUE,
+                               verification_reason = :vr,
+                               conversation_status = 'WAITING_FOR_OPERATOR',
+                               version = version + 1
+                        WHERE id = :id
+                        """).param("vr", "ALERTA SEGURIDAD: " + check.reason()).param("id", orderId).update();
+                if (securityLimiter.shouldNotifyClient(clientPhone)) {
+                    conversation.send(orderId,
+                            "Hemos recibido varios mensajes consecutivos desde tu número. Para proteger tu pedido y evitar duplicados, un asesor humano lo revisará manualmente en breve 👍",
+                            ConversationService.Kind.INFO, "ia");
+                }
+                hub.orderChanged(orderId);
+                return;
+            }
         }
 
         ExtractionRequest req = new ExtractionRequest(combinedText,

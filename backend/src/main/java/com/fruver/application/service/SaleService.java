@@ -119,7 +119,9 @@ public class SaleService {
                     ? it.aiProductName()
                     : (l != null && l.productName() != null ? l.productName() : it.mentioned());
             Long pid = l != null ? l.productId() : it.productId();
-            boolean isMoney = it.manualPrice() != null || "VALOR".equalsIgnoreCase(it.unit() != null ? it.unit() : (l != null ? l.unit() : null));
+            boolean isMoney = "VALOR".equalsIgnoreCase(it.unit() != null ? it.unit() : (l != null ? l.unit() : null))
+                    || "VALOR".equalsIgnoreCase(it.aiUnit())
+                    || (it.manualPrice() != null && (it.quantity() == null || it.quantity().compareTo(BigDecimal.ZERO) == 0) && (l == null || l.quantity() == null));
             String unit = isMoney ? "VALOR" : (l != null && l.unit() != null ? l.unit() : it.unit());
             BigDecimal qty = isMoney ? BigDecimal.ONE : (l != null && l.quantity() != null ? l.quantity() : (it.quantity() != null ? it.quantity() : BigDecimal.ONE));
             BigDecimal catPrice = l != null ? l.catalogPrice() : null;
@@ -201,7 +203,8 @@ public class SaleService {
         for (ItemRow it : items) {
             String pName = it.aiProductName() != null && !it.aiProductName().isBlank() ? it.aiProductName() : it.mentioned();
             if (pName == null || pName.isBlank()) pName = "Artículo";
-            boolean isMoneyOrder = it.manualPrice() != null && it.manualPrice().compareTo(BigDecimal.ZERO) > 0;
+            boolean isMoneyOrder = "VALOR".equalsIgnoreCase(it.unit()) || "VALOR".equalsIgnoreCase(it.aiUnit())
+                    || (it.manualPrice() != null && it.manualPrice().compareTo(BigDecimal.ZERO) > 0 && it.quantity() == null && it.aiQuantity() == null);
             String unit = isMoneyOrder ? "VALOR" : (it.unit() != null ? it.unit() : (it.aiUnit() != null ? it.aiUnit() : null));
             BigDecimal qty = isMoneyOrder ? BigDecimal.ONE
                     : (it.quantity() != null && it.quantity().compareTo(BigDecimal.ZERO) > 0

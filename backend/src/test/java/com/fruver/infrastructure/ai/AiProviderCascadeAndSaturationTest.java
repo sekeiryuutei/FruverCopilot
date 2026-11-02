@@ -13,8 +13,6 @@ import java.time.Duration;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 class AiProviderCascadeAndSaturationTest {
 
@@ -49,12 +47,17 @@ class AiProviderCascadeAndSaturationTest {
                 new AppProperties.Ai("gemini", geminiProps, null, null, null, null, null), null, null, null
         );
 
-        FallbackAiClient mockFallback = mock(FallbackAiClient.class);
         AIOrderResponse expectedFallbackResponse = new AIOrderResponse(
                 List.of(new com.fruver.application.dto.ItemSugeridoDTO("5 kilos de papa", "PAPA", new java.math.BigDecimal("5"), "KG", false, null)),
                 com.fruver.domain.enums.ConversationAction.CONFIRM_ORDER, "OK", "Extracción desde Fallback Groq", null, null, null, null
         );
-        when(mockFallback.tryFallback(any(), any())).thenReturn(expectedFallbackResponse);
+
+        FallbackAiClient mockFallback = new FallbackAiClient(null, null, null) {
+            @Override
+            public AIOrderResponse tryFallback(String systemPrompt, String userPrompt) {
+                return expectedFallbackResponse;
+            }
+        };
 
         RestClient.Builder restBuilder = RestClient.builder();
         org.springframework.test.web.client.MockRestServiceServer server = org.springframework.test.web.client.MockRestServiceServer.bindTo(restBuilder).ignoreExpectOrder(true).build();
@@ -84,9 +87,12 @@ class AiProviderCascadeAndSaturationTest {
                 new AppProperties.Ai("gemini", geminiProps, null, null, null, null, null), null, null, null
         );
 
-        FallbackAiClient mockFallback = mock(FallbackAiClient.class);
-        // Fallback también falla devolviendo null
-        when(mockFallback.tryFallback(any(), any())).thenReturn(null);
+        FallbackAiClient mockFallback = new FallbackAiClient(null, null, null) {
+            @Override
+            public AIOrderResponse tryFallback(String systemPrompt, String userPrompt) {
+                return null;
+            }
+        };
 
         RestClient.Builder restBuilder = RestClient.builder();
         org.springframework.test.web.client.MockRestServiceServer server = org.springframework.test.web.client.MockRestServiceServer.bindTo(restBuilder).ignoreExpectOrder(true).build();
@@ -103,4 +109,3 @@ class AiProviderCascadeAndSaturationTest {
         assertTrue(ex.getMessage().contains("Fallo la extracción") || ex.getMessage().contains("Gemini"));
     }
 }
-
