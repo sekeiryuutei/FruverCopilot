@@ -227,7 +227,9 @@ public class OrderProcessingService {
         if (isPaymentProof(activeCheckText, !images.isEmpty(), hasExistingItems)) {
             String note = "Comprobante de pago recibido" + (!incomingText.isBlank() ? ": " + incomingText : "");
             writer.updatePaymentNote(orderId, note);
-            conversation.send(orderId, "¡Comprobante de pago recibido! Muchas gracias 👍 Enseguida lo confirmamos con el área de caja.", ConversationService.Kind.INFO, "ia");
+            if (props.conversation().aiAutoReply()) {
+                conversation.send(orderId, "¡Comprobante de pago recibido! Muchas gracias 👍 Enseguida lo confirmamos con el área de caja.", ConversationService.Kind.INFO, "ia");
+            }
             if (!hasExistingItems) {
                 writer.cancelEmptyNonOrder(orderId, "Comprobante de transferencia/pago (sin pedido de fruver).");
             } else {
@@ -240,7 +242,9 @@ public class OrderProcessingService {
         // B. Ubicación por enlace GPS (Google Maps) sin productos - Guardar directamente como dirección
         if (images.isEmpty() && isGoogleMapsUrl(activeCheckText)) {
             writer.updateAddress(orderId, activeCheckText.trim());
-            conversation.send(orderId, "¡Ubicación recibida! 📍 La hemos guardado para la entrega de tu pedido.", ConversationService.Kind.INFO, "ia");
+            if (props.conversation().aiAutoReply()) {
+                conversation.send(orderId, "¡Ubicación recibida! 📍 La hemos guardado para la entrega de tu pedido.", ConversationService.Kind.INFO, "ia");
+            }
             if (!hasExistingItems) {
                 writer.cancelEmptyNonOrder(orderId, "Ubicación GPS guardada (sin pedido).");
             } else {
@@ -263,12 +267,17 @@ public class OrderProcessingService {
 
         // D. Mensajes de agradecimiento o cortesía pura (gracias, ok, listo, dale, emojis) - No enviar a IA
         if (images.isEmpty() && isGratitudeOrCourtesyOnly(activeCheckText)) {
-            if (hasExistingItems || r.reply()) {
-                conversation.send(orderId, "¡Con mucho gusto! Para servirte 😊", ConversationService.Kind.INFO, "ia");
-                writer.markInquiryHandled(orderId, "Mensaje de cortesía/agradecimiento.");
-            } else {
-                conversation.send(orderId, "¡Hola! Con todo gusto. Si deseas hacer un pedido, puedes enviarnos tu lista en cualquier momento 👍", ConversationService.Kind.INFO, "ia");
+            if (props.conversation().aiAutoReply()) {
+                if (hasExistingItems || r.reply()) {
+                    conversation.send(orderId, "¡Con mucho gusto! Para servirte 😊", ConversationService.Kind.INFO, "ia");
+                } else {
+                    conversation.send(orderId, "¡Hola! Con todo gusto. Si deseas hacer un pedido, puedes enviarnos tu lista en cualquier momento 👍", ConversationService.Kind.INFO, "ia");
+                }
+            }
+            if (!hasExistingItems && !r.reply()) {
                 writer.cancelEmptyNonOrder(orderId, "Mensaje de cortesía/agradecimiento (sin pedido).");
+            } else {
+                writer.markInquiryHandled(orderId, "Mensaje de cortesía/agradecimiento.");
             }
             hub.orderChanged(orderId);
             return;
@@ -276,11 +285,13 @@ public class OrderProcessingService {
 
         // 1. Si es solo un saludo sin productos previos en el pedido y sin imágenes:
         if (images.isEmpty() && !r.reply() && isGreetingOnly(combinedText)) {
-            boolean hasHistory = writer.hasPriorMessages(orderId);
-            String greeting = hasHistory
-                    ? "Buenas, ¿en qué te podemos colaborar hoy? Puedes dejarnos tu lista de mercado o preguntarnos lo que necesites."
-                    : "¡Hola! Buenas 👋 ¿En qué te colaboramos hoy? Puedes enviarnos tu lista de mercado (por texto o nota de voz) o preguntarnos precios y lo que necesites.";
-            conversation.send(orderId, greeting, ConversationService.Kind.INFO, "ia");
+            if (props.conversation().aiAutoReply()) {
+                boolean hasHistory = writer.hasPriorMessages(orderId);
+                String greeting = hasHistory
+                        ? "Buenas, ¿en qué te podemos colaborar hoy? Puedes dejarnos tu lista de mercado o preguntarnos lo que necesites."
+                        : "¡Hola! Buenas 👋 ¿En qué te colaboramos hoy? Puedes enviarnos tu lista de mercado (por texto o nota de voz) o preguntarnos precios y lo que necesites.";
+                conversation.send(orderId, greeting, ConversationService.Kind.INFO, "ia");
+            }
             if (!hasExistingItems) {
                 writer.cancelEmptyNonOrder(orderId, "Saludo recibido (sin pedido).");
             } else {
@@ -292,8 +303,10 @@ public class OrderProcessingService {
 
         // 2. Si es una consulta directa de disponibilidad o precios de catálogo (solo si no es un pedido activo y sin imágenes):
         if (images.isEmpty() && !r.reply() && isPriceOrInventoryInquiry(combinedText)) {
-            String reply = buildCatalogOrPriceReply(combinedText);
-            conversation.send(orderId, reply, ConversationService.Kind.INFO, "ia");
+            if (props.conversation().aiAutoReply()) {
+                String reply = buildCatalogOrPriceReply(combinedText);
+                conversation.send(orderId, reply, ConversationService.Kind.INFO, "ia");
+            }
             if (!hasExistingItems) {
                 writer.cancelEmptyNonOrder(orderId, "Consulta sobre disponibilidad/precios (sin pedido).");
             } else {
