@@ -3,7 +3,7 @@ package com.fruver.domain.enums;
 import java.util.Optional;
 
 public enum UnitOfMeasure {
-    LB, KG, UNIDAD;
+    LB, KG, UNIDAD, CAJA, BULTO, ARROBA, ATADO, BOLSA, PAQUETE, MANOJO;
 
     /** La salida del LLM no es confiable: se parsea de forma tolerante, nunca con valueOf directo. */
     public static Optional<UnitOfMeasure> parse(String raw) {
@@ -12,11 +12,28 @@ public enum UnitOfMeasure {
             case "LB", "LIBRA", "LIBRAS" -> Optional.of(LB);
             case "KG", "KILO", "KILOS", "KL", "KLS", "KL." -> Optional.of(KG);
             case "UN", "UND", "UNIDAD", "UNIDADES" -> Optional.of(UNIDAD);
+            case "CAJA", "CAJAS", "CJ" -> Optional.of(CAJA);
+            case "BULTO", "BULTOS", "BL" -> Optional.of(BULTO);
+            case "ARROBA", "ARROBAS", "@" -> Optional.of(ARROBA);
+            case "ATADO", "ATADOS" -> Optional.of(ATADO);
+            case "BOLSA", "BOLSAS" -> Optional.of(BOLSA);
+            case "PAQUETE", "PAQUETES", "PQ" -> Optional.of(PAQUETE);
+            case "MANOJO", "MANOJOS" -> Optional.of(MANOJO);
             default -> Optional.empty();
         };
     }
 
     public String label() {
-        return this == UNIDAD ? "UN" : name();
+        return switch (this) {
+            case UNIDAD -> "UN";
+            case CAJA -> "CJ";
+            case BULTO -> "BL";
+            case ARROBA -> "@";
+            case ATADO -> "AT";
+            case BOLSA -> "BOL";
+            case PAQUETE -> "PQ";
+            case MANOJO -> "MJ";
+            default -> name();
+        };
     }
 }

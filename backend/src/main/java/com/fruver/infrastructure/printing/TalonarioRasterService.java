@@ -401,7 +401,7 @@ public class TalonarioRasterService {
         }
         // Si cantidad es >= 1000 sin unidad de peso/unidad típica (ej: "10.000 de cebolla")
         if (l.quantity() != null && l.quantity().compareTo(new BigDecimal("1000")) >= 0
-                && (u.isBlank() || !List.of("LB", "LBS", "KG", "KGS", "KL", "KLS", "UN", "UND", "UNIDAD", "UNIDADES").contains(u))) {
+                && (u.isBlank() || !List.of("LB", "LBS", "KG", "KGS", "KL", "KLS", "UN", "UND", "UNIDAD", "UNIDADES", "CAJA", "CAJAS", "CJ", "BULTO", "BULTOS", "BL", "ARROBA", "@", "ATADO", "BOLSA", "PAQUETE", "MANOJO").contains(u))) {
             return true;
         }
         return false;

@@ -124,17 +124,18 @@ public class OrderProcessingService {
     public void autoRetryFailedOrders() {
         try {
             List<Long> failedIds = jdbc.sql("""
-                    SELECT id FROM orders
-                    WHERE ai_status = 'FAILED'
-                      AND status IN ('RECEIVED', 'PROCESSING', 'REVIEW')
-                      AND corrected = FALSE
-                      AND received_at > now() - interval '6 hours'
-                    ORDER BY id ASC
-                    LIMIT 5
+                    SELECT o.id FROM orders o
+                    WHERE o.ai_status = 'FAILED'
+                      AND o.status IN ('RECEIVED', 'PROCESSING')
+                      AND o.corrected = FALSE
+                      AND o.received_at > now() - interval '2 hours'
+                      AND NOT EXISTS (SELECT 1 FROM order_item oi WHERE oi.order_id = o.id)
+                    ORDER BY o.id ASC
+                    LIMIT 3
                     """).query(Long.class).list();
 
             for (Long fid : failedIds) {
-                log.info("Auto-reprocesando pedido fallido #{} con el pool de IAs...", fid);
+                log.info("Auto-reprocesando pedido fallido #{} (sin items)...", fid);
                 reprocess(fid);
             }
         } catch (Exception ex) {
@@ -215,6 +216,12 @@ public class OrderProcessingService {
                 """).param("id", orderId).query(String.class).list();
 
         String combinedText = String.join("\n", texts).strip();
+        if (!combinedText.isBlank()) {
+            combinedText = combinedText
+                    .replaceAll("(?i)\\b1[)(]2\\b", "1/2")
+                    .replaceAll("(?i)\\b1[)(]4\\b", "1/4")
+                    .replaceAll("(?i)\\b3[)(]4\\b", "3/4");
+        }
         if (combinedText.isBlank() && images.isEmpty()) {
             return;
         }
@@ -377,11 +384,7 @@ public class OrderProcessingService {
                                version = version + 1
                         WHERE id = :id
                         """).param("vr", "ALERTA SEGURIDAD: " + check.reason()).param("id", orderId).update();
-                if (securityLimiter.shouldNotifyClient(clientPhone)) {
-                    conversation.send(orderId,
-                            "Hemos recibido varios mensajes consecutivos desde tu número. Para proteger tu pedido y evitar duplicados, un asesor humano lo revisará manualmente en breve 👍",
-                            ConversationService.Kind.INFO, "ia");
-                }
+                // Bloqueo preventivo registrado internamente: NUNCA enviar mensajes de texto automáticos al cliente
                 hub.orderChanged(orderId);
                 return;
             }

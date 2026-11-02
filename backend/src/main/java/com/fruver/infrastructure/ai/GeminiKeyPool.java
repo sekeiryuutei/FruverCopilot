@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class GeminiKeyPool {
 
     private static final Logger log = LoggerFactory.getLogger(GeminiKeyPool.class);
-    public static final int DEFAULT_BATCH_SIZE = 5;
+    public static final int DEFAULT_BATCH_SIZE = 1;
 
     public record KeyEntry(String key, int index, String masked) {}
 

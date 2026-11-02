@@ -1453,7 +1453,11 @@ function card(o){
     ));
   }
 
-  if(o.aiStatus==='FAILED')el.append(h('div',{class:'banner',style:'display:flex;justify-content:space-between;align-items:center;background:#7f1d1d;border-left:4px solid #ef4444;color:#fff'},h('span',{},'🔴 IA NO DISPONIBLE — o fallo temporal al interpretar.'),h('button',{class:'b',style:'background:#2563eb;color:#fff;border-color:#2563eb;font-weight:700',onclick:()=>reprocessOrder(o.id)},'↻ Reintentar con IA')));
+  if(o.aiStatus==='FAILED'){
+    const hasItems = o.items && o.items.length > 0;
+    const msg = hasItems ? '⚠️ Líneas para verificar — revisa los renglones con observación o duda.' : '🔴 IA NO DISPONIBLE — o fallo temporal al interpretar.';
+    el.append(h('div',{class:'banner',style:'display:flex;justify-content:space-between;align-items:center;background:' + (hasItems ? '#78350f' : '#7f1d1d') + ';border-left:4px solid ' + (hasItems ? '#f59e0b' : '#ef4444') + ';color:#fff'},h('span',{},msg),h('button',{class:'b',style:'background:#2563eb;color:#fff;border-color:#2563eb;font-weight:700',onclick:()=>reprocessOrder(o.id)},'↻ Reintentar con IA')));
+  }
   if(o.aiStatus==='TRANSCRIPTION_FAILED')el.append(h('div',{class:'banner',style:'display:flex;justify-content:space-between;align-items:center;background:#7f1d1d;border-left:4px solid #ef4444;color:#fff'},h('span',{},'🎙️ 🔴 TRANSCRIPCIÓN FALLIDA — fallo temporal al transcribir.'),h('button',{class:'b',style:'background:#2563eb;color:#fff;border-color:#2563eb;font-weight:700',onclick:()=>reprocessOrder(o.id)},'↻ Reintentar con IA')));
   if(o.conversationStatus==='WAITING_FOR_CUSTOMER')el.append(h('div',{class:'ai'},'⏳ Esperando respuesta del cliente'));
   if(o.conversationStatus==='WAITING_FOR_MORE'){

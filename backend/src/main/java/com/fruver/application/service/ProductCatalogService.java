@@ -211,6 +211,6 @@ public class ProductCatalogService implements ProductLookup {
 
     private static String requireUnit(String u) {
         return UnitOfMeasure.parse(u).map(Enum::name)
-                .orElseThrow(() -> new ApiException(400, "VALIDATION_ERROR", "Unidad invalida (LB, KG o UNIDAD)"));
+                .orElseThrow(() -> new ApiException(400, "VALIDATION_ERROR", "Unidad invalida"));
     }
 }
