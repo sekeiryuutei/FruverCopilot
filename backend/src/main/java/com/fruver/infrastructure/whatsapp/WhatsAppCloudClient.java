@@ -20,8 +20,8 @@ import java.util.Map;
  * (Twilio, 360dialog...) significa reemplazar esta clase y el webhook, no el dominio.
  * Nota: fuera de la ventana de 24 h Meta solo permite plantillas aprobadas; el envio fallara con 4xx.
  */
-@Service
-@ConditionalOnProperty(name = "app.whatsapp.enabled", havingValue = "true")
+// @Service - Reemplazado por MetaCloudApiStrategy + WhatsAppServiceContext
+// @ConditionalOnProperty(name = "app.whatsapp.enabled", havingValue = "true")
 public class WhatsAppCloudClient implements MessagingGateway, MediaDownloader {
 
     private final RestClient http;

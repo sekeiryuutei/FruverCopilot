@@ -1,5 +1,4 @@
-# Servicios: PostgreSQL + backend Spring Boot (que ademas sirve la pantalla operativa).
-# No se agregan Redis/RabbitMQ/MinIO: no resuelven ningun problema real de la v1 (ver README).
+# Servicios: PostgreSQL + backend Spring Boot + whatsapp-bridge (Baileys QR)
 name: fruvercopilot
 
 services:
@@ -24,6 +23,20 @@ services:
       timeout: 3s
       retries: 20
 
+  whatsapp-bridge:
+    container_name: fruvercopilot-whatsapp-bridge
+    build: ./whatsapp-bridge
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      AUTH_DIR: /app/auth_info
+      BACKEND_WEBHOOK_URL: http://backend:8080/webhook/whatsapp
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-ignore}
+    ports:
+      - "${WHATSAPP_BRIDGE_PORT:-8086}:3000"
+    volumes:
+      - whatsapp_auth:/app/auth_info
+
   backend:
     container_name: fruvercopilot-backend
     build: ./backend
@@ -37,6 +50,7 @@ services:
       DB_HOST: postgres      # nombre del servicio PostgreSQL dentro de la red de Docker
       DB_PORT: 5432          # puerto interno del contenedor de PostgreSQL (no el POSTGRES_PORT del host)
       AUDIO_STORAGE_PATH: /data/audio
+      APP_WHATSAPP_BRIDGE_URL: http://whatsapp-bridge:3000
     ports:
       - "${APP_PORT:-8085}:${SERVER_PORT:-8080}"
     volumes:
@@ -51,3 +65,4 @@ services:
 volumes:
   pgdata:
   audio_data:
+  whatsapp_auth:

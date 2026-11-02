@@ -2353,7 +2353,136 @@ async function renderPrinterConfig(){
       );
     }
 
-    m.replaceChildren(card, pwaCard, sessionCard, ...(resetDbCard ? [resetDbCard] : []));
+
+    /* ---------- Conexión de WhatsApp (Strategy & Baileys QR) ---------- */
+    const waStatusContainer = h('div');
+    const waCardHeader = h('div', { style: 'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px' });
+    const whatsappCard = h('div', { class: 'card', style: 'max-width:640px;margin:14px auto;padding:18px;border:1px solid rgba(16,185,129,0.35);background:rgba(16,185,129,0.02)' },
+      waCardHeader,
+      waStatusContainer
+    );
+
+    async function refreshWaStatus() {
+      try {
+        const wa = await api('/api/whatsapp/status');
+        renderWaContent(wa);
+      } catch (e) {
+        waStatusContainer.replaceChildren(h('div', { class: 'banner', style: 'background:#3b1e1e;color:#fca5a5' }, 'No se pudo contactar el servicio de WhatsApp: ' + e.message));
+      }
+    }
+
+    function renderWaContent(wa) {
+      const isBaileys = wa.provider === 'BAILEYS_QR';
+      const isConnected = wa.status === 'CONNECTED';
+      const isQr = wa.status === 'QR_READY';
+
+      const statusBadge = h('span', {
+        class: 'pill ' + (isConnected ? 'GREEN' : (isQr ? 'AMBER' : 'RED')),
+        style: 'font-size:12.5px;font-weight:700'
+      }, isConnected ? '🟢 CONECTADO' : (isQr ? '🟡 ESCANEAR QR' : '🔴 DESCONECTADO'));
+
+      const modeSelect = h('select', {
+        class: 'inp',
+        style: 'margin-top:6px;font-size:14px;padding:8px;background:var(--bg);color:#fff',
+        onchange: async (e) => {
+          const newProv = e.target.value;
+          modeSelect.disabled = true;
+          try {
+            toast('Cambiando proveedor de WhatsApp...');
+            const updated = await api('/api/whatsapp/provider', {
+              method: 'POST',
+              body: JSON.stringify({ provider: newProv })
+            });
+            toast('✓ Modo WhatsApp actualizado');
+            renderWaContent(updated);
+          } catch(err) {
+            toast('Error: ' + err.message);
+          } finally {
+            modeSelect.disabled = false;
+          }
+        }
+      },
+        h('option', { value: 'BAILEYS_QR', selected: isBaileys }, '📱 WhatsApp Normal / QR (Modo Coexistencia - Celular Libre)'),
+        h('option', { value: 'META_CLOUD_API', selected: !isBaileys }, '🏢 API Oficial de Meta (Cloud API)')
+      );
+
+      let detailContent = null;
+      if (!isBaileys) {
+        detailContent = h('div', { class: 'banner', style: 'background:#1e293b;border-left:4px solid #3b82f6;margin-top:12px;font-size:13px;line-height:1.5' },
+          h('b', {}, 'Modo API Oficial de Meta activo'),
+          h('p', { style: 'margin:4px 0 0 0;color:#94a3b8' },
+            'Los mensajes y pedidos ingresan directamente por el webhook de Meta Cloud API configurado en developers.facebook.com.'
+          )
+        );
+      } else {
+        if (isConnected) {
+          detailContent = h('div', { style: 'margin-top:14px;background:#064e3b;border:1px solid #059669;padding:14px;border-radius:6px;color:#d1fae5' },
+            h('div', { style: 'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px' },
+              h('div', {},
+                h('b', { style: 'font-size:14.5px' }, '✅ Conectado al WhatsApp del Celular: ' + (wa.phone ? '+' + wa.phone : 'Activo')),
+                h('p', { style: 'margin:4px 0 0 0;font-size:12.5px;color:#a7f3d0' }, 'El celular físico puede usarse libremente para llamadas y chats personales. FruverCopilot gestiona los pedidos en segundo plano.')
+              ),
+              h('button', {
+                class: 'b danger',
+                style: 'font-size:12.5px;padding:6px 12px;font-weight:700',
+                onclick: async () => {
+                  if (!confirm('¿Deseas desvincular este WhatsApp? Tendrás que escanear un nuevo código QR.')) return;
+                  toast('Cerrando sesión...');
+                  try {
+                    const up = await api('/api/whatsapp/logout', { method: 'POST' });
+                    toast('✓ Sesión desvinculada');
+                    renderWaContent(up);
+                  } catch(x){ toast('Error: ' + x.message); }
+                }
+              }, '❌ Desvincular Cuenta')
+            )
+          );
+        } else if (isQr && wa.qrCodeBase64) {
+          detailContent = h('div', { style: 'margin-top:14px;text-align:center;background:#1e293b;padding:16px;border-radius:6px;border:1px solid rgba(255,255,255,0.1)' },
+            h('b', { style: 'font-size:14.5px;color:#fef08a' }, '📷 Escanea este código QR con WhatsApp:'),
+            h('p', { class: 'mut', style: 'font-size:12.5px;margin:6px 0 12px 0' }, 'Abre WhatsApp en tu celular > Ajustes / Menú (⋮) > Dispositivos vinculados > Vincular un dispositivo.'),
+            h('img', {
+              src: wa.qrCodeBase64,
+              style: 'max-width:240px;width:100%;height:auto;border-radius:8px;border:3px solid #10b981;background:#fff;padding:6px;box-shadow:0 4px 12px rgba(0,0,0,0.5)'
+            }),
+            h('p', { class: 'mut', style: 'font-size:11.5px;margin-top:8px' }, '⏳ Sincronizando estado en vivo...')
+          );
+        } else {
+          detailContent = h('div', { style: 'margin-top:14px;background:#3b1e1e;border:1px solid #ef4444;padding:14px;border-radius:6px;color:#fca5a5' },
+            h('b', {}, '⏳ Conectando con el microservicio WhatsApp Bridge...'),
+            h('p', { style: 'margin:4px 0 10px 0;font-size:12px' }, 'Iniciando sesión segura o conectando al contenedor whatsapp-bridge.'),
+            h('button', {
+              class: 'b',
+              style: 'font-size:12px;padding:5px 10px',
+              onclick: refreshWaStatus
+            }, '🔄 Comprobar Estado')
+          );
+        }
+      }
+
+      waCardHeader.replaceChildren(
+        h('b', { style: 'font-size:17px;display:flex;align-items:center;gap:6px' }, '💬 Conexión de WhatsApp'),
+        statusBadge
+      );
+
+      waStatusContainer.replaceChildren(
+        h('label', { style: 'font-size:13px;font-weight:700;color:#94a3b8;display:block' }, 'Modo de Conexión:'),
+        modeSelect,
+        detailContent
+      );
+    }
+
+    refreshWaStatus();
+    if (window._waPollTimer) clearInterval(window._waPollTimer);
+    window._waPollTimer = setInterval(() => {
+      if (document.body.contains(whatsappCard)) {
+        refreshWaStatus();
+      } else {
+        clearInterval(window._waPollTimer);
+      }
+    }, 3500);
+
+    m.replaceChildren(card, whatsappCard, pwaCard, sessionCard, ...(resetDbCard ? [resetDbCard] : []));
   }catch(e){
     m.replaceChildren(h('div',{class:'card danger'},'Error al cargar configuración: '+e.message));
   }

@@ -146,10 +146,15 @@ public class TalonarioRasterService {
         String phone = rawPhone.replaceFirst("^\\+?57", "");
         String address = (t.address() != null && !t.address().isBlank()) ? t.address().trim().toUpperCase() : "________________________________________________";
         String originInfo = "";
-        if ("AUDIO".equalsIgnoreCase(t.inputType())) {
-            originInfo = "<b>ORIGEN:</b> &#127908; AUDIO";
-        } else if ("IMAGE".equalsIgnoreCase(t.inputType())) {
-            originInfo = "<b>ORIGEN:</b> &#128247; IMAGEN / LISTA";
+        if (t.inputType() != null && !t.inputType().isBlank() && !"TEXT".equalsIgnoreCase(t.inputType())) {
+            java.util.List<String> parts = new java.util.ArrayList<>();
+            String upper = t.inputType().toUpperCase();
+            if (upper.contains("AUDIO")) parts.add("&#127908; AUDIO");
+            if (upper.contains("IMAGE") || upper.contains("IMAGEN")) parts.add("&#128247; IMAGEN");
+            if (upper.contains("TEXT") || upper.contains("TEXTO")) parts.add("&#128221; TEXTO");
+            if (!parts.isEmpty()) {
+                originInfo = "<b>ORIGEN:</b> " + String.join(" + ", parts);
+            }
         }
         String orderNum = String.format("%06d", t.orderNumber());
 

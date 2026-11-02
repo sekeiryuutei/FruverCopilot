@@ -53,10 +53,15 @@ public final class TicketFormatter {
             if (p.startsWith("57") && p.length() == 12) p = p.substring(2);
             out.add(new TicketLine("TEL: " + p, false));
         }
-        if ("AUDIO".equalsIgnoreCase(t.inputType())) {
-            out.add(new TicketLine("ORIGEN: AUDIO", false));
-        } else if ("IMAGE".equalsIgnoreCase(t.inputType())) {
-            out.add(new TicketLine("ORIGEN: IMAGEN / FOTO", false));
+        if (t.inputType() != null && !t.inputType().isBlank() && !"TEXT".equalsIgnoreCase(t.inputType())) {
+            java.util.List<String> parts = new java.util.ArrayList<>();
+            String upper = t.inputType().toUpperCase();
+            if (upper.contains("AUDIO")) parts.add("AUDIO");
+            if (upper.contains("IMAGE") || upper.contains("IMAGEN")) parts.add("IMAGEN");
+            if (upper.contains("TEXT") || upper.contains("TEXTO")) parts.add("TEXTO");
+            if (!parts.isEmpty()) {
+                out.add(new TicketLine("ORIGEN: " + String.join(" + ", parts), false));
+            }
         }
         if (t.address() != null && !t.address().isBlank()) wrap("DIRECCION: " + t.address(), cols, false, out);
         if (t.deliveryPersonName() != null && !t.deliveryPersonName().isBlank()) wrap("REPARTIDOR: " + t.deliveryPersonName(), cols, true, out);

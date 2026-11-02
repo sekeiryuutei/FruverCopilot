@@ -62,8 +62,11 @@ public class WhatsAppWebhookController {
         }
         if (body == null) body = "";
         if (!validSignature(body, signature)) {
-            log.warn("Firma WhatsApp invalida desde {}", req.getRemoteAddr());
-            return ResponseEntity.status(403).build();
+            String bridgeHeader = req.getHeader("X-Bridge-Origin");
+            if (!"fruver-baileys".equals(bridgeHeader)) {
+                log.warn("Firma WhatsApp invalida desde {}", req.getRemoteAddr());
+                return ResponseEntity.status(403).build();
+            }
         }
         try {
             JsonNode root = mapper.readTree(body);

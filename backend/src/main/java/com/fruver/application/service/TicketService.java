@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 
 /** Arma los datos del ticket desde el SNAPSHOT de la venta (nunca desde precios actuales). */
@@ -32,22 +33,26 @@ public class TicketService {
                 FROM sale WHERE id = :s
                 """)
                 .param("s", saleId)
-                .query((rs, n) -> new TicketData(
-                        props.printing().shopName(),
-                        rs.getLong(1),
-                        rs.getObject(2, OffsetDateTime.class).atZoneSameInstant(zone).toOffsetDateTime(),
-                        rs.getString(3),
-                        rs.getString(4),
-                        rs.getString(5),
-                        lines,
-                        rs.getBigDecimal(6),
-                        rs.getString(7),
-                        rs.getString(8),
-                        reprint,
-                        rs.getString(9),
-                        rs.getBoolean(10),
-                        rs.getString(11),
-                        rs.getString(12))).single();
+                .query((rs, n) -> {
+                    long orderId = rs.getLong(1);
+                    String resolvedOrigin = resolveOrigin(orderId, rs.getString(12));
+                    return new TicketData(
+                            props.printing().shopName(),
+                            orderId,
+                            rs.getObject(2, OffsetDateTime.class).atZoneSameInstant(zone).toOffsetDateTime(),
+                            rs.getString(3),
+                            rs.getString(4),
+                            rs.getString(5),
+                            lines,
+                            rs.getBigDecimal(6),
+                            rs.getString(7),
+                            rs.getString(8),
+                            reprint,
+                            rs.getString(9),
+                            rs.getBoolean(10),
+                            rs.getString(11),
+                            resolvedOrigin);
+                }).single();
     }
 
     public TicketData buildFromOrder(long orderId) {
@@ -80,21 +85,51 @@ public class TicketService {
                 WHERE o.id = :o
                 """)
                 .param("o", orderId)
-                .query((rs, n) -> new TicketData(
-                        props.printing().shopName(),
-                        rs.getLong(1),
-                        rs.getObject(2, OffsetDateTime.class).atZoneSameInstant(zone).toOffsetDateTime(),
-                        rs.getString(3),
-                        rs.getString(4),
-                        rs.getString(5),
-                        lines,
-                        null,
-                        rs.getString(6),
-                        rs.getString(7),
-                        false,
-                        rs.getString(8),
-                        rs.getBoolean(9),
-                        rs.getString(10),
-                        rs.getString(11))).single();
+                .query((rs, n) -> {
+                    long oId = rs.getLong(1);
+                    String resolvedOrigin = resolveOrigin(oId, rs.getString(11));
+                    return new TicketData(
+                            props.printing().shopName(),
+                            oId,
+                            rs.getObject(2, OffsetDateTime.class).atZoneSameInstant(zone).toOffsetDateTime(),
+                            rs.getString(3),
+                            rs.getString(4),
+                            rs.getString(5),
+                            lines,
+                            null,
+                            rs.getString(6),
+                            rs.getString(7),
+                            false,
+                            rs.getString(8),
+                            rs.getBoolean(9),
+                            rs.getString(10),
+                            resolvedOrigin);
+                }).single();
+    }
+    private String resolveOrigin(long orderId, String fallbackInputType) {
+        if (orderId <= 0) return fallbackInputType;
+        try {
+            boolean hasAudio = Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS(SELECT 1 FROM audio WHERE order_id = :o)")
+                    .param("o", orderId).query(Boolean.class).single());
+            boolean hasImage = Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS(SELECT 1 FROM media_image WHERE order_id = :o)")
+                    .param("o", orderId).query(Boolean.class).single());
+            boolean hasText = Boolean.TRUE.equals(jdbc.sql("SELECT EXISTS(SELECT 1 FROM conversation_message WHERE order_id = :o AND direction = 'INBOUND' AND message_type = 'TEXT' AND content IS NOT NULL AND TRIM(content) <> '')")
+                    .param("o", orderId).query(Boolean.class).single());
+
+            List<String> origins = new ArrayList<>();
+            if (hasAudio) origins.add("AUDIO");
+            if (hasImage) origins.add("IMAGEN");
+            if (hasText) origins.add("TEXTO");
+
+            if (origins.isEmpty()) {
+                return fallbackInputType;
+            }
+            if (origins.size() == 1 && origins.contains("TEXTO")) {
+                return "TEXT"; // solo texto: no mostrar indicador
+            }
+            return String.join("+", origins);
+        } catch (Exception e) {
+            return fallbackInputType;
+        }
     }
 }

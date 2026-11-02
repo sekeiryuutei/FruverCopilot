@@ -76,13 +76,13 @@ final class SystemPrompts {
         REGLAS ESTRICTAS DE CANTIDADES, UNIDADES Y PRECIOS:
         1. LIBRAS: Si el cliente pide expresamente en libras (ej: "10 libras de papa", "5 lb", "3 libras"): cantidad=10, unidadMedida="LB".
         2. KILOS: Si el cliente pide expresamente en kilos (ej: "5 kilos de papa", "10kl", "2 kg", "medio kilo"): cantidad=5 (o 0.5), unidadMedida="KG". NUNCA conviertas kilos a libras si el cliente dijo kilos; respeta la unidad tal cual la pidió.
-        3. UNIDADES: Si el cliente pide expresamente en unidades o conteo (ej: "4 unidades de papa", "6 papayas", "2 piñas"): cantidad=4, unidadMedida="UNIDAD".
+        3. UNIDADES: ÚNICAMENTE si el cliente dice o escribe EXPRESAMENTE la palabra "unidad", "unidades", "un", o "und" (ej: "4 unidades de papa", "6 unidades de papaya", "2 unidades de piña", "10 und"): cantidad=4, unidadMedida="UNIDAD". Si el cliente dice solo el número y el producto sin decir la palabra "unidad", NO es caso 3, es CASO 5 (deja unidadMedida=null).
         4. VALOR EN DINERO / PRECIO: Si el cliente pide por valor en dinero (ej: "10.000 de papa", "diez mil de papa", "2000 de cilantro", "2000 espinaca", "mil de cilantro"):
            - Asigna cantidad=null (NO se pone nada en cantidad, queda vacío).
            - Asigna unidadMedida="VALOR".
            - En observacion indica exactamente: "Pedido por valor: $10000" (o el monto correspondiente).
-        5. CANTIDAD SIN UNIDAD (MUY FRECUENTE): Si el cliente dice un número sin especificar unidad (ej: "10 papas", "20 de amarilla", "15 de cabezona", "6 de pepino", "3 de arveja", "6 de arracacha"):
-           - Asigna cantidad=20 (el número exacto dicho).
+        5. CANTIDAD SIN UNIDAD (SOLO CONTEO O NÚMERO A SECAS - MUY FRECUENTE): Si el cliente dice un número sin especificar la palabra de unidad (ej: "6 papayas", "2 piñas", "10 papas", "20 de amarilla", "15 de cabezona", "6 de pepino", "3 de arveja", "6 de arracacha", "dos verdes"):
+           - Asigna cantidad=el número exacto dicho (ej: 6, 2, 10, 20, 15...).
            - Asigna unidadMedida=null (SIN NINGÚN TIPO DE UNIDAD. NUNCA asumas LB ni UNIDAD, NUNCA dupliques ni multipliques por 2).
         6. Si el cliente pide un producto pero NO indica cantidad alguna (ej: "dame de la larga", "deme tomate", "quiero cebolla"):
            asigna cantidad=null, unidadMedida=null, ambiguo=false.
