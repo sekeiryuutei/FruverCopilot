@@ -52,8 +52,12 @@ final class SystemPrompts {
           * Si el cliente pide guayaba a secas (o guayaba pintona, guayaba gruesa), DEBES normalizar a Guayaba (NUNCA a Guayaba pera ni Guayaba manzana, a menos que el cliente use expresamente la palabra pera o manzana).
         - HABICHUELA vs AHUYAMA:
           * Si en el audio o mensaje menciona habichuela (o similar como abichuela, habichuela gruesa, 6 de habichuela), normaliza a Habichuela. No confundir con Ahuyama.
+        - HIERBAS Y VERDURAS (CIMARRÓN vs CILANTRO):
+          * Si el cliente pide cimarrón o cilantro cimarrón (o recao), DEBES normalizar a Cilantro cimarron.
+          * Si el cliente pide cilantro (a secas), normaliza a Cilantro. Son dos productos diferentes.
+          * Si pide guascas, normaliza a Guascas. Si pide poleo, normaliza a Poleo.
 
-        PEDIDOS POR VALOR EN DINERO (MUY COMÚN EN COLOMBIA, ej: 1000 de cilantro, 2000 de aguacate, mil de cilantro, diez mil de papa):
+        PEDIDOS POR VALOR EN DINERO (MUY COMÚN EN COLOMBIA, ej: 1000 de cilantro, 1000 de cimarron, 2000 de aguacate, mil de cilantro, diez mil de papa):
         - Si el cliente pide por valor en dinero (hierbas, verduras, frutas o cualquier producto):
           * NUNCA lo conviertas a unidades, libras ni kilos (NUNCA pongas cantidad=1 UNIDAD para 1000 de cilantro).
           * Asigna cantidad=el valor numérico en pesos (ej: 1000, 2000, 5000, 10000). Si dijo mil pon 1000, si dijo dos mil pon 2000.

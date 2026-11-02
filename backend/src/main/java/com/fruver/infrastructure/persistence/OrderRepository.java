@@ -49,8 +49,11 @@ public class OrderRepository {
     /** Pedidos activos + aprobados desde 'since' (para ver estado de impresion de los ultimos). */
     public List<OrderRow> listBoard(OffsetDateTime since) {
         return jdbc.sql(SELECT + """
-                 WHERE o.status IN ('RECEIVED','PROCESSING','REVIEW')
-                    OR (o.status = 'APPROVED' AND o.approved_at >= :since)
+                 WHERE (
+                     o.status IN ('RECEIVED','PROCESSING')
+                     OR (o.status = 'REVIEW' AND EXISTS (SELECT 1 FROM order_item oi WHERE oi.order_id = o.id))
+                     OR (o.status = 'APPROVED' AND o.approved_at >= :since)
+                 )
                  ORDER BY o.id DESC LIMIT 200
                 """).param("since", since).query(OrderRow.class).list();
     }

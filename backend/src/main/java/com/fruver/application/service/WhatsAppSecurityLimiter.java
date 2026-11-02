@@ -66,12 +66,12 @@ public class WhatsAppSecurityLimiter {
             return SecurityCheckResult.block("Texto con longitud sospechosamente anormal (> " + MAX_PAYLOAD_CHARS + " caracteres)");
         }
 
-        // 3. Deteccion de mensajes duplicados en rafaga (< 10 minutos)
+        // 3. Deteccion de mensajes duplicados en rafaga instantanea (< 15 segundos)
         if (text != null && !text.isBlank()) {
             int currentHash = text.trim().toLowerCase().hashCode();
-            if (currentHash == history.lastTextHash && (now - history.lastTextTime) < 600) {
+            if (currentHash == history.lastTextHash && (now - history.lastTextTime) < 15) {
                 log.warn("[ESCUDO IA] Mensaje duplicado en rafaga detectado para {}", cleanPhone);
-                return SecurityCheckResult.block("Mensaje idéntico recibido de forma repetitiva");
+                return SecurityCheckResult.block("Mensaje idéntico recibido en ráfaga instantánea");
             }
             history.lastTextHash = currentHash;
             history.lastTextTime = now;

@@ -228,7 +228,11 @@ public class OrderProcessingService {
             String note = "Comprobante de pago recibido" + (!incomingText.isBlank() ? ": " + incomingText : "");
             writer.updatePaymentNote(orderId, note);
             conversation.send(orderId, "¡Comprobante de pago recibido! Muchas gracias 👍 Enseguida lo confirmamos con el área de caja.", ConversationService.Kind.INFO, "ia");
-            writer.markInquiryHandled(orderId, "Comprobante de transferencia/pago registrado.");
+            if (!hasExistingItems) {
+                writer.cancelEmptyNonOrder(orderId, "Comprobante de transferencia/pago (sin pedido de fruver).");
+            } else {
+                writer.markInquiryHandled(orderId, "Comprobante de transferencia/pago registrado.");
+            }
             hub.orderChanged(orderId);
             return;
         }
@@ -237,14 +241,23 @@ public class OrderProcessingService {
         if (images.isEmpty() && isGoogleMapsUrl(activeCheckText)) {
             writer.updateAddress(orderId, activeCheckText.trim());
             conversation.send(orderId, "¡Ubicación recibida! 📍 La hemos guardado para la entrega de tu pedido.", ConversationService.Kind.INFO, "ia");
-            writer.markInquiryHandled(orderId, "Ubicación GPS guardada.");
+            if (!hasExistingItems) {
+                writer.cancelEmptyNonOrder(orderId, "Ubicación GPS guardada (sin pedido).");
+            } else {
+                writer.markInquiryHandled(orderId, "Ubicación GPS guardada.");
+            }
             hub.orderChanged(orderId);
             return;
         }
 
         // C. Enlaces web genéricos sin productos
         if (images.isEmpty() && isUrlOnly(activeCheckText)) {
-            writer.markInquiryHandled(orderId, "Enlace web recibido sin productos.");
+            if (!hasExistingItems) {
+                writer.cancelEmptyNonOrder(orderId, "Enlace web recibido sin productos.");
+            } else {
+                writer.markInquiryHandled(orderId, "Enlace web recibido sin productos.");
+            }
+            hub.orderChanged(orderId);
             return;
         }
 
@@ -252,10 +265,12 @@ public class OrderProcessingService {
         if (images.isEmpty() && isGratitudeOrCourtesyOnly(activeCheckText)) {
             if (hasExistingItems || r.reply()) {
                 conversation.send(orderId, "¡Con mucho gusto! Para servirte 😊", ConversationService.Kind.INFO, "ia");
+                writer.markInquiryHandled(orderId, "Mensaje de cortesía/agradecimiento.");
             } else {
                 conversation.send(orderId, "¡Hola! Con todo gusto. Si deseas hacer un pedido, puedes enviarnos tu lista en cualquier momento 👍", ConversationService.Kind.INFO, "ia");
+                writer.cancelEmptyNonOrder(orderId, "Mensaje de cortesía/agradecimiento (sin pedido).");
             }
-            writer.markInquiryHandled(orderId, "Mensaje de cortesía/agradecimiento.");
+            hub.orderChanged(orderId);
             return;
         }
 
@@ -266,7 +281,12 @@ public class OrderProcessingService {
                     ? "Buenas, ¿en qué te podemos colaborar hoy? Puedes dejarnos tu lista de mercado o preguntarnos lo que necesites."
                     : "¡Hola! Buenas 👋 ¿En qué te colaboramos hoy? Puedes enviarnos tu lista de mercado (por texto o nota de voz) o preguntarnos precios y lo que necesites.";
             conversation.send(orderId, greeting, ConversationService.Kind.INFO, "ia");
-            writer.markInquiryHandled(orderId, "Saludo recibido y respondido.");
+            if (!hasExistingItems) {
+                writer.cancelEmptyNonOrder(orderId, "Saludo recibido (sin pedido).");
+            } else {
+                writer.markInquiryHandled(orderId, "Saludo recibido y respondido.");
+            }
+            hub.orderChanged(orderId);
             return;
         }
 
@@ -274,19 +294,32 @@ public class OrderProcessingService {
         if (images.isEmpty() && !r.reply() && isPriceOrInventoryInquiry(combinedText)) {
             String reply = buildCatalogOrPriceReply(combinedText);
             conversation.send(orderId, reply, ConversationService.Kind.INFO, "ia");
-            writer.markInquiryHandled(orderId, "Consulta sobre disponibilidad/precios respondida automáticamente.");
+            if (!hasExistingItems) {
+                writer.cancelEmptyNonOrder(orderId, "Consulta sobre disponibilidad/precios (sin pedido).");
+            } else {
+                writer.markInquiryHandled(orderId, "Consulta sobre disponibilidad/precios respondida automáticamente.");
+            }
+            hub.orderChanged(orderId);
             return;
         }
 
         // 3. Si solicitan foto o imagen de un producto:
         if (images.isEmpty() && isProductPhotoRequest(combinedText)) {
             handleProductPhotoRequest(r, combinedText);
+            if (!hasExistingItems) {
+                writer.cancelEmptyNonOrder(orderId, "Consulta de fotos (sin pedido).");
+            }
+            hub.orderChanged(orderId);
             return;
         }
 
         // 4. Si el cliente pregunta cosas como tiempo de entrega / demora:
         if (images.isEmpty() && isDeliveryTimeInquiry(combinedText)) {
             handleDeliveryTimeInquiry(r, combinedText);
+            if (!hasExistingItems) {
+                writer.cancelEmptyNonOrder(orderId, "Consulta de tiempos (sin pedido).");
+            }
+            hub.orderChanged(orderId);
             return;
         }
 
@@ -323,11 +356,11 @@ public class OrderProcessingService {
             var check = securityLimiter.evaluate(clientPhone, combinedText);
             if (!check.allowed()) {
                 log.warn("[DEFENSA IA] Bloqueo preventivo de tokens activado para pedido {} (tel: {}): {}", orderId, clientPhone, check.reason());
-                writer.markFailed(orderId, "BLOCKED_SPAM", "ALERTA SEGURIDAD: " + check.reason());
+                writer.markFailed(orderId, "FAILED", "ALERTA SEGURIDAD: " + check.reason());
                 jdbc.sql("""
                         UPDATE orders SET requires_verification = TRUE,
                                verification_reason = :vr,
-                               conversation_status = 'WAITING_FOR_OPERATOR',
+                               conversation_status = 'READY_FOR_REVIEW',
                                version = version + 1
                         WHERE id = :id
                         """).param("vr", "ALERTA SEGURIDAD: " + check.reason()).param("id", orderId).update();
@@ -368,6 +401,21 @@ public class OrderProcessingService {
         }
 
         InterpretedOrder io = interpreter.interpret(ai);
+
+        // Si la IA no encontró ningún producto y la orden no tenía productos previos,
+        // descartarla para no generar facturas vacías en pantalla.
+        if (io.items().isEmpty() && writer.currentItems(orderId).isEmpty()) {
+            log.info("Interacción en pedido {} no contiene lista de productos de fruver. Descartando de facturación.", orderId);
+            String note = io.note() != null && !io.note().isBlank() ? io.note() : "Mensaje sin productos de fruver (descartado)";
+            writer.cancelEmptyNonOrder(orderId, note);
+
+            if (io.customerMessage() != null && !io.customerMessage().isBlank() && props.conversation().aiAutoReply()) {
+                conversation.send(orderId, io.customerMessage(), ConversationService.Kind.INFO, "ia");
+            }
+            hub.orderChanged(orderId);
+            return;
+        }
+
         if (!writer.applyExtraction(orderId, io)) return;
         metrics.review(io.review().name());
 

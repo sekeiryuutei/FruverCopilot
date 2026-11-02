@@ -42,6 +42,16 @@ public class ProductCatalogService implements ProductLookup {
                     .param("n", clean)
                     .query((rs, i) -> new Resolution(rs.getLong(1), 1, rs.getString(2))).list();
             if (exact.size() == 1) return exact.get(0);
+
+            // Búsqueda por alias directo si no hubo coincidencia exacta de nombre
+            List<Resolution> aliasMatch = jdbc.sql("""
+                    SELECT id, unit FROM product
+                    WHERE active AND aliases IS NOT NULL
+                      AND lower(aliases) LIKE :alias
+                    ORDER BY length(name) ASC
+                    """).param("alias", "%" + clean.toLowerCase() + "%")
+                    .query((rs, i) -> new Resolution(rs.getLong(1), 1, rs.getString(2))).list();
+            if (!aliasMatch.isEmpty()) return aliasMatch.get(0);
         }
         // La IA pudo inventar o no normalizar: se busca por palabras significativas (todas deben aparecer).
         String source = item.productoNormalizado() != null && !item.productoNormalizado().isBlank()
@@ -54,9 +64,11 @@ public class ProductCatalogService implements ProductLookup {
         StringBuilder sql = new StringBuilder("SELECT id, unit FROM product WHERE active");
         Map<String, Object> params = new HashMap<>();
         for (int i = 0; i < tokens.size(); i++) {
-            sql.append(" AND unaccent(lower(name)) LIKE :t").append(i);
+            sql.append(" AND (unaccent(lower(name)) LIKE :t").append(i)
+               .append(" OR (aliases IS NOT NULL AND unaccent(lower(aliases)) LIKE :t").append(i).append("))");
             params.put("t" + i, "%" + tokens.get(i) + "%");
         }
+        sql.append(" ORDER BY length(name) ASC");
         List<Resolution> ids = jdbc.sql(sql.toString()).params(params)
                 .query((rs, i) -> new Resolution(rs.getLong(1), 1, rs.getString(2))).list();
         if (!ids.isEmpty()) return ids.get(0);

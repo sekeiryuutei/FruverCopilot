@@ -263,6 +263,16 @@ public class OrderWriter {
     }
 
     @Transactional
+    public void cancelEmptyNonOrder(long orderId, String note) {
+        jdbc.sql("""
+                UPDATE orders SET status = 'CANCELLED', review_status = NULL, ai_status = 'OK', ai_note = :note,
+                       conversation_status = 'COMPLETED', version = version + 1
+                WHERE id = :id AND status IN ('RECEIVED','PROCESSING','REVIEW')
+                """).param("note", note != null ? note : "Descartado sin productos").param("id", orderId).update();
+        audit.log("ia", "ORDER_CANCELLED_NO_ITEMS", orderId, null, Map.of("note", note != null ? note : ""));
+    }
+
+    @Transactional
     public void markWaitingForOperator(long orderId, String note, String suggestedReply) {
         jdbc.sql("""
                 UPDATE orders SET status = 'REVIEW', review_status = 'YELLOW', ai_status = 'OK', ai_note = :note,
