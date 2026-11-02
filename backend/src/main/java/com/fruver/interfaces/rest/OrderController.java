@@ -45,10 +45,12 @@ public class OrderController {
     private final JdbcClient jdbc;
     private final com.fruver.application.port.AudioStorageService storage;
     private final MessageIngestService ingest;
+    private final OrderProcessingService processing;
 
     public OrderController(OrderViewService views, OrderEditService edits, SaleService sales, ConversationService conversation,
                            SseHub hub, AppMetrics metrics, JdbcClient jdbc, com.fruver.application.port.AudioStorageService storage,
-                           MessageIngestService ingest) {
+                           MessageIngestService ingest,
+                           @org.springframework.beans.factory.annotation.Autowired(required = false) OrderProcessingService processing) {
         this.views = views;
         this.edits = edits;
         this.sales = sales;
@@ -58,6 +60,7 @@ public class OrderController {
         this.jdbc = jdbc;
         this.storage = storage;
         this.ingest = ingest;
+        this.processing = processing;
     }
 
     @GetMapping
@@ -93,6 +96,14 @@ public class OrderController {
         metrics.approved();
         hub.orderChanged(id);
         return r;
+    }
+
+    @PostMapping("/{id}/reprocess")
+    public OrderView reprocess(@PathVariable long id) {
+        if (processing != null) {
+            processing.reprocess(id);
+        }
+        return views.get(id);
     }
 
     @PostMapping("/{id}/cancel")

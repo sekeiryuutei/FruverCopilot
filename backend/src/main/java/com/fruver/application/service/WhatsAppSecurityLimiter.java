@@ -19,10 +19,10 @@ public class WhatsAppSecurityLimiter {
 
     private static final Logger log = LoggerFactory.getLogger(WhatsAppSecurityLimiter.class);
 
-    // Limites de proteccion
-    private static final int MAX_REQUESTS_5_MIN = 4;      // Maximo 4 extracciones IA en 5 minutos por numero
-    private static final int MAX_REQUESTS_1_HOUR = 10;    // Maximo 10 extracciones IA en 1 hora por numero
-    private static final int MAX_PAYLOAD_CHARS = 2500;    // Maximo caracteres en texto para evitar prompt flooding
+    // Limites de proteccion ampliados (no limitar pedidos de clientes con multiples audios/mensajes)
+    private static final int MAX_REQUESTS_5_MIN = 35;     // Hasta 35 mensajes/audios en 5 minutos por numero
+    private static final int MAX_REQUESTS_1_HOUR = 100;   // Hasta 100 mensajes en 1 hora por numero
+    private static final int MAX_PAYLOAD_CHARS = 5000;    // Maximo 5.000 caracteres por mensaje
     private static final long NOTIFY_COOLDOWN_SEC = 900;  // 15 minutos entre avisos automaticos al cliente
 
     public record SecurityCheckResult(boolean allowed, String reason) {

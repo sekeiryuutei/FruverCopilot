@@ -1146,7 +1146,8 @@ function doneCard(o){
   const verifPill = o.requiresVerification
     ? h('span',{class:'pill YELLOW',style:'font-size:12px;padding:3px 9px;font-weight:700;display:inline-flex;align-items:center;gap:6px'},
         '⚠️ DUDOSO / REVISAR' + (o.verificationReason ? ': ' + o.verificationReason : ''),
-        h('button',{class:'b',style:'padding:2px 7px;font-size:11px;background:#16a34a;color:#fff;border-color:#16a34a',title:'Marcar como revisado',onclick:()=>validateOrderQuick(o.id,cardEl)},'✓ Validar')
+        h('button',{class:'b',style:'padding:2px 7px;font-size:11px;background:#16a34a;color:#fff;border-color:#16a34a',title:'Marcar como revisado',onclick:()=>validateOrderQuick(o.id,cardEl)},'✓ Validar'),
+        h('button',{class:'b',style:'padding:2px 7px;font-size:11px;background:#0284c7;color:#fff;border-color:#0284c7',title:'Volver a ejecutar extracción con IA',onclick:()=>reprocessOrder(o.id)},'↻ Re-extraer IA')
       )
     : null;
 
@@ -1325,6 +1326,15 @@ async function refreshConv(orderId, container){
   }catch(e){container.textContent='Error cargando conversación: '+e.message}
 }
 
+async function reprocessOrder(id){
+  try{
+    toast(`↻ Re-procesando Pedido #${id} con el pool de IAs... ⏳`);
+    await api(`/api/orders/${id}/reprocess`,{method:'POST'});
+    await loadOrders();
+    toast(`✓ Pedido #${id} encolado para re-extracción con IA`);
+  }catch(e){toast('Error al re-procesar: '+e.message)}
+}
+
 function refreshOpenConvs(){
   for(const id of S.openConvs){
     const box=document.querySelector(`.conv[data-conv-for="${id}"]`);
@@ -1370,7 +1380,8 @@ function card(o){
   const verifPill = (!busy && o.requiresVerification)
     ? h('span',{class:'pill YELLOW',style:'font-size:12px;padding:3px 9px;font-weight:700;display:inline-flex;align-items:center;gap:6px'},
         '⚠️ DUDOSO / REVISAR' + (o.verificationReason ? ': ' + o.verificationReason : ''),
-        h('button',{class:'b',style:'padding:2px 7px;font-size:11px;background:#16a34a;color:#fff;border-color:#16a34a',title:'Marcar como revisado',onclick:()=>validateOrderQuick(o.id,el)},'✓ Validar')
+        h('button',{class:'b',style:'padding:2px 7px;font-size:11px;background:#16a34a;color:#fff;border-color:#16a34a',title:'Marcar como revisado',onclick:()=>validateOrderQuick(o.id,el)},'✓ Validar'),
+        h('button',{class:'b',style:'padding:2px 7px;font-size:11px;background:#0284c7;color:#fff;border-color:#0284c7',title:'Volver a ejecutar extracción con IA',onclick:()=>reprocessOrder(o.id)},'↻ Re-extraer IA')
       )
     : null;
 
@@ -1415,8 +1426,8 @@ function card(o){
     ));
   }
 
-  if(o.aiStatus==='FAILED')el.append(h('div',{class:'banner'},'🔴 IA NO DISPONIBLE — digita el pedido manualmente'));
-  if(o.aiStatus==='TRANSCRIPTION_FAILED')el.append(h('div',{class:'banner'},'🎙️ 🔴 TRANSCRIPCIÓN FALLIDA — escucha el audio y digita manualmente'));
+  if(o.aiStatus==='FAILED')el.append(h('div',{class:'banner',style:'display:flex;justify-content:space-between;align-items:center;background:#7f1d1d;border-left:4px solid #ef4444;color:#fff'},h('span',{},'🔴 IA NO DISPONIBLE — o fallo temporal al interpretar.'),h('button',{class:'b',style:'background:#2563eb;color:#fff;border-color:#2563eb;font-weight:700',onclick:()=>reprocessOrder(o.id)},'↻ Reintentar con IA')));
+  if(o.aiStatus==='TRANSCRIPTION_FAILED')el.append(h('div',{class:'banner',style:'display:flex;justify-content:space-between;align-items:center;background:#7f1d1d;border-left:4px solid #ef4444;color:#fff'},h('span',{},'🎙️ 🔴 TRANSCRIPCIÓN FALLIDA — fallo temporal al transcribir.'),h('button',{class:'b',style:'background:#2563eb;color:#fff;border-color:#2563eb;font-weight:700',onclick:()=>reprocessOrder(o.id)},'↻ Reintentar con IA')));
   if(o.conversationStatus==='WAITING_FOR_CUSTOMER')el.append(h('div',{class:'ai'},'⏳ Esperando respuesta del cliente'));
   if(o.conversationStatus==='WAITING_FOR_MORE'){
     const graceSec = S.printerStatus?.orderGraceSeconds != null ? S.printerStatus.orderGraceSeconds : 300;

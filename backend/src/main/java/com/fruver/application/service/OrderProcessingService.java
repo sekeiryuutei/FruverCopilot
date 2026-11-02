@@ -107,6 +107,41 @@ public class OrderProcessingService {
         hub.orderChanged(orderId);
     }
 
+    @Async("aiExecutor")
+    public void reprocess(long orderId) {
+        var row = jdbc.sql("SELECT o.customer_phone, m.id FROM orders o LEFT JOIN conversation_message m ON m.order_id = o.id WHERE o.id = :id ORDER BY m.id DESC LIMIT 1")
+                .param("id", orderId)
+                .query((rs, n) -> new Object[]{rs.getString(1), rs.getObject(2)}).optional().orElse(null);
+        String phone = row != null && row[0] != null ? (String) row[0] : "";
+        Long msgId = row != null && row[1] != null ? ((Number) row[1]).longValue() : 0L;
+        IntakeResult r = new IntakeResult(orderId, msgId, false, false, false, "", null, null, null);
+        jdbc.sql("UPDATE orders SET status = 'PROCESSING', ai_status = 'PENDING', ai_note = NULL WHERE id = :id").param("id", orderId).update();
+        hub.orderChanged(orderId);
+        processBatch(orderId, r);
+    }
+
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 60000)
+    public void autoRetryFailedOrders() {
+        try {
+            List<Long> failedIds = jdbc.sql("""
+                    SELECT id FROM orders
+                    WHERE ai_status = 'FAILED'
+                      AND status IN ('RECEIVED', 'PROCESSING', 'REVIEW')
+                      AND corrected = FALSE
+                      AND received_at > now() - interval '6 hours'
+                    ORDER BY id ASC
+                    LIMIT 5
+                    """).query(Long.class).list();
+
+            for (Long fid : failedIds) {
+                log.info("Auto-reprocesando pedido fallido #{} con el pool de IAs...", fid);
+                reprocess(fid);
+            }
+        } catch (Exception ex) {
+            log.warn("Error en autoRetryFailedOrders: {}", ex.getMessage());
+        }
+    }
+
     private void doProcessBatch(long orderId, IntakeResult r) {
         // 1. Procesar y transcribir todos los audios acumulados en el pedido
         record AudioItem(long messageId, String mediaRef, String key, String mime) {}
