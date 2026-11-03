@@ -27,7 +27,8 @@ class MoneyAndTokensTest {
         assertEquals(UnitOfMeasure.LB, UnitOfMeasure.parse("Libras").orElseThrow());
         assertEquals(UnitOfMeasure.KG, UnitOfMeasure.parse(" kilo ").orElseThrow());
         assertEquals(UnitOfMeasure.UNIDAD, UnitOfMeasure.parse("UN").orElseThrow());
-        assertTrue(UnitOfMeasure.parse("arrobas").isEmpty());
+        assertEquals(UnitOfMeasure.ARROBA, UnitOfMeasure.parse("arrobas").orElseThrow());
+        assertTrue(UnitOfMeasure.parse("galones").isEmpty());
         assertTrue(UnitOfMeasure.parse(null).isEmpty());
     }
     @Test void tokensDropNoiseAndStemPlurals() {

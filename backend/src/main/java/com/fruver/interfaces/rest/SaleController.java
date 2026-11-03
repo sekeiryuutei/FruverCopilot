@@ -226,6 +226,8 @@ public class SaleController {
         resp.put("notes", t.notes() != null ? t.notes() : "");
         resp.put("customerType", t.customerType() != null ? t.customerType() : "RETAIL");
         resp.put("deliveryPersonName", t.deliveryPersonName() != null ? t.deliveryPersonName() : "");
+        resp.put("inputType", t.inputType() != null ? t.inputType() : "");
+        resp.put("origin", t.inputType() != null ? t.inputType() : "");
         if (t.at() != null) {
             resp.put("date", t.at().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
             resp.put("day", String.format("%02d", t.at().getDayOfMonth()));

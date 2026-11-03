@@ -130,7 +130,7 @@ public class ChatQueryService {
                     cm.delivery_status,
                     cm.created_at,
                     (SELECT a.id FROM audio a WHERE a.message_id = cm.id LIMIT 1) AS audio_id,
-                    (SELECT mi.id FROM media_image mi WHERE mi.message_id = cm.id LIMIT 1) AS image_id
+                    (SELECT mi.id FROM media_image mi WHERE mi.message_id = cm.id AND mi.storage_key IS NOT NULL AND TRIM(mi.storage_key) <> '' ORDER BY mi.id DESC LIMIT 1) AS image_id
                 FROM conversation_message cm
                 JOIN orders o ON cm.order_id = o.id
                 LEFT JOIN customer c ON o.customer_id = c.id
@@ -224,10 +224,16 @@ public class ChatQueryService {
 
     /** Visualización de imagen (comprobantes de pago, fotos enviadas) por media_image_id. */
     public ResponseEntity<ByteArrayResource> getImage(long imageId) {
-        var row = jdbc.sql("SELECT storage_key, mime_type FROM media_image WHERE id = :id")
+        var row = jdbc.sql("""
+                SELECT storage_key, mime_type FROM media_image
+                WHERE (id = :id OR message_id = (SELECT message_id FROM media_image WHERE id = :id))
+                  AND storage_key IS NOT NULL AND TRIM(storage_key) <> ''
+                ORDER BY (CASE WHEN id = :id THEN 0 ELSE 1 END), id DESC
+                LIMIT 1
+                """)
                 .param("id", imageId).query((rs, n) -> new String[]{rs.getString(1), rs.getString(2)}).optional()
                 .orElseThrow(() -> new ApiException(404, "IMAGE_NOT_FOUND", "Imagen no encontrada"));
-        if (row[0] == null) throw new ApiException(404, "IMAGE_NOT_FOUND", "Imagen no disponible");
+        if (row[0] == null || row[0].isBlank()) throw new ApiException(404, "IMAGE_NOT_FOUND", "Imagen no disponible");
         String raw = row[1] == null ? "image/jpeg" : row[1].split(";")[0].trim().toLowerCase(Locale.ROOT);
         String mime = switch (raw) {
             case "image/jpeg", "image/jpg", "image/png", "image/webp" -> raw;

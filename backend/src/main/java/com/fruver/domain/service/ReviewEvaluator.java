@@ -22,8 +22,8 @@ public final class ReviewEvaluator {
 
     private ReviewStatus evaluateItem(ItemAssessment i) {
         boolean qtyMissing = i.quantity() == null || i.quantity().signum() <= 0;
-        if (i.productMatches() == 0 || qtyMissing || i.unit() == null) return ReviewStatus.RED;
-        if (i.quantity().compareTo(MAX_REASONABLE_QTY) > 0) return ReviewStatus.YELLOW;
+        if (i.productMatches() == 0 || (qtyMissing && !i.hasManualPrice()) || i.invalidUnit()) return ReviewStatus.RED;
+        if (!i.hasManualPrice() && i.quantity() != null && i.quantity().compareTo(MAX_REASONABLE_QTY) > 0) return ReviewStatus.YELLOW;
         if (i.productMatches() > 1 || i.aiFlaggedAmbiguous() || !i.productResolved()) return ReviewStatus.YELLOW;
         return ReviewStatus.GREEN;
     }

@@ -152,7 +152,7 @@ public class SaleService {
                 "targetPrinter", targetPrinter,
                 "lines", items.size()));
 
-        if (!isWholesale) {
+        if (!isWholesale && props.conversation().aiAutoReply()) {
             try {
                 sendInvoiceWhatsApp(saleId, user);
             } catch (Exception ignored) {}
@@ -321,7 +321,7 @@ public class SaleService {
         jdbc.sql("UPDATE orders SET dispatched_at = now(), dispatched_by = :u, version = version + 1 WHERE id = :id").param("u", user).param("id", orderId).update();
         audit.log(user, "ORDER_DISPATCHED", orderId, saleId, Map.of());
 
-        if (phone != null && !phone.isBlank() && !props.printing().autoPrintWholesale()) {
+        if (props.conversation().aiAutoReply() && phone != null && !phone.isBlank() && !props.printing().autoPrintWholesale()) {
             String msg = "🛵💨 *¡Tu pedido va en camino!*\n"
                     + (dpName != null && !dpName.isBlank() ? "Tu repartidor es: *" + dpName + "*.\n" : "")
                     + "El domiciliario ha salido hacia tu dirección"

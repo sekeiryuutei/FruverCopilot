@@ -45,10 +45,17 @@ Contenedores: `fruvercopilot-postgres` y `fruvercopilot-backend`. Base de datos 
 ## Tests
 ```bash
 cd backend
-mvn test        # unitarios siempre; los de integración usan Testcontainers y se omiten si no hay Docker
-OPENAI_API_KEY=sk-... mvn test -Dtest=ExtractionEvalTest   # evaluación con el LLM real (no determinista)
+mvn -Punit test              # rápido: unitarios, sin Docker, sin IA real, sin WhatsApp
+mvn -Pintegration-safe test  # Testcontainers con WhatsApp/impresora mockeados; puede reportar fallos existentes
 ```
-Sin Maven local: `docker run --rm -v "$PWD":/app -v /var/run/docker.sock:/var/run/docker.sock -w /app maven:3.9-eclipse-temurin-21 mvn test`
+
+No uses `mvn test` completo durante el piloto: incluye `ExtractionEvalTest` (IA real) y pruebas de integración que pueden tardar o tocar servicios externos. Para ejecutar la evaluación real, hazlo de forma explícita y con un entorno controlado:
+
+```bash
+OPENAI_API_KEY=sk-... mvn test -Dtest=ExtractionEvalTest
+```
+
+Sin Maven local: `docker run --rm -v "$PWD":/app -v /var/run/docker.sock:/var/run/docker.sock -w /app maven:3.9-eclipse-temurin-21 mvn -Punit test`
 
 Validaciones de cantidades y precios (en 3 capas): la pantalla rechaza negativos/cero/enormes y bloquea el signo `-`; el servidor responde `ITEM_INVALID` (422); la base los rechaza con `CHECK` (migración V7). Cantidad: 0 < x ≤ 100.000; precio manual: 0 ≤ x ≤ 100.000.000.
 

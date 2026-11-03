@@ -46,4 +46,11 @@ class ReviewEvaluatorTest {
     @Test void worstItemWins() {
         assertEquals(ReviewStatus.RED, evaluator.evaluate(List.of(item(1, "2", UnitOfMeasure.LB, false), item(0, "1", UnitOfMeasure.KG, false)), false));
     }
+    @Test void countItemWithoutUnitIsGreen() {
+        assertEquals(ReviewStatus.GREEN, evaluator.evaluate(List.of(item(1, "10", null, false)), false));
+    }
+    @Test void moneyOrderWithoutQuantityIsGreen() {
+        ItemAssessment moneyItem = new ItemAssessment(true, 1, null, null, false, true);
+        assertEquals(ReviewStatus.GREEN, evaluator.evaluate(List.of(moneyItem), false));
+    }
 }

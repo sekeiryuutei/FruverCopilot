@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(properties = {"app.security.admin-password=test-only-password", "app.audio.storage-path=target/test-audio",
         "app.printing.poll-ms=3600000", "app.demo-seed.enabled=true"})
 @Testcontainers(disabledWithoutDocker = true)
-class DemoDataSeederIntegrationTest {
+class DemoDataSeederIntegrationTest extends SafeMessagingSupport {
 
     @Container @ServiceConnection
     static PostgreSQLContainer<?> pg = new PostgreSQLContainer<>("postgres:16-alpine");

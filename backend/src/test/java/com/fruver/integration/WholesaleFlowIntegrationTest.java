@@ -40,7 +40,7 @@ import static org.mockito.Mockito.when;
         "app.conversation.debounce-seconds=0"
 })
 @Testcontainers(disabledWithoutDocker = true)
-class WholesaleFlowIntegrationTest {
+class WholesaleFlowIntegrationTest extends SafeMessagingSupport {
 
     @Container
     @ServiceConnection

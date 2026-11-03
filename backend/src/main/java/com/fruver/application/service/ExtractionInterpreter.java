@@ -66,8 +66,9 @@ public class ExtractionInterpreter {
                     d.unidadMedida() == null ? null : clip(d.unidadMedida(), 20), d.ambiguo(),
                     blankToNull(clip(d.observacion(), 300)),
                     res.matches() == 1 ? res.productId() : null, qty, unit, manualPrice));
+            boolean invalidUnit = d.unidadMedida() != null && !d.unidadMedida().isBlank() && unit == null && manualPrice == null;
             assessments.add(new ItemAssessment(res.matches() == 1 && res.productId() != null,
-                    res.matches(), qty, unit, d.ambiguo()));
+                    res.matches(), qty, unit, d.ambiguo(), manualPrice != null && manualPrice.signum() > 0, invalidUnit));
         }
 
         boolean contradiction = ai != null && ((ai.clarificationReason() != null && ai.clarificationReason().toLowerCase().contains("contradic"))

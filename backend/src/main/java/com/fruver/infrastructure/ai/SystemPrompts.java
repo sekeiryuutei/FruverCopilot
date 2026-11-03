@@ -37,11 +37,11 @@ final class SystemPrompts {
         - Interpreta la intención real y normaliza SIEMPRE al producto correspondiente de catalogo_candidato en productoNormalizado (ej: "baanos" -> "Banano").
         - Asigna ambiguo=false. NUNCA rechaces ni preguntes por errores tipográficos obvios de frutas o verduras.
 
-        PRODUCTOS VENDIDOS POR LIBRA/KILO PEDIDOS EN UNIDADES (ej: "quiero 2 unidades de tomate", "2 tomates", "3 plátanos")
-        - Si el cliente pide en unidades un producto que en catalogo_candidato se vende por LB o KG (ej: "quiero 2 unidades de tomate", "2 tomates", "3 plátanos"):
-          * AGÉGALO al pedido en items con productoNormalizado=nombre del catálogo (ej: "Tomate chonto").
-          * Asigna cantidad=1 (o la cantidad estimada) y unidadMedida=LB con ambiguo=false.
-          * NUNCA preguntes "¿te referías al tomate que mencioné antes?" ni pongas trabas. Si el cliente dice "quiero 2 unidades", ¡agrégaselas de inmediato al pedido!
+        FIDELIDAD ESTRICTA A LA CANTIDAD Y UNIDAD SOLICITADA POR EL CLIENTE:
+        - Si el cliente dice 2, la cantidad es 2 (NUNCA reduzcas ni alteres el número que el cliente dijo).
+        - Si el cliente dice "2 unidades de tomate" o "2 und": cantidad=2, unidadMedida="UNIDAD".
+        - Si el cliente dice "2 tomates" o "2 aguacates" (número suelto sin especificar palabra de unidad): cantidad=2, unidadMedida=null (CASO 6).
+        - NUNCA cambies arbitrariamente a LB ni alteres la cantidad dicha por el cliente. Respeta fielmente la cantidad y la unidad exacta que el cliente solicitó para que el operario en bodega entienda su pedido.
 
         FIDELIDAD TOTAL AL PRODUCTO PEDIDO (NUNCA ASUMIR VARIEDADES NI INVENTAR NOMBRES):
         - Si el cliente pide un producto general sin especificar variedad (ej:  papas, papa, aguacate, limón, cebolla, tomate):
@@ -97,7 +97,7 @@ final class SystemPrompts {
         REGLAS ESTRICTAS DE CANTIDADES, UNIDADES Y PRECIOS:
         1. LIBRAS: Si el cliente pide expresamente en libras (ej: "10 libras de papa", "5 lb", "3 libras"): cantidad=10, unidadMedida="LB".
         2. KILOS: Si el cliente pide expresamente en kilos (ej: "5 kilos de papa", "10kl", "2 kg", "medio kilo"): cantidad=5 (o 0.5), unidadMedida="KG". NUNCA conviertas kilos a libras si el cliente dijo kilos; respeta la unidad tal cual la pidió.
-        3. UNIDADES: ÚNICAMENTE si el cliente dice o escribe EXPRESAMENTE la palabra "unidad", "unidades", "un", o "und" (ej: "4 unidades de papa", "6 unidades de papaya", "2 unidades de piña", "10 und"): cantidad=4, unidadMedida="UNIDAD". Si el cliente dice solo el número y el producto sin decir la palabra "unidad", NO es caso 3, es CASO 5 (deja unidadMedida=null).
+        3. UNIDADES: ÚNICAMENTE si el cliente dice o escribe EXPRESAMENTE la palabra "unidad", "unidades", "un", o "und" (ej: "4 unidades de papa", "6 unidades de papaya", "2 unidades de piña", "10 und"): cantidad=4, unidadMedida="UNIDAD". Si el cliente dice solo el número y el producto sin decir la palabra "unidad", NO es caso 3, es CASO 6 (deja unidadMedida=null).
         4. UNIDADES MAYORISTAS (CAJA, BULTO, ARROBA, ATADO, BOLSA):
            - Si el cliente dice "caja", "cajas", "cj": cantidad=número (ej: 1), unidadMedida="CAJA", ambiguo=false.
            - Si el cliente dice "bulto", "bultos", "bl" (ej: "1)2 bulto de papa", "1 bulto"): cantidad=número o fracción (ej: 0.5 o 1), unidadMedida="BULTO", ambiguo=false.

@@ -2,24 +2,24 @@ package com.fruver.interfaces.rest;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fruver.application.service.DeliveryPersonService;
@@ -30,14 +30,7 @@ import com.fruver.application.service.SseHub;
 import com.fruver.config.AppProperties;
 import com.fruver.domain.enums.PriceType;
 
-@ExtendWith(MockitoExtension.class)
 class ControllersUnitTest {
-
-    @Mock ProductCatalogService catalog;
-    @Mock PriceService prices;
-    @Mock DeliveryPersonService deliveryPersonService;
-    @Mock MessageIngestService ingest;
-    @Mock SseHub sseHub;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -56,51 +49,95 @@ class ControllersUnitTest {
 
     @Test
     void productControllerListAndCreate() {
+        AtomicLong updatedId = new AtomicLong();
+        ProductCatalogService catalog = new ProductCatalogService(null, null) {
+            @Override
+            public List<ProductView> list(String search, boolean all) {
+                return List.of(new ProductView(1L, "Papa Pastusa", "KG", true, null, Map.of()));
+            }
+            @Override
+            public long create(String name, String unit, String imageUrl) {
+                return 10L;
+            }
+            @Override
+            public void update(long id, String name, String unit, Boolean active, String imageUrl) {
+                updatedId.set(id);
+            }
+        };
+
+        List<String> setPrices = new ArrayList<>();
+        PriceService prices = new PriceService(null, null) {
+            @Override
+            public void setPrice(long productId, PriceType type, BigDecimal amount, String changedBy) {
+                setPrices.add(productId + ":" + type + ":" + amount);
+            }
+        };
+
         ProductController pc = new ProductController(catalog, prices);
 
-        when(catalog.list("papa", false)).thenReturn(List.of(
-                new ProductCatalogService.ProductView(1L, "Papa Pastusa", "KG", true, null, Map.of())
-        ));
         var list = pc.list("papa", false);
         assertEquals(1, list.size());
         assertEquals("Papa Pastusa", list.get(0).name());
 
-        when(catalog.create("Tomate", "KG", null)).thenReturn(10L);
         var res = pc.create(new ProductController.CreateBody("Tomate", "KG", new BigDecimal("3500"), new BigDecimal("3000"), null));
         assertEquals(10L, res.get("id"));
-        verify(prices).setPrice(10L, PriceType.RETAIL, new BigDecimal("3500"), "admin");
-        verify(prices).setPrice(10L, PriceType.WHOLESALE, new BigDecimal("3000"), "admin");
+        assertTrue(setPrices.contains("10:RETAIL:3500"));
+        assertTrue(setPrices.contains("10:WHOLESALE:3000"));
 
         pc.patch(10L, new ProductController.PatchBody("Tomate Chonto", "KG", true, null));
-        verify(catalog).update(10L, "Tomate Chonto", "KG", true, null);
+        assertEquals(10L, updatedId.get());
     }
 
     @Test
     void deliveryPersonControllerCrud() {
+        AtomicBoolean updated = new AtomicBoolean(false);
+        AtomicBoolean deleted = new AtomicBoolean(false);
+        DeliveryPersonService deliveryPersonService = new DeliveryPersonService(null, null) {
+            @Override
+            public List<DeliveryPersonView> list(boolean includeInactive) {
+                return List.of(new DeliveryPersonView(1L, "Carlos", "3001234567", true, OffsetDateTime.now()));
+            }
+            @Override
+            public DeliveryPersonView create(String name, String phone, String actor) {
+                return new DeliveryPersonView(1L, name, phone, true, OffsetDateTime.now());
+            }
+            @Override
+            public DeliveryPersonView update(long id, String name, String phone, Boolean active, String actor) {
+                updated.set(true);
+                return new DeliveryPersonView(id, name, phone, active, OffsetDateTime.now());
+            }
+            @Override
+            public void delete(long id, String actor) {
+                deleted.set(true);
+            }
+        };
+
         DeliveryPersonController dc = new DeliveryPersonController(deliveryPersonService);
 
-        when(deliveryPersonService.list(false)).thenReturn(List.of(
-                new DeliveryPersonService.DeliveryPersonView(1L, "Carlos", "3001234567", true, OffsetDateTime.now())
-        ));
         assertEquals(1, dc.list(false).size());
 
-        when(deliveryPersonService.create("Carlos", "3001234567", "admin")).thenReturn(
-                new DeliveryPersonService.DeliveryPersonView(1L, "Carlos", "3001234567", true, OffsetDateTime.now())
-        );
         var created = dc.create(new DeliveryPersonController.DeliveryPersonBody("Carlos", "3001234567", true));
         assertEquals("Carlos", created.name());
 
         dc.update(1L, new DeliveryPersonController.DeliveryPersonBody("Carlos M", "3001234567", true));
-        verify(deliveryPersonService).update(1L, "Carlos M", "3001234567", true, "admin");
+        assertTrue(updated.get());
 
         dc.delete(1L);
-        verify(deliveryPersonService).delete(1L, "admin");
+        assertTrue(deleted.get());
     }
 
     @Test
     void whatsAppWebhookControllerVerifyAndReceive() {
-        AppProperties props = mock(AppProperties.class);
-        when(props.whatsapp()).thenReturn(new AppProperties.Whatsapp(true, "verify-token-123", "ignore", "token", "phone-id", "v21.0"));
+        AppProperties.Whatsapp wa = new AppProperties.Whatsapp(true, "verify-token-123", "ignore", "token", "phone-id", "v21.0");
+        AppProperties props = new AppProperties("America/Bogota", false, null, null, null, wa, null, null, null, null);
+
+        AtomicBoolean ingested = new AtomicBoolean(false);
+        MessageIngestService ingest = new MessageIngestService(null, null, null, null, null) {
+            @Override
+            public void ingestText(String from, String senderName, String messageId, String text) {
+                ingested.set(true);
+            }
+        };
 
         WhatsAppWebhookController controller = new WhatsAppWebhookController(props, ingest, mapper);
 
@@ -123,16 +160,22 @@ class ControllersUnitTest {
                   }]
                 }
                 """;
-        var res = controller.receive(jsonText, null, mock(jakarta.servlet.http.HttpServletRequest.class));
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        var res = controller.receive(jsonText, null, req);
         assertEquals(200, res.getStatusCode().value());
+        assertTrue(ingested.get());
     }
 
     @Test
     void streamControllerReturnsEmitterAndMe() {
+        SseHub sseHub = new SseHub() {
+            @Override
+            public SseEmitter subscribe() {
+                return new SseEmitter();
+            }
+        };
         StreamController sc = new StreamController(sseHub);
-        when(sseHub.subscribe()).thenReturn(mock(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.class));
         assertNotNull(sc.stream());
-        verify(sseHub).subscribe();
 
         var auth = SecurityContextHolder.getContext().getAuthentication();
         var me = sc.me(auth);

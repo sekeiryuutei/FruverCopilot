@@ -254,6 +254,7 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
   <div class="hactions">
     <button id="btnHeaderInstall" class="b" style="display:none;padding:5px 9px;font-size:12px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-weight:700" title="Instalar app en tu pantalla de inicio">📲 Instalar</button>
     <span id="printerBadge" title="Impresora activa según horario">🖨️ FRUVER</span>
+    <span id="printStatusWidget" class="pill green" style="cursor:pointer;font-size:11.5px;padding:4px 9px;font-weight:700;display:inline-flex;align-items:center;gap:4px" title="Estado de impresión · Clic para verificar o reimprimir">✓ 🖨️ Al día</span>
     <span class="cnt" id="cnt"></span>
     <button class="b" style="padding:6px 11px;font-size:13px;background:#1b3824;color:#fff;border:1px solid #ffffff44;display:inline-flex;align-items:center;gap:4px" id="logoutBtn" title="Cerrar sesión">🚪 Salir</button>
   </div>
@@ -552,12 +553,25 @@ async function updatePrinterStatus(){
     const pb=$('#printerBadge');
     if(pb){
       const loc=st.activePrinter==='OFICINA'?'🏪 FRUVER (4am-7pm)':'🏠 CASA (7pm-4am)';
+      pb.textContent=`🖨️ ${loc}`;
+    }
+    const pw=$('#printStatusWidget');
+    if(pw){
       if(st.failedCount>0){
-        pb.textContent=`🖨️ ${loc} · 🔴 ${st.failedCount} SIN IMPRIMIR`;
-        pb.style.background='#b91c1c';pb.style.color='#fff';
+        pw.className='pill red';
+        pw.textContent=`🔴 ${st.failedCount} sin imprimir`;
+        pw.title=`Hay ${st.failedCount} factura(s) fallida(s). Clic para reintentar todas.`;
+        pw.onclick=reprintAllPending;
+      } else if(st.pendingCount>0){
+        pw.className='pill amber';
+        pw.textContent=`⏳ ${st.pendingCount} en cola`;
+        pw.title=`Hay ${st.pendingCount} trabajo(s) en cola de impresión. Clic para actualizar.`;
+        pw.onclick=updatePrinterStatus;
       } else {
-        pb.textContent=`🖨️ ${loc}`;
-        pb.style.background='#1e3a5f';pb.style.color='#93c5fd';
+        pw.className='pill green';
+        pw.textContent='✓ 🖨️ Al día';
+        pw.title='Todas las facturas están impresas. Clic para verificar.';
+        pw.onclick=async()=>{toast('✓ Impresora al día. No hay facturas pendientes.');await updatePrinterStatus();};
       }
     }
   }catch(e){}
@@ -1544,9 +1558,27 @@ function card(o){
         toast(`${p.name} ya estaba en el pedido: ahora ${twin.quantity} ${twin.unit==='UNIDAD'?'UN':twin.unit}`);return}
       calc()}});
     const flags=[];const server=o.items.find(x=>x.id===it.id);
-    if(server?.aiSummary)flags.push('IA: '+server.aiSummary);if(server?.observation)flags.push(server.observation);if(server?.problem)flags.push('⚠ '+server.problem);
+    if(server?.aiSummary)flags.push('IA: '+server.aiSummary);
+    if(server?.observation)flags.push(server.observation);
+    let hasProblem = false;
+    if(server?.problem){
+      const isWholesale = o && o.customer && (o.customer.type === 'WHOLESALE' || o.customer.type === 'RESTAURANTE');
+      const isMoney = isMoneyOrder(it) || isMoneyOrder(server);
+      // En mayorista el precio se define al pesar en bodega, y en pedidos por dinero no se requiere cantidad en kilos
+      if(!(isWholesale && server.problem === 'NO_PRICE') && !(isMoney && server.problem === 'NO_QUANTITY')){
+        const probMap = {
+          'NO_PRICE': 'Sin precio en catálogo',
+          'NO_QUANTITY': 'Sin cantidad especificada',
+          'UNIT_MISMATCH': 'Unidad distinta al catálogo',
+          'NO_PRODUCT': 'Producto no identificado',
+          'INACTIVE_PRODUCT': 'Producto inactivo'
+        };
+        flags.push('⚠️ ' + (probMap[server.problem] || server.problem));
+        hasProblem = true;
+      }
+    }
     showErr();calc();
-    const tr=h('tr',{},h('td',{},pn,flags.length?h('div',{class:server?.problem?'prob':'ai'},flags.join(' · ')):null,errEl),h('td',{},q),h('td',{},us),h('td',{},pr),sub,
+    const tr=h('tr',{},h('td',{},pn,flags.length?h('div',{class:hasProblem?'prob':'ai'},flags.join(' · ')):null,errEl),h('td',{},q),h('td',{},us),h('td',{},pr),sub,
       h('td',{},h('button',{class:'b danger',onclick:()=>{removeRow(it);mark()}},'✕')));
     rows.set(it,{tr,pn,q,calc});return tr};
 
@@ -2630,6 +2662,22 @@ async function renderChats() {
   wrap.append(sidebar, mainChat);
   m.append(wrap);
 
+  const showEmptyState = (msg = 'Selecciona una conversación de la lista para ver los mensajes.') => {
+    chatHeader.replaceChildren(
+      h('div', { style: 'font-weight:700;font-size:14px;color:var(--mut)' }, '💬 Conversaciones de WhatsApp')
+    );
+    messagesBox.replaceChildren(
+      h('div', { style: 'margin:auto;text-align:center;color:var(--mut);max-width:340px;display:flex;flex-direction:column;align-items:center;gap:12px;padding:20px' },
+        h('span', { style: 'font-size:46px;opacity:0.8' }, '💬'),
+        h('b', { style: 'font-size:16px;color:var(--ink)' }, 'WhatsApp Fruver El Oasis'),
+        h('p', { style: 'font-size:13.5px;line-height:1.4;margin:0' }, msg)
+      )
+    );
+    composeInp.disabled = true;
+    sendBtn.disabled = true;
+  };
+  showEmptyState('Cargando conversaciones…');
+
   let allChats = [];
 
   const loadChatList = async () => {
@@ -2638,6 +2686,7 @@ async function renderChats() {
       allChats = await api('/api/chats?q=' + encodeURIComponent(qInp.value.trim()));
       if (!allChats || allChats.length === 0) {
         chatList.replaceChildren(h('div', { style: 'padding:30px;text-align:center;color:var(--mut)' }, 'No se encontraron conversaciones.'));
+        showEmptyState('No se encontraron conversaciones en los últimos 2 días.');
         return;
       }
       chatList.replaceChildren(...allChats.map(c => {
@@ -2681,8 +2730,10 @@ async function renderChats() {
         return item;
       }));
 
-      if (!activeChatPhone && allChats.length > 0) {
-        selectChat(allChats[0]);
+      // Auto-seleccionar chat: si ya había uno seleccionado y está en la lista, seleccionarlo; si no, el primero
+      const target = (activeChatPhone && allChats.find(c => c.phone === activeChatPhone)) || allChats[0];
+      if (target) {
+        selectChat(target);
       }
     } catch (e) {
       chatList.replaceChildren(h('div', { style: 'padding:20px;color:var(--r)' }, 'Error cargando chats: ' + e.message));
@@ -2690,7 +2741,10 @@ async function renderChats() {
   };
 
   const selectChat = async (c) => {
+    if (!c) return;
     activeChatPhone = c.phone;
+    composeInp.disabled = false;
+    sendBtn.disabled = false;
     wrap.classList.add('chat-open');
     chatList.querySelectorAll('.chat-item').forEach((el, idx) => {
       if (allChats[idx] && allChats[idx].phone === c.phone) el.classList.add('active');

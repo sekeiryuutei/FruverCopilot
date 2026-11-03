@@ -1148,16 +1148,22 @@ public class OrderProcessingService {
         }
 
         if (matched != null && matched.imageUrl() != null && !matched.imageUrl().isBlank()) {
-            String caption = "Aquí tienes la foto de " + matched.name() + " 📸. ¿Deseas que te agreguemos alguna cantidad a tu pedido?";
-            conversation.sendImage(r.orderId(), matched.imageUrl(), caption, "ia");
+            if (props.conversation().aiAutoReply()) {
+                String caption = "Aquí tienes la foto de " + matched.name() + " 📸. ¿Deseas que te agreguemos alguna cantidad a tu pedido?";
+                conversation.sendImage(r.orderId(), matched.imageUrl(), caption, "ia");
+            }
             writer.markInquiryHandled(r.orderId(), "Foto de producto enviada: " + matched.name());
         } else if (matched != null) {
-            String msg = "¡Hola! En este momento no tenemos foto cargada de " + matched.name() + ", pero te aseguramos que está fresca y de excelente calidad. ¿Deseas ordenar alguna cantidad?";
-            conversation.send(r.orderId(), msg, ConversationService.Kind.INFO, "ia");
+            if (props.conversation().aiAutoReply()) {
+                String msg = "¡Hola! En este momento no tenemos foto cargada de " + matched.name() + ", pero te aseguramos que está fresca y de excelente calidad. ¿Deseas ordenar alguna cantidad?";
+                conversation.send(r.orderId(), msg, ConversationService.Kind.INFO, "ia");
+            }
             writer.markInquiryHandled(r.orderId(), "Consulta de foto (" + matched.name() + " no tiene foto cargada)");
         } else {
-            String msg = "¡Hola! Con gusto te enviamos fotos de nuestros productos frescos. ¿De cuál de nuestros productos te gustaría ver foto (por ejemplo papaya, tomate, aguacate)? 😊";
-            conversation.send(r.orderId(), msg, ConversationService.Kind.INFO, "ia");
+            if (props.conversation().aiAutoReply()) {
+                String msg = "¡Hola! Con gusto te enviamos fotos de nuestros productos frescos. ¿De cuál de nuestros productos te gustaría ver foto (por ejemplo papaya, tomate, aguacate)? 😊";
+                conversation.send(r.orderId(), msg, ConversationService.Kind.INFO, "ia");
+            }
             writer.markInquiryHandled(r.orderId(), "Consulta general de fotos respondida.");
         }
     }

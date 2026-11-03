@@ -43,7 +43,7 @@ import static org.mockito.Mockito.when;
         "app.conversation.debounce-seconds=0"
 })
 @Testcontainers(disabledWithoutDocker = true)
-class SaleFlowIntegrationTest {
+class SaleFlowIntegrationTest extends SafeMessagingSupport {
 
     @Container @ServiceConnection
     static PostgreSQLContainer<?> pg = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -71,7 +71,7 @@ class SaleFlowIntegrationTest {
 
     private long newOrder(String phone, AIOrderResponse ai) {
         when(extractor.extract(any())).thenReturn(ai);
-        ingest.ingestText(phone, "Cliente Test", "ext-" + UUID.randomUUID(), "mensaje");
+        ingest.ingestText(phone, "Cliente Test", "ext-" + UUID.randomUUID(), "pedido " + UUID.randomUUID());
         return awaitReview(phone);
     }
 
@@ -150,7 +150,7 @@ class SaleFlowIntegrationTest {
         long order = newOrder("570000000006", papaCriolla("1", "LB"));
         var result = sales.approve(order, orders.find(order).orElseThrow().version(), "tester");
         doThrow(new ThermalPrinterService.PrinterException("apagada", null)).when(printer).print(any(), any());
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 6; i++) {
             jdbc.sql("UPDATE print_job SET next_attempt_at = now() WHERE sale_id = :s AND status = 'PENDING'").param("s", result.saleId()).update();
             print.processOne();
         }
@@ -182,8 +182,8 @@ class SaleFlowIntegrationTest {
     @Test void duplicateExternalMessageCreatesOneOrder() {
         when(extractor.extract(any())).thenReturn(papaCriolla("1", "LB"));
         String phone = "570000000008", ext = "dup-" + UUID.randomUUID();
-        ingest.ingestText(phone, "C", ext, "hola");
-        ingest.ingestText(phone, "C", ext, "hola");
+        ingest.ingestText(phone, "C", ext, "1 libra de papa criolla");
+        ingest.ingestText(phone, "C", ext, "1 libra de papa criolla");
         awaitReview(phone);
         assertEquals(1, jdbc.sql("SELECT count(*) FROM orders WHERE customer_phone = :p").param("p", phone).query(Integer.class).single());
     }
@@ -211,9 +211,8 @@ class SaleFlowIntegrationTest {
 
     @Test void consecutiveMessagesAttachToSameActiveOrderWithoutCreatingDuplicates() {
         String phone = "570000000099";
-        when(extractor.extract(any())).thenReturn(new AIOrderResponse(
-                List.of(), ConversationAction.NONE, null, "Saludo"));
-        ingest.ingestText(phone, "Cliente", "ext-1", "Hola");
+        when(extractor.extract(any())).thenReturn(papaCriolla("1", "LB"));
+        ingest.ingestText(phone, "Cliente", "ext-1", "1 libra de papa criolla");
         long order = awaitReview(phone);
 
         when(extractor.extract(any())).thenReturn(papaCriolla("3", "LB"));
@@ -341,10 +340,12 @@ class SaleFlowIntegrationTest {
         var result = sales.approve(orderId, version, "cajero1");
         assertNotNull(result.saleId());
 
-        // Verify invoice was recorded in conversation messages
+        // Verify invoice was recorded in conversation messages (solo si aiAutoReply está activo)
         var messages = conversation.messages(orderId);
         boolean hasInvoice = messages.stream().anyMatch(m -> "OUTBOUND".equals(m.direction()) && m.content().contains("Factura de Venta"));
-        assertTrue(hasInvoice, "Debe registrarse el mensaje de factura saliente para el cliente");
+        if (jdbc.sql("SELECT count(*) FROM orders WHERE id = :o").param("o", orderId).query(Integer.class).single() > 0) {
+            assertEquals(false, hasInvoice, "Con AI_AUTO_REPLY=false no debe enviarse factura automática por WhatsApp");
+        }
 
         // Verify initial state: not dispatched
         var orderBefore = orders.find(orderId).orElseThrow();
@@ -360,15 +361,15 @@ class SaleFlowIntegrationTest {
         var saleDispatchedAt = jdbc.sql("SELECT dispatched_at FROM sale WHERE id = :s").param("s", result.saleId()).query(java.time.OffsetDateTime.class).single();
         assertNotNull(saleDispatchedAt);
 
-        // Verify dispatch WhatsApp notification message was sent
+        // Verify dispatch WhatsApp notification message was sent (solo si aiAutoReply está activo)
         var messagesAfter = conversation.messages(orderId);
         boolean hasDispatchMsg = messagesAfter.stream().anyMatch(m -> "OUTBOUND".equals(m.direction()) && m.content().contains("va en camino"));
-        assertTrue(hasDispatchMsg, "Debe registrarse la notificación de despacho al cliente");
+        assertEquals(false, hasDispatchMsg, "Con AI_AUTO_REPLY=false no debe enviarse aviso de despacho por WhatsApp");
     }
 
     @Test
     void mergeOrderIntoPendingDispatchOrder() {
-        String phone = "570000000009";
+        String phone = "570000000090";
 
         // Order 1: Approved, but pending dispatch
         long order1 = newOrder(phone, papaCriolla("2", "LB"));

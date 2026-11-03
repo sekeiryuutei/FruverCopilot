@@ -68,7 +68,7 @@ class ExtractionInterpreterTest {
         assertEquals(ReviewStatus.RED, run(null, null, item("mango", "Mango Tommy", "3", "KG", false)).review());
     }
     @Test void invalidUnitAndNegativeQuantityAreRed() {
-        assertEquals(ReviewStatus.RED, run(null, null, item("papa criolla", "Papa criolla", "3", "arrobas", false)).review());
+        assertEquals(ReviewStatus.RED, run(null, null, item("papa criolla", "Papa criolla", "3", "galones", false)).review());
         assertEquals(ReviewStatus.RED, run(null, null, item("papa criolla", "Papa criolla", "-3", "LB", false)).review());
     }
     @Test void nullOrEmptyResponseGoesToOperator() {
@@ -118,7 +118,7 @@ class ExtractionInterpreterTest {
         InterpretedOrder r = interpreter.interpret(new AIOrderResponse(
                 List.of(new ItemSugeridoDTO("papa", "Papa criolla", new BigDecimal("5"), null, true, "Sin unidad")),
                 ConversationAction.ASK_CUSTOMER, null, null));
-        assertEquals(ReviewStatus.RED, r.review());
+        assertEquals(ReviewStatus.YELLOW, r.review());
         assertEquals(ConversationAction.CONFIRM_ORDER, r.action());
         assertNull(r.customerMessage());
     }

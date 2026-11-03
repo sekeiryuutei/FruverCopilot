@@ -78,4 +78,55 @@
       </plugin>
     </plugins>
   </build>
+  <profiles>
+    <!-- Pruebas rapidas y deterministas: sin Testcontainers, sin IA real, sin WhatsApp. -->
+    <profile>
+      <id>unit</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <excludes>
+                <exclude>**/*IntegrationTest.java</exclude>
+                <exclude>**/ExtractionEvalTest.java</exclude>
+              </excludes>
+              <forkedProcessTimeoutInSeconds>300</forkedProcessTimeoutInSeconds>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+    <!-- Integracion con Docker, pero con WhatsApp y puertos de red mockeados/desactivados. -->
+    <profile>
+      <id>integration-safe</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <includes>
+                <include>**/*IntegrationTest.java</include>
+              </includes>
+              <excludes>
+                <exclude>**/ExtractionEvalTest.java</exclude>
+              </excludes>
+              <systemPropertyVariables>
+                <app.whatsapp.enabled>false</app.whatsapp.enabled>
+                <app.printing.enabled>false</app.printing.enabled>
+                <app.conversation.ai-auto-reply>false</app.conversation.ai-auto-reply>
+                <app.conversation.auto-confirm-clear-orders>false</app.conversation.auto-confirm-clear-orders>
+                <app.conversation.debounce-seconds>0</app.conversation.debounce-seconds>
+                <app.conversation.debounce-max-seconds>0</app.conversation.debounce-max-seconds>
+              </systemPropertyVariables>
+              <forkedProcessTimeoutInSeconds>600</forkedProcessTimeoutInSeconds>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

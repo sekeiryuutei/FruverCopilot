@@ -9,4 +9,16 @@ public record ItemAssessment(
         int productMatches,
         BigDecimal quantity,
         UnitOfMeasure unit,
-        boolean aiFlaggedAmbiguous) {}
+        boolean aiFlaggedAmbiguous,
+        boolean hasManualPrice,
+        boolean invalidUnit) {
+
+    public ItemAssessment(boolean productResolved, int productMatches, BigDecimal quantity, UnitOfMeasure unit, boolean aiFlaggedAmbiguous) {
+        this(productResolved, productMatches, quantity, unit, aiFlaggedAmbiguous, false, false);
+    }
+
+    public ItemAssessment(boolean productResolved, int productMatches, BigDecimal quantity, UnitOfMeasure unit, boolean aiFlaggedAmbiguous, boolean hasManualPrice) {
+        this(productResolved, productMatches, quantity, unit, aiFlaggedAmbiguous, hasManualPrice, false);
+    }
+}
+

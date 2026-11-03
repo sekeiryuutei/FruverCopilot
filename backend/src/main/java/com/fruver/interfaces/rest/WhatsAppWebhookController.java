@@ -32,11 +32,20 @@ public class WhatsAppWebhookController {
     private final AppProperties props;
     private final MessageIngestService ingest;
     private final ObjectMapper mapper;
+    private final com.fruver.infrastructure.whatsapp.strategy.WhatsAppServiceContext whatsappContext;
 
     public WhatsAppWebhookController(AppProperties props, MessageIngestService ingest, ObjectMapper mapper) {
+        this(props, ingest, mapper, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public WhatsAppWebhookController(AppProperties props, MessageIngestService ingest, ObjectMapper mapper,
+                                     @org.springframework.beans.factory.annotation.Autowired(required = false)
+                                     com.fruver.infrastructure.whatsapp.strategy.WhatsAppServiceContext whatsappContext) {
         this.props = props;
         this.ingest = ingest;
         this.mapper = mapper;
+        this.whatsappContext = whatsappContext;
     }
 
     @GetMapping
@@ -61,10 +70,24 @@ public class WhatsAppWebhookController {
             return ResponseEntity.status(413).build();
         }
         if (body == null) body = "";
+        String bridgeHeader = req.getHeader("X-Bridge-Origin");
+        boolean isBaileys = "fruver-baileys".equals(bridgeHeader);
+
+        if (whatsappContext != null) {
+            var active = whatsappContext.getActiveProvider();
+            if (active == com.fruver.infrastructure.whatsapp.strategy.WhatsAppProvider.BAILEYS_QR && !isBaileys) {
+                log.info("Ignorando webhook de Meta Cloud API: proveedor activo es BAILEYS_QR (solo QR)");
+                return ResponseEntity.ok().build();
+            }
+            if (active == com.fruver.infrastructure.whatsapp.strategy.WhatsAppProvider.META_CLOUD_API && isBaileys) {
+                log.info("Ignorando webhook de Baileys: proveedor activo es META_CLOUD_API");
+                return ResponseEntity.ok().build();
+            }
+        }
+
         if (!validSignature(body, signature)) {
-            String bridgeHeader = req.getHeader("X-Bridge-Origin");
             String remoteAddr = req.getRemoteAddr();
-            if (!"fruver-baileys".equals(bridgeHeader) || !isInternalIp(remoteAddr)) {
+            if (!isBaileys || !isInternalIp(remoteAddr)) {
                 log.warn("Firma WhatsApp invalida o intento de suplantacion desde {}", remoteAddr);
                 return ResponseEntity.status(403).build();
             }

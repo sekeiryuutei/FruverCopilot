@@ -61,7 +61,7 @@ public class QuoteService {
             ProductRow p = it.productId() == null ? null : book.products().get(it.productId());
             BigDecimal catalog = p == null ? null : book.prices().get(type).get(p.id());
             BigDecimal applied = it.manualPrice() != null ? it.manualPrice() : catalog;
-            String problem = problemOf(it, p, applied);
+            String problem = problemOf(it, p, applied, type);
             // Sin conversion automatica KG<->LB: una unidad distinta a la del producto
             // siempre requiere revision humana (UNIT_MISMATCH). Evita facturar
             // "2 KG" como "4 LB" sin aviso.
@@ -79,12 +79,13 @@ public class QuoteService {
         return new Quote(lines, finalTotal, complete && allPriced, type.name());
     }
 
-    private static String problemOf(ItemRow it, ProductRow p, BigDecimal applied) {
+    private static String problemOf(ItemRow it, ProductRow p, BigDecimal applied, PriceType type) {
         if (p == null) return "NO_PRODUCT";
         if (!p.active()) return "INACTIVE_PRODUCT";
-        if (it.quantity() == null || it.quantity().signum() <= 0) return "NO_QUANTITY";
+        boolean isMoney = it.manualPrice() != null && it.manualPrice().signum() > 0;
+        if (!isMoney && (it.quantity() == null || it.quantity().signum() <= 0)) return "NO_QUANTITY";
         if (it.unit() != null && p.unit() != null && !it.unit().equals(p.unit())) return "UNIT_MISMATCH";
-        if (applied == null) return "NO_PRICE";
+        if (applied == null && type != PriceType.WHOLESALE) return "NO_PRICE";
         return null;
     }
 }

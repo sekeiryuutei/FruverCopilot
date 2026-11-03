@@ -68,7 +68,8 @@ public class ProductCatalogService implements ProductLookup {
                .append(" OR (aliases IS NOT NULL AND unaccent(lower(aliases)) LIKE :t").append(i).append("))");
             params.put("t" + i, "%" + tokens.get(i) + "%");
         }
-        sql.append(" ORDER BY length(name) ASC");
+        sql.append(" ORDER BY (CASE WHEN unaccent(lower(name)) ~* ('\\\\y' || :firstWord || '\\\\y') THEN 0 ELSE 1 END), length(name) ASC");
+        params.put("firstWord", tokens.get(0));
         List<Resolution> ids = jdbc.sql(sql.toString()).params(params)
                 .query((rs, i) -> new Resolution(rs.getLong(1), 1, rs.getString(2))).list();
         if (!ids.isEmpty()) return ids.get(0);
