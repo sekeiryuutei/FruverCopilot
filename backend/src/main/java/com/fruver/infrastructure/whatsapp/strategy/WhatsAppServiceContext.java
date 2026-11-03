@@ -62,6 +62,13 @@ public class WhatsAppServiceContext implements MessagingGateway, MediaDownloader
 
     @Override
     public DeliveryStatus sendText(String phone, String text) {
+        return sendText(phone, text, null, null);
+    }
+
+    public DeliveryStatus sendText(String phone, String text, WhatsAppProvider targetProvider, String quotedExternalId) {
+        if (targetProvider != null && strategies.containsKey(targetProvider)) {
+            return strategies.get(targetProvider).sendText(phone, text, quotedExternalId);
+        }
         WhatsAppProvider active = getActiveProvider();
         if (active == WhatsAppProvider.BOTH) {
             DeliveryStatus s1 = DeliveryStatus.LOCAL_ONLY;
@@ -69,14 +76,14 @@ public class WhatsAppServiceContext implements MessagingGateway, MediaDownloader
             var baileys = strategies.get(WhatsAppProvider.BAILEYS_QR);
             var meta = strategies.get(WhatsAppProvider.META_CLOUD_API);
             if (baileys != null) {
-                try { s1 = baileys.sendText(phone, text); } catch (Exception e) { log.debug("Envío Baileys en BOTH: {}", e.getMessage()); }
+                try { s1 = baileys.sendText(phone, text, quotedExternalId); } catch (Exception e) { log.debug("Envío Baileys en BOTH: {}", e.getMessage()); }
             }
             if (meta != null) {
-                try { s2 = meta.sendText(phone, text); } catch (Exception e) { log.debug("Envío Meta en BOTH: {}", e.getMessage()); }
+                try { s2 = meta.sendText(phone, text, quotedExternalId); } catch (Exception e) { log.debug("Envío Meta en BOTH: {}", e.getMessage()); }
             }
             return (s1 == DeliveryStatus.SENT || s2 == DeliveryStatus.SENT) ? DeliveryStatus.SENT : DeliveryStatus.LOCAL_ONLY;
         }
-        return getStrategy().sendText(phone, text);
+        return getStrategy().sendText(phone, text, quotedExternalId);
     }
 
     @Override

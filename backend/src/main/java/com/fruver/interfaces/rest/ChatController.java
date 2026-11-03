@@ -29,7 +29,7 @@ public class ChatController {
         return chatService.getMessages(phone);
     }
 
-    public record ManualMessageRequest(String text) {}
+    public record ManualMessageRequest(String text, String channel, Long quotedMessageId) {}
 
     @PostMapping("/{phone}/messages")
     public ChatQueryService.ChatMessageView sendManualMessage(
@@ -37,7 +37,7 @@ public class ChatController {
             @RequestBody ManualMessageRequest req,
             @AuthenticationPrincipal UserDetails user) {
         String username = user != null ? user.getUsername() : "operador";
-        return chatService.sendManualMessage(phone, req.text(), username);
+        return chatService.sendManualMessage(phone, req.text(), username, req.channel(), req.quotedMessageId());
     }
 
     @GetMapping("/audio/{audioId}")

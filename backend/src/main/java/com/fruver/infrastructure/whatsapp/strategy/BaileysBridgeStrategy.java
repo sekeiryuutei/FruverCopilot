@@ -37,7 +37,17 @@ public class BaileysBridgeStrategy implements WhatsAppProviderStrategy {
 
     @Override
     public MessagingGateway.DeliveryStatus sendText(String phone, String text) {
-        Map<String, Object> body = Map.of("to", phone, "text", text);
+        return sendText(phone, text, null);
+    }
+
+    @Override
+    public MessagingGateway.DeliveryStatus sendText(String phone, String text, String quotedExternalId) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("to", phone);
+        body.put("text", text);
+        if (quotedExternalId != null && !quotedExternalId.isBlank()) {
+            body.put("quotedMessageId", quotedExternalId);
+        }
         try {
             http.post().uri("/messages")
                     .contentType(MediaType.APPLICATION_JSON)

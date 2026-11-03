@@ -239,6 +239,10 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
 .chat-bubble-time{font-size:11px;opacity:0.65;margin-top:4px;text-align:right}
 .chat-compose{padding:10px 14px;background:var(--card);border-top:1px solid var(--line);display:flex;gap:10px;align-items:center}
 .chat-back-btn{display:none}
+.chat-quote-bar{display:none;background:rgba(34,197,94,0.12);border-left:4px solid #22c55e;padding:6px 12px;margin:0 12px 6px 12px;border-radius:6px;align-items:center;justify-content:space-between;gap:8px}
+.chat-quoted-preview{background:rgba(0,0,0,0.25);border-left:3px solid #22c55e;padding:4px 8px;border-radius:4px;margin-bottom:6px;font-size:12px;color:rgba(255,255,255,0.85);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-bubble-reply-btn{opacity:0.4;transition:opacity .15s}
+.chat-bubble:hover .chat-bubble-reply-btn{opacity:1;color:#22c55e}
 @media (max-width:768px){
   .chats-wrap{height:calc(100vh - 120px)}
   .chats-sidebar{width:100%;height:100%;display:flex}
@@ -411,7 +415,7 @@ async function api(path,opt={}){
   if(!r.ok){const e=new Error(j?.message||'Error '+r.status);e.code=j?.code;e.details=j?.details;throw e}
   return j;
 }
-const S={me:null,products:[],orders:[],deliveryPersons:[],draft:{},open:{},openConvs:new Set(),tab:'ops'};
+const S={me:null,products:[],orders:[],deliveryPersons:[],draft:{},open:{},openConvs:new Set(),tab:'ops',ordersLoaded:false,whatsappProvider:'BAILEYS_QR',replyingTo:null};
 const byName=n=>S.products.find(p=>p.name.toLowerCase()===String(n).trim().toLowerCase());
 const ago=t=>{const s=Math.max(0,(Date.now()-new Date(t))/1000);return s<60?Math.round(s)+' s':s<3600?Math.round(s/60)+' min':Math.round(s/3600)+' h'};
 
@@ -498,7 +502,12 @@ async function loadOrders(){if(loading){again=true;return}loading=true;
       receivedAt:off.createdAt||new Date().toISOString()
     }));
     S.orders=[...offList,...orders.filter(o=>!offList.some(off=>off.id===o.id))];
+    S.ordersLoaded=true;
     if(S.tab==='ops')renderOps();
+  }catch(e){
+    S.ordersLoaded=true;
+    if(S.tab==='ops')renderOps();
+    throw e;
   }finally{loading=false;if(again){again=false;loadOrders()}}}
 function isMoneyOrder(it){
   if(!it)return false;
@@ -550,6 +559,11 @@ async function updatePrinterStatus(){
   try{
     const st=await api('/api/printer/status');
     S.printerStatus=st;
+    try{
+      const wa=await api('/api/whatsapp/status');
+      S.whatsappStatus=wa;
+      if(wa?.provider) S.whatsappProvider=wa.provider;
+    }catch(err){}
     const pb=$('#printerBadge');
     if(pb){
       const loc=st.activePrinter==='OFICINA'?'🏪 FRUVER (4am-7pm)':'🏠 CASA (7pm-4am)';
@@ -1039,6 +1053,11 @@ function makeSwipeable(el, orderId, onValidate){
 }
 
 const emptyMsg=h('p',{class:'mut'},'Sin pedidos pendientes. Cuando llegue uno aparece aquí solo.');
+const loadingOrdersMsg=h('div',{class:'card',dataset:{id:'loading-orders'},style:'padding:36px 20px;text-align:center;color:var(--mut);display:flex;flex-direction:column;align-items:center;gap:12px;margin-bottom:12px'},
+  h('span',{class:'spin',style:'font-size:32px;display:inline-block'},'⏳'),
+  h('b',{style:'font-size:16px;color:var(--ink)'},'Cargando pedidos del servidor...'),
+  h('span',{style:'font-size:13px;opacity:0.8'},'Sincronizando información de pedidos en tiempo real...')
+);
 const doneTitle=h('h3',{},'Facturas de hoy');
 /** Seleccion multiple para reimprimir */
 const reprintSel=new Set();
@@ -1131,9 +1150,10 @@ function renderOps(){
     )
   );
   if(existing.get('toolbar')){
-    const mutEl=opsBar.querySelector('#toolbarStats');if(mutEl)mutEl.textContent=`Activos: ${active.length} · Facturas de hoy: ${done.length}`;
+    const mutEl=opsBar.querySelector('#toolbarStats');if(mutEl)mutEl.textContent=!S.ordersLoaded?'Cargando pedidos...':`Activos: ${active.length} · Facturas de hoy: ${done.length}`;
   }
-  const wanted=[...(alertBanner?[alertBanner]:[]),opsBar,...(active.length?[]:[emptyMsg]),...active.map(o=>cardFor(o,existing)),...(done.length?[doneTitle]:[]),...done.map(o=>cardFor(o,existing))];
+  const centerContent=!S.ordersLoaded?[loadingOrdersMsg]:(active.length?[]:[emptyMsg]);
+  const wanted=[...(alertBanner?[alertBanner]:[]),opsBar,...centerContent,...(!S.ordersLoaded?[]:active.map(o=>cardFor(o,existing))),...(done.length&&S.ordersLoaded?[doneTitle]:[]),...(!S.ordersLoaded?[]:done.map(o=>cardFor(o,existing)))];
   const keep=new Set(wanted);[...m.children].forEach(n=>{if(!keep.has(n))n.remove()});
   let ref=m.firstElementChild;
   for(const el of wanted){if(el===ref)ref=ref.nextElementSibling;else m.insertBefore(el,ref)}}
@@ -2630,6 +2650,8 @@ async function renderChats() {
   const m = $('#main');
   m.replaceChildren();
 
+  const isBoth = (S.whatsappProvider === 'BOTH');
+
   const wrap = h('div', { class: 'chats-wrap' });
   const sidebar = h('div', { class: 'chats-sidebar' });
   const mainChat = h('div', { class: 'chats-main' });
@@ -2645,7 +2667,19 @@ async function renderChats() {
 
   const chatHeader = h('div', { class: 'chat-header' });
   const messagesBox = h('div', { class: 'chat-messages' });
+  const quoteBar = h('div', { class: 'chat-quote-bar' });
   const composeBar = h('div', { class: 'chat-compose' });
+
+  let channelSel = null;
+  if (isBoth) {
+    channelSel = h('select', {
+      style: 'padding:8px 12px;border-radius:20px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:12.5px;font-weight:700;outline:none;cursor:pointer'
+    },
+      h('option', { value: 'BAILEYS_QR' }, '📱 QR Fruver'),
+      h('option', { value: 'META_CLOUD_API' }, '☁️ API Cloud')
+    );
+  }
+
   const composeInp = h('input', {
     type: 'text',
     placeholder: 'Escribir mensaje manual al cliente (Enter para enviar)...',
@@ -2657,10 +2691,40 @@ async function renderChats() {
     title: 'Enviar mensaje manual'
   }, 'Enviar ➤');
 
+  if (channelSel) composeBar.append(channelSel);
   composeBar.append(composeInp, sendBtn);
-  mainChat.append(chatHeader, messagesBox, composeBar);
+  mainChat.append(chatHeader, messagesBox, quoteBar, composeBar);
   wrap.append(sidebar, mainChat);
   m.append(wrap);
+
+  const clearReply = () => {
+    S.replyingTo = null;
+    quoteBar.style.display = 'none';
+    quoteBar.replaceChildren();
+  };
+
+  const setReplyTo = (msg) => {
+    S.replyingTo = msg;
+    let snippet = (msg.content || (msg.messageType === 'AUDIO' ? 'Nota de voz' : 'Foto / Imagen')).trim();
+    if (snippet.length > 70) snippet = snippet.slice(0, 68) + '…';
+    quoteBar.style.display = 'flex';
+    quoteBar.replaceChildren(
+      h('div', { style: 'font-size:12.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1' },
+        h('b', { style: 'color:#22c55e;margin-right:6px' }, '↩ Respondiendo a:'),
+        `"${snippet}"`
+      ),
+      h('button', {
+        class: 'b',
+        style: 'padding:2px 8px;font-size:12px;border:none;background:transparent;color:var(--mut);cursor:pointer',
+        title: 'Cancelar respuesta',
+        onclick: clearReply
+      }, '✕ Cancelar')
+    );
+    if (isBoth && channelSel && msg.channel) {
+      channelSel.value = msg.channel;
+    }
+    composeInp.focus();
+  };
 
   const showEmptyState = (msg = 'Selecciona una conversación de la lista para ver los mensajes.') => {
     chatHeader.replaceChildren(
@@ -2675,6 +2739,7 @@ async function renderChats() {
     );
     composeInp.disabled = true;
     sendBtn.disabled = true;
+    clearReply();
   };
   showEmptyState('Cargando conversaciones…');
 
@@ -2711,12 +2776,20 @@ async function renderChats() {
 
         const phoneDisplay = c.phone && c.phone.length > 12 && !c.phone.startsWith('573') ? 'WhatsApp Web (LID)' : ('+' + c.phone);
 
+        const channelBadge = (isBoth && c.channel) ? h('span', {
+          class: 'pill',
+          style: `font-size:10px;padding:1px 5px;font-weight:700;margin-left:6px;background:${c.channel === 'META_CLOUD_API' ? '#1e3a8a' : '#065f46'};color:#fff`
+        }, c.channel === 'META_CLOUD_API' ? '☁️ API' : '📱 QR') : null;
+
         const item = h('div', {
           class: 'chat-item' + (isSelected ? ' active' : ''),
           onclick: () => selectChat(c)
         },
           h('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
-            h('b', { style: 'font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px' }, c.name || 'Cliente'),
+            h('div', { style: 'display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px' },
+              h('b', { style: 'font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, c.name || 'Cliente'),
+              channelBadge
+            ),
             h('span', { style: 'font-size:11.5px;color:var(--mut)' }, dateStr + ' ' + timeStr)
           ),
           h('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
@@ -2745,6 +2818,7 @@ async function renderChats() {
     activeChatPhone = c.phone;
     composeInp.disabled = false;
     sendBtn.disabled = false;
+    clearReply();
     wrap.classList.add('chat-open');
     chatList.querySelectorAll('.chat-item').forEach((el, idx) => {
       if (allChats[idx] && allChats[idx].phone === c.phone) el.classList.add('active');
@@ -2759,12 +2833,20 @@ async function renderChats() {
       onclick: () => wrap.classList.remove('chat-open')
     }, '← Volver');
 
+    const headerChanBadge = (isBoth && c.channel) ? h('span', {
+      class: 'pill',
+      style: `font-size:11px;padding:2px 7px;font-weight:700;margin-left:8px;background:${c.channel === 'META_CLOUD_API' ? '#1e3a8a' : '#065f46'};color:#fff`
+    }, c.channel === 'META_CLOUD_API' ? '☁️ API Cloud' : '📱 QR Fruver') : null;
+
     chatHeader.replaceChildren(
       h('div', { style: 'display:flex;align-items:center;gap:10px' },
         backBtn,
         h('div', { style: 'width:38px;height:38px;border-radius:50%;background:#1f9d55;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0' }, (c.name || 'C')[0].toUpperCase()),
         h('div', {},
-          h('div', { style: 'font-weight:700;font-size:15px;line-height:1.2' }, c.name || 'Cliente'),
+          h('div', { style: 'display:flex;align-items:center' },
+            h('span', { style: 'font-weight:700;font-size:15px;line-height:1.2' }, c.name || 'Cliente'),
+            headerChanBadge
+          ),
           h('div', { style: 'font-size:12px;color:var(--mut)' }, phoneDisplay + (c.lastOrderId ? ' • Factura / Pedido #' + c.lastOrderId : ''))
         )
       ),
@@ -2781,6 +2863,10 @@ async function renderChats() {
         }, '🔄 Actualizar')
       )
     );
+
+    if (isBoth && channelSel && c.channel) {
+      channelSel.value = c.channel;
+    }
 
     await loadMessages(c.phone);
     composeInp.focus();
@@ -2800,6 +2886,24 @@ async function renderChats() {
         const dateStr = m.createdAt ? new Date(m.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' }) : '';
 
         const bubble = h('div', { class: 'chat-bubble ' + (isIn ? 'inbound' : 'outbound') });
+
+        // Cita previa si existe
+        if (m.quotedContent) {
+          bubble.append(h('div', { class: 'chat-quoted-preview' },
+            h('div', { style: 'font-weight:700;color:#22c55e;font-size:10.5px;margin-bottom:2px' }, '↩ Respondiendo a:'),
+            m.quotedContent
+          ));
+        }
+
+        // Insignia de canal condicional (solo en BOTH)
+        if (isBoth) {
+          const mChan = m.channel || 'BAILEYS_QR';
+          const isQr = (mChan === 'BAILEYS_QR');
+          bubble.append(h('span', {
+            class: 'pill',
+            style: `font-size:10px;padding:1px 6px;margin-bottom:4px;display:inline-block;font-weight:700;background:${isQr ? '#065f46' : '#1e3a8a'};color:#fff`
+          }, isQr ? '📱 QR Fruver' : '☁️ API Cloud'));
+        }
 
         if (m.messageType === 'AUDIO' && m.audioId) {
           bubble.append(
@@ -2829,8 +2933,22 @@ async function renderChats() {
           bubble.append(h('div', { style: 'white-space:pre-wrap' }, m.content || ''));
         }
 
+        // Botón Responder
+        const replyBtn = h('button', {
+          class: 'chat-bubble-reply-btn',
+          style: 'background:none;border:none;color:var(--mut);cursor:pointer;padding:2px 6px;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:3px;border-radius:4px',
+          title: 'Responder a este mensaje',
+          onclick: (e) => {
+            e.stopPropagation();
+            setReplyTo(m);
+          }
+        }, '↩ Responder');
+
         bubble.append(
-          h('div', { class: 'chat-bubble-time' }, dateStr + ' ' + timeStr + (isIn ? '' : ' ✓'))
+          h('div', { style: 'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px' },
+            replyBtn,
+            h('div', { class: 'chat-bubble-time', style: 'margin:0' }, dateStr + ' ' + timeStr + (isIn ? '' : ' ✓'))
+          )
         );
 
         return bubble;
@@ -2852,8 +2970,13 @@ async function renderChats() {
     try {
       await api('/api/chats/' + encodeURIComponent(activeChatPhone) + '/messages', {
         method: 'POST',
-        body: { text }
+        body: {
+          text,
+          channel: isBoth ? channelSel?.value : null,
+          quotedMessageId: S.replyingTo?.id || null
+        }
       });
+      clearReply();
       composeInp.value = '';
       toast('✓ Mensaje enviado');
       await loadMessages(activeChatPhone);
@@ -2864,6 +2987,21 @@ async function renderChats() {
       sendBtn.disabled = false;
     }
   };
+
+  sendBtn.onclick = doSendManual;
+  composeInp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      doSendManual();
+    }
+  });
+
+  qInp.addEventListener('input', () => {
+    loadChatList();
+  });
+
+  loadChatList();
+}
 
   sendBtn.onclick = doSendManual;
   composeInp.addEventListener('keydown', (e) => {
@@ -3470,6 +3608,7 @@ $('#logoutBtn').onclick=doLogout;
   }
 
   fillDl();nav();applyNavLayout();
+  show();
   try{await updatePrinterStatus()}catch(e){}
   await loadOrders();
   let t;

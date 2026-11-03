@@ -41,13 +41,33 @@ public class MessageIngestService {
         this.coordinator = coordinator;
     }
 
+    private final ThreadLocal<String> currentChannel = new ThreadLocal<>();
+
     public void ingestText(String phone, String name, String externalId, String text) {
         ingest(phone, name, externalId, OrderInputType.TEXT, text, null, null, null);
+    }
+
+    public void ingestText(String phone, String name, String externalId, String text, String channel) {
+        currentChannel.set(channel);
+        try {
+            ingestText(phone, name, externalId, text);
+        } finally {
+            currentChannel.remove();
+        }
     }
 
     /** Audio referenciado en el proveedor (se descarga de forma asincrona: las URLs de media expiran). */
     public void ingestAudioRef(String phone, String name, String externalId, String mediaId, String mime) {
         ingest(phone, name, externalId, OrderInputType.AUDIO, null, mediaId, null, mime);
+    }
+
+    public void ingestAudioRef(String phone, String name, String externalId, String mediaId, String mime, String channel) {
+        currentChannel.set(channel);
+        try {
+            ingestAudioRef(phone, name, externalId, mediaId, mime);
+        } finally {
+            currentChannel.remove();
+        }
     }
 
     /** Audio ya disponible en bytes (simulador / pruebas). */
@@ -61,6 +81,15 @@ public class MessageIngestService {
         ingest(phone, name, externalId, OrderInputType.IMAGE, caption, mediaId, null, mime);
     }
 
+    public void ingestImageRef(String phone, String name, String externalId, String mediaId, String mime, String caption, String channel) {
+        currentChannel.set(channel);
+        try {
+            ingestImageRef(phone, name, externalId, mediaId, mime, caption);
+        } finally {
+            currentChannel.remove();
+        }
+    }
+
     /** Imagen ya disponible en bytes (simulador / interfaz web). */
     public void ingestImageBytes(String phone, String name, String externalId, byte[] data, String mime, String caption) {
         if (externalId != null && intake.isDuplicate(externalId)) return;
@@ -69,6 +98,8 @@ public class MessageIngestService {
 
     private void ingest(String phone, String name, String externalId, OrderInputType type, String text,
                         String mediaId, String storageKey, String mime) {
+        String channel = currentChannel.get();
+        if (channel == null || channel.isBlank()) channel = "BAILEYS_QR";
         if (phone == null || phone.isBlank()) throw new ApiException(400, "VALIDATION_ERROR", "Telefono requerido");
         String p = phone.strip();
         if (p.length() > 20 || !p.matches("^[+0-9\\s\\-()]{5,20}$")) throw new ApiException(400, "VALIDATION_ERROR", "Telefono invalido");
@@ -83,7 +114,7 @@ public class MessageIngestService {
         try {
             String cleanName = name == null ? null : name.strip();
             if (cleanName != null && cleanName.length() > 120) cleanName = cleanName.substring(0, 120);
-            result = intake.record(p, cleanName, externalId, type, text, mediaId, storageKey, mime);
+            result = intake.record(p, cleanName, externalId, type, text, mediaId, storageKey, mime, channel);
         } catch (DuplicateKeyException e) {
             log.debug("Mensaje duplicado (carrera) ignorado");
             return;

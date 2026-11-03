@@ -92,6 +92,7 @@ public class WhatsAppWebhookController {
                 return ResponseEntity.status(403).build();
             }
         }
+        String channel = isBaileys ? "BAILEYS_QR" : "META_CLOUD_API";
         try {
             JsonNode root = mapper.readTree(body);
             for (JsonNode entry : root.path("entry")) {
@@ -99,7 +100,7 @@ public class WhatsAppWebhookController {
                     JsonNode value = change.path("value");
                     Map<String, String> names = new HashMap<>();
                     for (JsonNode c : value.path("contacts")) names.put(c.path("wa_id").asText(), c.path("profile").path("name").asText(null));
-                    for (JsonNode m : value.path("messages")) handle(m, names);
+                    for (JsonNode m : value.path("messages")) handle(m, names, channel);
                 }
             }
         } catch (Exception e) {
@@ -109,7 +110,7 @@ public class WhatsAppWebhookController {
         return ResponseEntity.ok().build();
     }
 
-    private void handle(JsonNode m, Map<String, String> names) {
+    private void handle(JsonNode m, Map<String, String> names, String channel) {
         String id = m.path("id").asText(null);
         String from = m.path("from").asText(null);
         String type = m.path("type").asText("");
@@ -120,19 +121,19 @@ public class WhatsAppWebhookController {
                 String t = m.path("text").path("body").asText("");
                 if (t.isBlank()) return; // no crear pedidos vacios/basura
                 if (t.length() > 2000) t = t.substring(0, 2000);
-                ingest.ingestText(from, name, id, t);
+                ingest.ingestText(from, name, id, t, channel);
             }
             case "audio" -> ingest.ingestAudioRef(from, name, id, m.path("audio").path("id").asText(),
-                    m.path("audio").path("mime_type").asText("audio/ogg"));
+                    m.path("audio").path("mime_type").asText("audio/ogg"), channel);
             case "image" -> {
                 String mediaId = m.path("image").path("id").asText(null);
                 String mime = m.path("image").path("mime_type").asText("image/jpeg");
                 String caption = m.path("image").path("caption").asText(null);
                 if (mediaId != null && !mediaId.isBlank()) {
-                    ingest.ingestImageRef(from, name, id, mediaId, mime, caption);
+                    ingest.ingestImageRef(from, name, id, mediaId, mime, caption, channel);
                 }
             }
-            default -> ingest.ingestText(from, name, id, "[Mensaje de tipo " + type + " no soportado]"); // visible para el empleado
+            default -> ingest.ingestText(from, name, id, "[Mensaje de tipo " + type + " no soportado]", channel); // visible para el empleado
         }
     }
 

@@ -8,6 +8,10 @@ public interface WhatsAppProviderStrategy {
 
     MessagingGateway.DeliveryStatus sendText(String phone, String text);
 
+    default MessagingGateway.DeliveryStatus sendText(String phone, String text, String quotedExternalId) {
+        return sendText(phone, text);
+    }
+
     MessagingGateway.DeliveryStatus sendReaction(String phone, String messageId, String emoji);
 
     MessagingGateway.DeliveryStatus sendImage(String phone, String imageUrl, String caption);

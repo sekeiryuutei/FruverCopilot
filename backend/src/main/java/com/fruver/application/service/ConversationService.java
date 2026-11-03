@@ -24,12 +24,20 @@ public class ConversationService {
     private final MessagingGateway gateway;
     private final AuditService audit;
     private final SseHub hub;
+    private final com.fruver.config.AppProperties props;
 
     public ConversationService(JdbcClient jdbc, MessagingGateway gateway, AuditService audit, SseHub hub) {
+        this(jdbc, gateway, audit, hub, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ConversationService(JdbcClient jdbc, MessagingGateway gateway, AuditService audit, SseHub hub,
+                               @org.springframework.beans.factory.annotation.Autowired(required = false) com.fruver.config.AppProperties props) {
         this.jdbc = jdbc;
         this.gateway = gateway;
         this.audit = audit;
         this.hub = hub;
+        this.props = props;
     }
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ConversationService.class);
@@ -37,6 +45,16 @@ public class ConversationService {
 
     /** La llamada al proveedor ocurre SIN transaccion; el registro posterior es atomico. */
     public void send(long orderId, String text, Kind kind, String actor) {
+        if ("ia".equalsIgnoreCase(actor)) {
+            if (kind == Kind.CONFIRM && (props == null || !props.conversation().autoConfirmClearOrders())) {
+                log.info("Envío bloqueado: Confirmación automática de IA cancelada (autoConfirmClearOrders=false, orderId={})", orderId);
+                return;
+            }
+            if (props == null || !props.conversation().aiAutoReply()) {
+                log.info("Envío bloqueado: Mensaje automático de IA cancelado (aiAutoReply=false, orderId={})", orderId);
+                return;
+            }
+        }
         if (text == null || text.isBlank() || text.length() > 1000) {
             throw new ApiException(400, "VALIDATION_ERROR", "Mensaje invalido");
         }
@@ -67,6 +85,10 @@ public class ConversationService {
     }
 
     public void sendImage(long orderId, String imageUrl, String caption, String actor) {
+        if ("ia".equalsIgnoreCase(actor) && (props == null || !props.conversation().aiAutoReply())) {
+            log.info("Envío bloqueado: Imagen automática de IA cancelada (aiAutoReply=false, orderId={})", orderId);
+            return;
+        }
         if (imageUrl == null || imageUrl.isBlank()) return;
         String phone = jdbc.sql("SELECT customer_phone FROM orders WHERE id = :id AND status != 'CANCELLED'")
                 .param("id", orderId).query(String.class).optional()

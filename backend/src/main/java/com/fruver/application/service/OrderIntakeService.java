@@ -29,9 +29,14 @@ public class OrderIntakeService {
                 .param("e", externalId).query(Integer.class).single() > 0;
     }
 
-    @Transactional
     public IntakeResult record(String phone, String name, String externalId, OrderInputType type, String text,
                                String mediaId, String storageKey, String mime) {
+        return record(phone, name, externalId, type, text, mediaId, storageKey, mime, "BAILEYS_QR");
+    }
+
+    @Transactional
+    public IntakeResult record(String phone, String name, String externalId, OrderInputType type, String text,
+                               String mediaId, String storageKey, String mime, String channel) {
         CustomerRef customer = jdbc.sql("""
                 INSERT INTO customer(name, phone) VALUES (:n, :p)
                 ON CONFLICT (phone) DO UPDATE SET name = COALESCE(customer.name, EXCLUDED.name)
@@ -60,6 +65,7 @@ public class OrderIntakeService {
 
         long orderId;
         boolean reply = activeOrder.isPresent();
+        String chan = (channel != null && !channel.isBlank()) ? channel : "BAILEYS_QR";
         if (reply) {
             orderId = activeOrder.get();
             var prevSaleId = jdbc.sql("SELECT id FROM sale WHERE order_id = :id").param("id", orderId).query(Long.class).optional();
@@ -69,24 +75,24 @@ public class OrderIntakeService {
                 jdbc.sql("DELETE FROM sale_item WHERE sale_id = :s").param("s", sId).update();
                 jdbc.sql("DELETE FROM sale WHERE id = :s").param("s", sId).update();
             }
-            jdbc.sql("UPDATE orders SET status = 'PROCESSING', ai_status = 'PENDING', conversation_status = 'READY_FOR_REVIEW' WHERE id = :id")
-                    .param("id", orderId).update();
+            jdbc.sql("UPDATE orders SET status = 'PROCESSING', ai_status = 'PENDING', conversation_status = 'READY_FOR_REVIEW', channel = :ch WHERE id = :id")
+                    .param("ch", chan).param("id", orderId).update();
         } else {
             orderId = jdbc.sql("""
-                    INSERT INTO orders(customer_id, customer_name, customer_phone, address, input_type, status, ai_status)
-                    SELECT c.id, c.name, c.phone, c.address, :t, 'PROCESSING', 'PENDING' FROM customer c WHERE c.id = :c
+                    INSERT INTO orders(customer_id, customer_name, customer_phone, address, input_type, status, ai_status, channel)
+                    SELECT c.id, c.name, c.phone, c.address, :t, 'PROCESSING', 'PENDING', :ch FROM customer c WHERE c.id = :c
                     RETURNING id
-                    """).param("t", type.name()).param("c", customer.id()).query(Long.class).single();
+                    """).param("t", type.name()).param("ch", chan).param("c", customer.id()).query(Long.class).single();
         }
 
         boolean audio = type == OrderInputType.AUDIO;
         boolean image = type == OrderInputType.IMAGE;
         String msgType = audio ? "AUDIO" : (image ? "IMAGE" : "TEXT");
         long messageId = jdbc.sql("""
-                INSERT INTO conversation_message(order_id, direction, message_type, content, external_message_id)
-                VALUES (:o, 'INBOUND', :mt, :c, :e) RETURNING id
+                INSERT INTO conversation_message(order_id, direction, message_type, content, external_message_id, channel)
+                VALUES (:o, 'INBOUND', :mt, :c, :e, :ch) RETURNING id
                 """).param("o", orderId).param("mt", msgType).param("c", text)
-                .param("e", externalId).query(Long.class).single();
+                .param("e", externalId).param("ch", chan).query(Long.class).single();
 
         if (audio) {
             jdbc.sql("INSERT INTO audio(order_id, message_id, media_ref, storage_key, mime_type) VALUES (:o, :m, :r, :k, :t)")

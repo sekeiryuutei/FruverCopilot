@@ -3,6 +3,8 @@ package com.fruver.application.service;
 import com.fruver.application.port.AudioStorageService;
 import com.fruver.application.port.MessagingGateway;
 import com.fruver.application.port.MessagingUnavailableException;
+import com.fruver.infrastructure.whatsapp.strategy.WhatsAppProvider;
+import com.fruver.infrastructure.whatsapp.strategy.WhatsAppServiceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
@@ -31,7 +33,8 @@ public class ChatQueryService {
             String lastDirection,
             OffsetDateTime lastMessageAt,
             int totalMessages,
-            boolean hasOrder
+            boolean hasOrder,
+            String channel
     ) {}
 
     public record ChatMessageView(
@@ -43,7 +46,10 @@ public class ChatQueryService {
             String deliveryStatus,
             OffsetDateTime createdAt,
             Long audioId,
-            Long imageId
+            Long imageId,
+            String channel,
+            Long quotedMessageId,
+            String quotedContent
     ) {}
 
     private final JdbcClient jdbc;
@@ -91,7 +97,8 @@ public class ChatQueryService {
                     cm.direction AS last_direction,
                     cc.last_message_at,
                     cc.total_messages,
-                    cc.has_order
+                    cc.has_order,
+                    COALESCE(cm.channel, 'BAILEYS_QR') AS channel
                 FROM customer_chats cc
                 JOIN conversation_message cm ON cm.id = cc.last_msg_id
                 JOIN orders o ON o.id = cc.last_order_id
@@ -112,7 +119,8 @@ public class ChatQueryService {
                         rs.getString("last_direction"),
                         rs.getObject("last_message_at", OffsetDateTime.class),
                         rs.getInt("total_messages"),
-                        rs.getBoolean("has_order")
+                        rs.getBoolean("has_order"),
+                        rs.getString("channel")
                 )).list();
     }
 
@@ -130,7 +138,10 @@ public class ChatQueryService {
                     cm.delivery_status,
                     cm.created_at,
                     (SELECT a.id FROM audio a WHERE a.message_id = cm.id LIMIT 1) AS audio_id,
-                    (SELECT mi.id FROM media_image mi WHERE mi.message_id = cm.id AND mi.storage_key IS NOT NULL AND TRIM(mi.storage_key) <> '' ORDER BY mi.id DESC LIMIT 1) AS image_id
+                    (SELECT mi.id FROM media_image mi WHERE mi.message_id = cm.id AND mi.storage_key IS NOT NULL AND TRIM(mi.storage_key) <> '' ORDER BY mi.id DESC LIMIT 1) AS image_id,
+                    COALESCE(cm.channel, 'BAILEYS_QR') AS channel,
+                    cm.quoted_message_id,
+                    (SELECT q.content FROM conversation_message q WHERE q.id = cm.quoted_message_id) AS quoted_content
                 FROM conversation_message cm
                 JOIN orders o ON cm.order_id = o.id
                 LEFT JOIN customer c ON o.customer_id = c.id
@@ -151,17 +162,61 @@ public class ChatQueryService {
                         rs.getString("delivery_status"),
                         rs.getObject("created_at", OffsetDateTime.class),
                         (Long) rs.getObject("audio_id"),
-                        (Long) rs.getObject("image_id")
+                        (Long) rs.getObject("image_id"),
+                        rs.getString("channel"),
+                        (Long) rs.getObject("quoted_message_id"),
+                        rs.getString("quoted_content")
                 )).list();
+    }
+
+    public ChatMessageView sendManualMessage(String phone, String text, String operatorUsername) {
+        return sendManualMessage(phone, text, operatorUsername, null, null);
     }
 
     /** Envío manual de mensaje por parte del operario desde el panel de chats. */
     @Transactional
-    public ChatMessageView sendManualMessage(String phone, String text, String operatorUsername) {
+    public ChatMessageView sendManualMessage(String phone, String text, String operatorUsername, String channel, Long quotedMessageId) {
         if (text == null || text.isBlank() || text.length() > 2000) {
             throw new ApiException(400, "VALIDATION_ERROR", "Texto de mensaje inválido");
         }
         String cleanText = text.strip();
+
+        // Si se indicó un mensaje a citar, recuperar su contenido e id externo
+        String quotedContent = null;
+        String externalQuotedId = null;
+        if (quotedMessageId != null) {
+            var qRow = jdbc.sql("SELECT content, external_message_id FROM conversation_message WHERE id = :qid")
+                    .param("qid", quotedMessageId)
+                    .query((rs, n) -> new String[]{rs.getString(1), rs.getString(2)})
+                    .optional().orElse(null);
+            if (qRow != null) {
+                quotedContent = qRow[0];
+                externalQuotedId = qRow[1];
+            }
+        }
+
+        // Determinar canal a usar
+        String selectedChannel = (channel != null && !channel.isBlank()) ? channel.trim().toUpperCase() : null;
+        if (selectedChannel == null) {
+            if (gateway instanceof WhatsAppServiceContext ctx) {
+                var act = ctx.getActiveProvider();
+                if (act == WhatsAppProvider.BOTH) {
+                    selectedChannel = jdbc.sql("""
+                            SELECT cm.channel FROM conversation_message cm
+                            JOIN orders o ON cm.order_id = o.id
+                            LEFT JOIN customer c ON o.customer_id = c.id
+                            WHERE (COALESCE(c.phone, o.customer_phone) = :p
+                               OR regexp_replace(COALESCE(c.phone, o.customer_phone), '[^0-9]', '', 'g') = regexp_replace(:p, '[^0-9]', '', 'g'))
+                              AND cm.channel IS NOT NULL
+                            ORDER BY cm.id DESC LIMIT 1
+                            """).param("p", phone).query(String.class).optional().orElse("BAILEYS_QR");
+                } else {
+                    selectedChannel = act.name();
+                }
+            } else {
+                selectedChannel = "BAILEYS_QR";
+            }
+        }
 
         // Buscar última orden asociada para registrar el mensaje
         Long orderId = jdbc.sql("""
@@ -175,32 +230,38 @@ public class ChatQueryService {
             // Si no existe ninguna orden previa, crear una interacción de chat
             Long customerId = jdbc.sql("SELECT id FROM customer WHERE phone = :p").param("p", phone).query(Long.class).optional().orElse(null);
             orderId = jdbc.sql("""
-                    INSERT INTO orders (customer_id, customer_phone, customer_name, input_type, status, ai_status, conversation_status)
-                    VALUES (:cid, :p, 'Cliente', 'TEXT', 'CANCELLED', 'OK', 'COMPLETED')
+                    INSERT INTO orders (customer_id, customer_phone, customer_name, input_type, status, ai_status, conversation_status, channel)
+                    VALUES (:cid, :p, 'Cliente', 'TEXT', 'CANCELLED', 'OK', 'COMPLETED', :ch)
                     RETURNING id
-                    """).param("cid", customerId).param("p", phone).query(Long.class).single();
+                    """).param("cid", customerId).param("p", phone).param("ch", selectedChannel).query(Long.class).single();
         }
 
         String delivery;
         try {
-            delivery = gateway.sendText(phone, cleanText).name();
+            if (gateway instanceof WhatsAppServiceContext ctx) {
+                WhatsAppProvider targetProv = WhatsAppProvider.fromString(selectedChannel);
+                delivery = ctx.sendText(phone, cleanText, targetProv, externalQuotedId).name();
+            } else {
+                delivery = gateway.sendText(phone, cleanText).name();
+            }
         } catch (MessagingUnavailableException e) {
             log.warn("Fallo envío manual de WhatsApp para {}: {}", phone, e.getMessage());
             delivery = "FAILED";
         }
 
         long msgId = jdbc.sql("""
-                INSERT INTO conversation_message(order_id, direction, message_type, content, delivery_status)
-                VALUES (:o, 'OUTBOUND', 'TEXT', :c, :d)
+                INSERT INTO conversation_message(order_id, direction, message_type, content, delivery_status, channel, quoted_message_id)
+                VALUES (:o, 'OUTBOUND', 'TEXT', :c, :d, :ch, :qid)
                 RETURNING id
-                """).param("o", orderId).param("c", cleanText).param("d", delivery).query(Long.class).single();
+                """).param("o", orderId).param("c", cleanText).param("d", delivery)
+                .param("ch", selectedChannel).param("qid", quotedMessageId).query(Long.class).single();
 
         audit.log(operatorUsername != null ? operatorUsername : "operador", "MANUAL_CHAT_SENT", orderId, null,
-                Map.of("phone", phone, "text", cleanText));
+                Map.of("phone", phone, "text", cleanText, "channel", selectedChannel));
 
         hub.orderChanged(orderId);
 
-        return new ChatMessageView(msgId, orderId, "OUTBOUND", "TEXT", cleanText, delivery, OffsetDateTime.now(), null, null);
+        return new ChatMessageView(msgId, orderId, "OUTBOUND", "TEXT", cleanText, delivery, OffsetDateTime.now(), null, null, selectedChannel, quotedMessageId, quotedContent);
     }
 
     /** Descarga o reproducción de audio por audio_id. */

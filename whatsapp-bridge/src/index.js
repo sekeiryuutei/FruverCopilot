@@ -434,7 +434,7 @@ app.post('/messages', async (req, res) => {
     return res.status(503).json({ error: 'WhatsApp no está conectado' });
   }
 
-  const { to, text, reaction, messageId, imageUrl, caption } = req.body;
+  const { to, text, reaction, messageId, imageUrl, caption, quotedMessageId } = req.body;
   if (!to) {
     return res.status(400).json({ error: 'El campo "to" es obligatorio' });
   }
@@ -469,10 +469,19 @@ app.post('/messages', async (req, res) => {
 
     // 3b. Imagen
     if (imageUrl) {
+      const imgOptions = {};
+      if (quotedMessageId) {
+        const cached = messageCache.get(quotedMessageId);
+        if (cached) {
+          imgOptions.quoted = { key: { remoteJid: jid, id: quotedMessageId }, message: cached };
+        } else {
+          imgOptions.quoted = { key: { remoteJid: jid, id: quotedMessageId } };
+        }
+      }
       sent = await sock.sendMessage(jid, {
         image: { url: imageUrl },
         caption: caption || ''
-      });
+      }, imgOptions);
       if (sent?.key?.id && sent?.message) {
         cacheMessage(sent.key.id, sent.message);
       }
@@ -481,7 +490,16 @@ app.post('/messages', async (req, res) => {
 
     // 3c. Texto
     if (text) {
-      sent = await sock.sendMessage(jid, { text: text });
+      const textOptions = {};
+      if (quotedMessageId) {
+        const cached = messageCache.get(quotedMessageId);
+        if (cached) {
+          textOptions.quoted = { key: { remoteJid: jid, id: quotedMessageId }, message: cached };
+        } else {
+          textOptions.quoted = { key: { remoteJid: jid, id: quotedMessageId } };
+        }
+      }
+      sent = await sock.sendMessage(jid, { text: text }, textOptions);
       if (sent?.key?.id && sent?.message) {
         cacheMessage(sent.key.id, sent.message);
       }

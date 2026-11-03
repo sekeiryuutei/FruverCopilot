@@ -14,6 +14,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import java.net.URI;
+import java.util.HashMap;
 import java.util.Map;
 
 @Component
@@ -41,12 +42,19 @@ public class MetaCloudApiStrategy implements WhatsAppProviderStrategy {
 
     @Override
     public MessagingGateway.DeliveryStatus sendText(String phone, String text) {
-        Map<String, Object> body = Map.of(
-                "messaging_product", "whatsapp",
-                "to", phone,
-                "type", "text",
-                "text", Map.of("body", text)
-        );
+        return sendText(phone, text, null);
+    }
+
+    @Override
+    public MessagingGateway.DeliveryStatus sendText(String phone, String text, String quotedExternalId) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("messaging_product", "whatsapp");
+        body.put("to", phone);
+        body.put("type", "text");
+        body.put("text", Map.of("body", text));
+        if (quotedExternalId != null && !quotedExternalId.isBlank()) {
+            body.put("context", Map.of("message_id", quotedExternalId));
+        }
         try {
             http.post().uri("/{id}/messages", phoneNumberId)
                     .contentType(MediaType.APPLICATION_JSON)
