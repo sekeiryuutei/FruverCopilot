@@ -382,11 +382,12 @@ public class OrderEditService {
 
     private void validate(ItemEdit e) {
         if (e.productId() == null) throw new ApiException(422, "ITEM_INVALID", "Cada linea necesita un producto del catálogo");
-        if (e.quantity() == null || e.quantity().signum() <= 0 || e.quantity().compareTo(new BigDecimal("100000")) > 0) {
+        boolean isMoney = e.manualPrice() != null && e.manualPrice().signum() > 0;
+        if (!isMoney && (e.quantity() == null || e.quantity().signum() <= 0 || e.quantity().compareTo(new BigDecimal("100000")) > 0)) {
             throw new ApiException(422, "ITEM_INVALID", "Cantidad inválida");
         }
         // Rechaza cantidades que al redondear a 3 decimales quedan en 0 (ej. 0.0004): el frontend no debe aceptarlas.
-        if (e.quantity().setScale(3, RoundingMode.HALF_UP).signum() <= 0) {
+        if (e.quantity() != null && e.quantity().setScale(3, RoundingMode.HALF_UP).signum() <= 0) {
             throw new ApiException(422, "ITEM_INVALID", "Cantidad demasiado pequeña");
         }
         if (e.unit() != null && !e.unit().isBlank() && UnitOfMeasure.parse(e.unit()).isEmpty()) throw new ApiException(422, "ITEM_INVALID", "Unidad invalida");

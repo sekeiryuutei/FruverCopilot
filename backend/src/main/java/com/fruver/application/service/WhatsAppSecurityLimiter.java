@@ -38,6 +38,7 @@ public class WhatsAppSecurityLimiter {
         final Deque<Long> requestTimestamps = new ArrayDeque<>();
         int lastTextHash = 0;
         long lastTextTime = 0;
+        int duplicateCount = 0;
         long lastNotifiedTime = 0;
     }
 
@@ -66,12 +67,17 @@ public class WhatsAppSecurityLimiter {
             return SecurityCheckResult.block("Texto con longitud sospechosamente anormal (> " + MAX_PAYLOAD_CHARS + " caracteres)");
         }
 
-        // 3. Deteccion de mensajes duplicados en rafaga instantanea (< 15 segundos)
+        // 3. Deteccion de mensajes duplicados en rafaga instantanea (tolerante con reintentos de webhook de WhatsApp)
         if (text != null && !text.isBlank()) {
             int currentHash = text.trim().toLowerCase().hashCode();
             if (currentHash == history.lastTextHash && (now - history.lastTextTime) < 15) {
-                log.warn("[ESCUDO IA] Mensaje duplicado en rafaga detectado para {}", cleanPhone);
-                return SecurityCheckResult.block("Mensaje idéntico recibido en ráfaga instantánea");
+                history.duplicateCount++;
+                if (history.duplicateCount >= 4) {
+                    log.warn("[ESCUDO IA] Bombardeo de mensajes idénticos detectado para {} ({} veces)", cleanPhone, history.duplicateCount);
+                    return SecurityCheckResult.block("Mensaje idéntico recibido en ráfaga excesiva");
+                }
+            } else {
+                history.duplicateCount = 0;
             }
             history.lastTextHash = currentHash;
             history.lastTextTime = now;

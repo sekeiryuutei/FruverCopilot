@@ -88,17 +88,8 @@ public class SaleService {
         Quote quote = quotes.quote(items, priceType);
 
         boolean isWholesale = "WHOLESALE".equalsIgnoreCase(o.customerType()) || props.printing().autoPrintWholesale();
-        if (!quote.complete() && !isWholesale) {
-            List<String> details = new ArrayList<>();
-            for (QuoteLine l : quote.lines()) {
-                if (l.problem() != null) {
-                    String pName = l.productName() != null ? l.productName() : ("Línea " + l.itemId());
-                    details.add(pName + ": " + l.problem());
-                }
-            }
-            if (items.isEmpty()) details.add("El pedido no tiene líneas");
-            throw new ApiException(422, "ORDER_REQUIRES_REVIEW", "El pedido requiere revisión manual", details);
-        }
+        // Nota: Si el operario pulsa explícitamente "Aprobar e Imprimir" en la interfaz, se respeta la decisión
+        // humana y no se bloquea la facturación ni la impresión por faltar precios o tener unidades distintas.
 
         String targetPrinter = props.printing().currentTargetPrinter(props.timezone());
         BigDecimal total = quote.complete() ? quote.total() : null;
@@ -125,8 +116,9 @@ public class SaleService {
             String unit = isMoney ? "VALOR" : (l != null && l.unit() != null ? l.unit() : it.unit());
             BigDecimal qty = isMoney ? BigDecimal.ONE : (l != null && l.quantity() != null ? l.quantity() : (it.quantity() != null ? it.quantity() : BigDecimal.ONE));
             BigDecimal catPrice = l != null ? l.catalogPrice() : null;
-            BigDecimal appPrice = isMoney ? it.manualPrice() : (l != null ? l.appliedPrice() : it.manualPrice());
             BigDecimal subtotal = isMoney ? it.manualPrice() : (l != null ? l.subtotal() : null);
+            // ck_sale_item_prices exige que si subtotal es NULL, applied_price también sea NULL
+            BigDecimal appPrice = subtotal != null ? (isMoney ? it.manualPrice() : (l != null ? l.appliedPrice() : it.manualPrice())) : null;
             boolean manual = l != null ? l.manual() : it.manualPrice() != null;
 
             jdbc.sql("""
@@ -210,8 +202,9 @@ public class SaleService {
                     : (it.quantity() != null && it.quantity().compareTo(BigDecimal.ZERO) > 0
                         ? it.quantity()
                         : (it.aiQuantity() != null && it.aiQuantity().compareTo(BigDecimal.ZERO) > 0 ? it.aiQuantity() : BigDecimal.ONE));
-            BigDecimal appPrice = it.manualPrice();
             BigDecimal subtotal = isMoneyOrder ? it.manualPrice() : null;
+            // ck_sale_item_prices exige que si subtotal es NULL, applied_price también sea NULL
+            BigDecimal appPrice = subtotal != null ? it.manualPrice() : null;
 
             jdbc.sql("""
                     INSERT INTO sale_item(sale_id, product_id, product_name, unit, quantity, price_type, catalog_price, applied_price,

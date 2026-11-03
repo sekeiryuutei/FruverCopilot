@@ -394,17 +394,20 @@ public class OrderProcessingService {
             var check = securityLimiter.evaluate(clientPhone, combinedText);
             if (!check.allowed()) {
                 log.warn("[DEFENSA IA] Bloqueo preventivo de tokens activado para pedido {} (tel: {}): {}", orderId, clientPhone, check.reason());
-                writer.markFailed(orderId, "FAILED", "ALERTA SEGURIDAD: " + check.reason());
-                jdbc.sql("""
-                        UPDATE orders SET requires_verification = TRUE,
-                               verification_reason = :vr,
-                               conversation_status = 'READY_FOR_REVIEW',
-                               version = version + 1
-                        WHERE id = :id
-                        """).param("vr", "ALERTA SEGURIDAD: " + check.reason()).param("id", orderId).update();
-                // Bloqueo preventivo registrado internamente: NUNCA enviar mensajes de texto automáticos al cliente
-                hub.orderChanged(orderId);
-                return;
+                boolean isDuplicateNotice = check.reason() != null && (check.reason().contains("idéntico") || check.reason().contains("Ráfaga"));
+                if (!isDuplicateNotice) {
+                    writer.markFailed(orderId, "FAILED", "ALERTA SEGURIDAD: " + check.reason());
+                    jdbc.sql("""
+                            UPDATE orders SET requires_verification = TRUE,
+                                   verification_reason = :vr,
+                                   conversation_status = 'READY_FOR_REVIEW',
+                                   version = version + 1
+                            WHERE id = :id
+                            """).param("vr", "ALERTA SEGURIDAD: " + check.reason()).param("id", orderId).update();
+                    // Bloqueo preventivo registrado internamente: NUNCA enviar mensajes de texto automáticos al cliente
+                    hub.orderChanged(orderId);
+                    return;
+                }
             }
         }
 
@@ -499,35 +502,41 @@ public class OrderProcessingService {
                 : (props.printing() != null && props.printing().autoPrintWholesale());
         if (!autoPrint) return;
 
-        int graceSec = (printerConfig != null)
+        int normalGraceSec = (printerConfig != null)
                 ? printerConfig.get().orderGraceSeconds()
-                : (props.printing() != null ? props.printing().wholesaleGraceSeconds() : 300);
-        if (graceSec <= 0) return;
+                : (props.printing() != null ? props.printing().wholesaleGraceSeconds() : 60);
+        if (normalGraceSec <= 0) normalGraceSec = 60;
+        int maxReviewSec = 120; // 2 minutos máximo de espera por validación del operario antes de imprimir directamente
 
+        // Auto-impresión inteligente:
+        // 1. Pedidos limpios sin dudas: se imprimen al cumplirse el margen normal (1 minuto / 60s)
+        // 2. Pedidos con dudas/verificación: se da 2 minutos para que el operario revise; si no valida a tiempo, se imprime directo
         List<Long> readyOrders = jdbc.sql("""
                 SELECT o.id FROM orders o
                 WHERE o.status = 'REVIEW'
-                  AND o.ai_status = 'OK'
-                  AND o.extracted_at <= NOW() - (:sec || ' seconds')::interval
                   AND EXISTS (SELECT 1 FROM order_item oi WHERE oi.order_id = o.id)
+                  AND (
+                      (o.requires_verification = FALSE AND o.extracted_at <= NOW() - (:normalSec || ' seconds')::interval)
+                      OR
+                      (o.extracted_at <= NOW() - (:maxSec || ' seconds')::interval)
+                  )
                   AND NOT EXISTS (
                       SELECT 1 FROM conversation_message cm
                       WHERE cm.order_id = o.id
-                        AND cm.created_at > NOW() - (:sec || ' seconds')::interval
+                        AND cm.created_at > NOW() - (30 || ' seconds')::interval
                   )
                 ORDER BY o.id ASC LIMIT 20
-                """).param("sec", graceSec).query(Long.class).list();
+                """).param("normalSec", normalGraceSec).param("maxSec", maxReviewSec).query(Long.class).list();
 
         for (Long oId : readyOrders) {
             try {
                 boolean hasTrulyDoubtfulLines = jdbc.sql("""
                         SELECT count(*) FROM order_item
                         WHERE order_id = :o
-                          AND ((quantity IS NULL AND ai_quantity IS NULL) OR (ai_ambiguous AND product_id IS NULL))
-                        """).param("o", oId).query(Integer.class).single() > 0
-                        || jdbc.sql("SELECT count(*) FROM order_item WHERE order_id = :o").param("o", oId).query(Integer.class).single() == 0;
+                          AND ((quantity IS NULL AND ai_quantity IS NULL AND manual_price IS NULL) OR (ai_ambiguous AND product_id IS NULL))
+                        """).param("o", oId).query(Integer.class).single() > 0;
 
-                String reason = hasTrulyDoubtfulLines ? "Líneas con duda en pedido" : null;
+                String reason = hasTrulyDoubtfulLines ? "Líneas con duda en pedido (auto-impreso tras 2 min)" : null;
                 sales.autoApproveWholesale(oId, hasTrulyDoubtfulLines, reason, "ia_wholesale_timer");
                 hub.orderChanged(oId);
             } catch (Exception e) {
