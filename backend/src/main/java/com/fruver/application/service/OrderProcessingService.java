@@ -209,11 +209,30 @@ public class OrderProcessingService {
         }
 
         // 3. Unir todo el texto acumulado del cliente (transcripciones + mensajes de texto + notas de fotos)
+        var currentRow = orders.find(orderId).orElse(null);
+        String clientPhone = currentRow != null ? currentRow.customerPhone() : null;
+
         List<String> texts = jdbc.sql("""
                 SELECT content FROM conversation_message
                 WHERE order_id = :id AND direction = 'INBOUND' AND content IS NOT NULL AND TRIM(content) <> ''
                 ORDER BY id ASC
                 """).param("id", orderId).query(String.class).list();
+
+        // Contexto conversacional previo: si el cliente escribió en las últimas 2 horas (ej: preguntó por un producto y luego mandó la cantidad)
+        List<String> priorTexts = List.of();
+        if (clientPhone != null && !clientPhone.isBlank()) {
+            priorTexts = jdbc.sql("""
+                    SELECT cm.content
+                    FROM conversation_message cm
+                    JOIN orders o ON cm.order_id = o.id
+                    WHERE o.customer_phone = :phone
+                      AND cm.order_id <> :id
+                      AND cm.direction = 'INBOUND'
+                      AND cm.content IS NOT NULL AND TRIM(cm.content) <> ''
+                      AND cm.created_at >= NOW() - INTERVAL '2 hours'
+                    ORDER BY cm.id DESC LIMIT 3
+                    """).param("phone", clientPhone).param("id", orderId).query(String.class).list();
+        }
 
         String combinedText = String.join("\n", texts).strip();
         if (!combinedText.isBlank()) {
@@ -344,7 +363,7 @@ public class OrderProcessingService {
         }
 
         // Extraer nombre y método de pago (con cambio si es efectivo) de forma determinística
-        var currentRow = orders.find(orderId).orElse(null);
+        currentRow = orders.find(orderId).orElse(null);
         String lastOutbound = conversation.messages(orderId).stream()
                 .filter(m -> "OUTBOUND".equals(m.direction()))
                 .reduce((first, second) -> second)
@@ -371,7 +390,6 @@ public class OrderProcessingService {
         }
 
         // Escudo de proteccion de tokens contra saturacion o ataques intencionales
-        String clientPhone = currentRow != null ? currentRow.customerPhone() : null;
         if (securityLimiter != null && clientPhone != null) {
             var check = securityLimiter.evaluate(clientPhone, combinedText);
             if (!check.allowed()) {
@@ -390,10 +408,18 @@ public class OrderProcessingService {
             }
         }
 
-        ExtractionRequest req = new ExtractionRequest(combinedText,
+        String promptText = combinedText;
+        if (!priorTexts.isEmpty()) {
+            var reversedPrior = new java.util.ArrayList<>(priorTexts);
+            java.util.Collections.reverse(reversedPrior);
+            promptText = "[Mensaje anterior del cliente]: " + String.join(" | ", reversedPrior)
+                    + "\n[Mensaje actual del cliente]: " + combinedText;
+        }
+
+        ExtractionRequest req = new ExtractionRequest(promptText,
                 writer.recentTurns(orderId, r.messageId()),
                 r.reply() ? writer.currentItems(orderId) : java.util.List.of(),
-                catalog.candidates(combinedText),
+                catalog.candidates(promptText),
                 zones.formatForPrompt(),
                 writer.customerFavorites(orderId));
 
@@ -968,13 +994,15 @@ public class OrderProcessingService {
         String t = text.toLowerCase(Locale.ROOT);
 
         // Si contiene verbos de pedido directo, NUNCA es consulta simple de precios:
-        if (t.contains("me vende") || t.contains("me manda") || t.contains("enviar") || t.contains("mandeme")
-                || t.contains("mándeme") || t.contains("deme") || t.contains("dame") || t.contains("quiero")
-                || t.contains("llevar") || t.contains("mande") || t.contains("traigame") || t.contains("tráigame")
+        if (t.contains("me vende") || t.contains("me manda") || t.contains("enviar") || t.contains("envian")
+                || t.contains("envían") || t.contains("envíen") || t.contains("envien") || t.contains("mandeme")
+                || t.contains("mándeme") || t.contains("mandenme") || t.contains("mándenme") || t.contains("deme")
+                || t.contains("dame") || t.contains("quiero") || t.contains("llevar") || t.contains("mande")
+                || t.contains("manden") || t.contains("traigame") || t.contains("tráigame") || t.contains("traigan")
                 || t.contains("regalame") || t.contains("regálame") || t.contains("regale") || t.contains("regáleme")
                 || t.contains("necesito") || t.contains("ponme") || t.contains("póngame") || t.contains("agregue")
                 || t.contains("agrega") || t.contains("agregame") || t.contains("agrégame") || t.contains("traer")
-                || t.contains("traiga")) {
+                || t.contains("traiga") || t.contains("pedido") || t.contains("pedir") || t.contains("orden")) {
             return false;
         }
 
@@ -984,8 +1012,8 @@ public class OrderProcessingService {
                 || t.contains("costo") || t.contains("valor");
         if (asksPrice) return true;
 
-        // Si tiene cantidades explícitas (ej: "2 kilos", "2 libras", "2mil"), es un pedido:
-        if (t.matches(".*\\b\\d+\\s*(libras?|kilos?|kg|lb|unidades?|mil)\\b.*")) {
+        // Si tiene cantidades explícitas (dígitos o números en palabras + unidad/diminutivo):
+        if (t.matches(".*\\b(\\d+|un|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|media|medio)\\s*(libras?|libritas?|kilos?|kilitos?|kg|kl|kls|lb|lbs|unidades?|arroba|bulto|caja|mil)\\b.*")) {
             return false;
         }
 

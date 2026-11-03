@@ -141,7 +141,7 @@ public class PrintService {
 
                 var status = (!reacted) ? gateway.sendText(phone, confirmMsg).name() : "SENT";
                 jdbc.sql("INSERT INTO conversation_message(order_id, direction, message_type, content, delivery_status) VALUES (:o, 'OUTBOUND', :mt, :c, :d)")
-                        .param("o", orderId).param("mt", reacted ? "REACTION" : "TEXT").param("c", reacted ? "👍" : confirmMsg).param("d", status).update();
+                        .param("o", orderId).param("mt", "TEXT").param("c", reacted ? "👍" : confirmMsg).param("d", status).update();
                 hub.orderChanged(orderId);
                 log.info("Confirmación '{}' enviada por WhatsApp al cliente {} para pedido #{}", confirmMsg, phone, orderId);
             }

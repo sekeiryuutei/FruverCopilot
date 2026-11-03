@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#14361f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="El Oasis">
 <title>Fruver El Oasis</title><link rel="icon" href="/oasis-logo.png"><link rel="manifest" href="/manifest.json"><link rel="apple-touch-icon" href="/oasis-logo.png">
@@ -267,7 +267,7 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
 </header>
 
 <!-- ── Barra de Modo Sin Conexión (Offline Banner) ──── -->
-<div id="offlineBar" style="display:none;background:#b45309;color:#fff;padding:8px 14px;font-size:13.5px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;position:sticky;top:52px;z-index:24;box-shadow:0 2px 8px rgba(0,0,0,0.25);text-align:center">
+<div id="offlineBar" style="display:none;background:#b45309;color:#fff;padding:8px 14px;font-size:13.5px;font-weight:700;align-items:center;justify-content:center;gap:10px;position:sticky;top:52px;z-index:24;box-shadow:0 2px 8px rgba(0,0,0,0.25);text-align:center">
   <span>⚡ MODO SIN CONEXIÓN — Puedes seguir creando pedidos; se guardarán localmente y se sincronizarán al volver internet</span>
   <span id="offlineCount" class="pill" style="background:#78350f;color:#fef3c7;font-size:12px;font-weight:800;display:none">0 pendientes</span>
 </div>
@@ -680,7 +680,7 @@ async function showImageModal(orderId){
 
 function buildTalonarioView(t){
   const items = Array.isArray(t.items) ? t.items : [];
-  const maxPerPage = 35;
+  const maxPerPage = 22;
   const pagesCount = Math.max(1, Math.ceil(items.length / maxPerPage));
 
   const d = t.day || '';
@@ -711,7 +711,7 @@ function buildTalonarioView(t){
 
   for (let p = 0; p < pagesCount; p++) {
     let from, to;
-    if (pagesCount === 2 && items.length > 35 && items.length <= 40) {
+    if (pagesCount === 2 && items.length > 22 && items.length <= 26) {
       const half = Math.ceil(items.length / 2);
       from = p * half;
       to = Math.min(items.length, (p + 1) * half);
@@ -723,7 +723,7 @@ function buildTalonarioView(t){
     const pageItems = items.slice(from, to);
     const isFirstPage = (p === 0);
     const isLastPage = (p === pagesCount - 1);
-    const targetRows = (pagesCount === 1 && pageItems.length <= 16) ? 16 : pageItems.length;
+    const targetRows = (pagesCount === 1 && pageItems.length <= 14) ? 14 : pageItems.length;
 
     let rowsHtml = '';
     for (let i = 0; i < targetRows; i++) {
@@ -759,19 +759,19 @@ function buildTalonarioView(t){
         }
         const desc = (it.name || "").toUpperCase();
         rowsHtml += `<tr>
-          <td style="text-align:center;font-weight:700;padding:3.5px 2px;border:1px solid #000;font-size:11px;color:#111">${globalIdx}</td>
-          <td style="text-align:center;font-weight:900;padding:3.5px 3px;border:1px solid #000;font-size:11.5px">${cant}</td>
-          <td style="padding:3.5px 5px;border:1px solid #000;text-transform:uppercase;font-size:11px;font-weight:bold;white-space:nowrap;overflow:hidden">${desc}</td>
-          <td style="text-align:right;padding:3.5px 3px;border:1px solid #000;font-size:11px">${vUnit}</td>
-          <td style="text-align:right;padding:4.5px 3px;border:1px solid #000;font-size:11px">${vTot}</td>
+          <td style="text-align:center;font-weight:bold;padding:3px 2px;border:1.5px solid #000;font-size:12.5px;color:#111">${globalIdx}</td>
+          <td style="text-align:center;font-weight:900;padding:3px 3px;border:1.5px solid #000;font-size:15px">${cant}</td>
+          <td style="padding:3px 6px;border:1.5px solid #000;text-transform:uppercase;font-size:14px;font-weight:900;white-space:nowrap;overflow:hidden">${desc}</td>
+          <td style="text-align:right;padding:3px 4px;border:1.5px solid #000;font-size:12.5px;font-weight:bold">${vUnit}</td>
+          <td style="text-align:right;padding:3px 5px;border:1.5px solid #000;font-size:14px;font-weight:900">${vTot}</td>
         </tr>`;
       } else {
         rowsHtml += `<tr>
-          <td style="height:22px;text-align:center;color:#666;font-size:11px;border:1px solid #000">${globalIdx}</td>
-          <td style="border:1px solid #000">&nbsp;</td>
-          <td style="border:1px solid #000">&nbsp;</td>
-          <td style="border:1px solid #000">&nbsp;</td>
-          <td style="border:1px solid #000">&nbsp;</td>
+          <td style="height:27px;text-align:center;color:#666;font-size:12px;border:1.5px solid #000">${globalIdx}</td>
+          <td style="border:1.5px solid #000">&nbsp;</td>
+          <td style="border:1.5px solid #000">&nbsp;</td>
+          <td style="border:1.5px solid #000">&nbsp;</td>
+          <td style="border:1.5px solid #000">&nbsp;</td>
         </tr>`;
       }
     }
@@ -809,13 +809,13 @@ function buildTalonarioView(t){
           </div>
         </div>
       </div>
-      <div style="border:1.5px solid #000;border-radius:3px;padding:5px 8px;font-size:11.5px;margin-bottom:6px;line-height:1.3">
+      <div style="border:2px solid #000;border-radius:3px;padding:6px 9px;font-size:13px;margin-bottom:6px;line-height:1.35">
         <div style="display:flex;justify-content:space-between">
-          <div style="width:65%"><b>CLIENTE:</b> <span>${customerName}</span></div>
-          <div style="width:35%"><b>TEL:</b> <span>${phone}</span></div>
+          <div style="width:65%"><b>CLIENTE:</b> <span style="font-size:14px;font-weight:900">${customerName}</span></div>
+          <div style="width:35%"><b>TEL:</b> <span style="font-weight:bold">${phone}</span></div>
         </div>
-        <div style="margin-top:2px"><b>DIR:</b> <span>${address ? address : '________________________________________________'}</span></div>
-        ${originInfo ? `<div style="margin-top:2px;font-size:10.5px;color:#222">${originInfo}</div>` : ''}
+        <div style="margin-top:2px"><b>DIR:</b> <span style="font-weight:bold">${address ? address : '________________________________________________'}</span></div>
+        ${originInfo ? `<div style="margin-top:2px;font-size:11.5px;color:#222">${originInfo}</div>` : ''}
       </div>`;
     } else {
       headerHtml = `
@@ -837,7 +837,7 @@ function buildTalonarioView(t){
       footerHtml = `
       <div style="display:flex;justify-content:flex-end;align-items:flex-end;margin-top:8px">
         <div style="width:40%;text-align:right">
-          <table style="width:100%;border-collapse:collapse;border:2px solid #000;font-size:12.5px;font-weight:bold">
+          <table style="width:100%;border-collapse:collapse;border:2px solid #000;font-size:13px;font-weight:bold">
             <tr style="background:#e5e7eb;color:#000">
               <td style="padding:6px 8px;border:1px solid #000">TOTAL $</td>
               <td style="padding:6px 8px;border:1px solid #000;min-width:80px">${totalStr}</td>
@@ -847,7 +847,7 @@ function buildTalonarioView(t){
       </div>`;
     } else {
       footerHtml = `
-      <div style="margin-top:6px;text-align:right;font-size:10.5px;font-weight:bold;color:#444">
+      <div style="margin-top:6px;text-align:right;font-size:11px;font-weight:bold;color:#444">
         Continúa en la siguiente página (Pág ${p + 2}/${pagesCount}) ➔
       </div>`;
     }
@@ -857,14 +857,14 @@ function buildTalonarioView(t){
     pagesHtml += `
     <div class="talonario-page" style="${pageBreak}">
       ${headerHtml}
-      <table style="width:100%;border-collapse:collapse;border:2px solid #000;font-size:11px;table-layout:fixed">
+      <table style="width:100%;border-collapse:collapse;border:2px solid #000;font-size:12.5px;table-layout:fixed">
         <thead>
-          <tr style="background:#e5e7eb;color:#000;font-size:10.5px;font-weight:900;text-align:center;height:24px">
-            <th style="width:6%;padding:3px;border:1px solid #000">#</th>
-            <th style="width:16%;padding:3px;border:1px solid #000">CANT.</th>
-            <th style="width:36%;padding:3px 5px;border:1px solid #000;text-align:left">DESCRIPCIÓN</th>
-            <th style="width:21%;padding:3px 5px;border:1px solid #000;text-align:right">VR. UNIT</th>
-            <th style="width:21%;padding:3px 5px;border:1px solid #000;text-align:right">VR. TOTAL</th>
+          <tr style="background:#e5e7eb;color:#000;font-size:12px;font-weight:900;text-align:center;height:26px">
+            <th style="width:6%;padding:3px;border:1.5px solid #000">#</th>
+            <th style="width:18%;padding:3px;border:1.5px solid #000">CANT.</th>
+            <th style="width:38%;padding:3px 5px;border:1.5px solid #000;text-align:left">DESCRIPCIÓN</th>
+            <th style="width:19%;padding:3px 5px;border:1.5px solid #000;text-align:right">VR. UNIT</th>
+            <th style="width:19%;padding:3px 5px;border:1.5px solid #000;text-align:right">VR. TOTAL</th>
           </tr>
         </thead>
         <tbody>
@@ -1120,7 +1120,7 @@ function renderOps(){
     h('div',{style:'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px'},
       h('div',{},
         h('b',{style:'font-size:17px'},'🌴 Fruver El Oasis'),
-        h('span',{class:'mut',id:'toolbarStats',style:'margin-left:10px;font-size:13px'},`Activos: ${active.length} · Facturas de hoy: ${done.length}`)
+        h('span',{class:'mut',id:'toolbarStats',style:'margin-left:10px;font-size:13px'},!S.ordersLoaded?'⏳ Cargando pedidos...':`Activos: ${active.length} · Facturas de hoy: ${done.length}`)
       ),
       h('div',{style:'display:flex;gap:8px;align-items:center'},
         toggleBtn
@@ -3003,21 +3003,6 @@ async function renderChats() {
   loadChatList();
 }
 
-  sendBtn.onclick = doSendManual;
-  composeInp.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      doSendManual();
-    }
-  });
-
-  qInp.addEventListener('input', () => {
-    loadChatList();
-  });
-
-  loadChatList();
-}
-
 /* ---------- Clientes ---------- */
 async function renderCustomers(){
   const m=$('#main');
@@ -3544,7 +3529,7 @@ function nav(){
       title:disabled?'Módulo temporalmente desactivado':'',
       onclick:()=>{
         if(disabled){toast('Módulo temporalmente desactivado');return}
-        S.tab=k;nav();show();
+        S.tab=k;nav();show();if(k==='ops')loadOrders();
       }
     },l);
   }));
@@ -3561,7 +3546,7 @@ function nav(){
       title:disabled?'Módulo temporalmente desactivado':'',
       onclick:()=>{
         if(disabled){toast('Módulo temporalmente desactivado');return}
-        S.tab=k;nav();show();
+        S.tab=k;nav();show();if(k==='ops')loadOrders();
       }
     },h('span',{class:'ico'},ico),lbl);
   }));

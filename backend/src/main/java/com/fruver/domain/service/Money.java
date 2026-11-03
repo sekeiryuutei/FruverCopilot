@@ -14,16 +14,25 @@ public final class Money {
     private Money() {}
 
     public static BigDecimal line(BigDecimal quantity, BigDecimal unitPrice) {
+        if (quantity == null || unitPrice == null) {
+            return BigDecimal.ZERO;
+        }
         return quantity.multiply(unitPrice).setScale(0, ROUNDING);
     }
 
     public static String format(BigDecimal value) {
+        if (value == null) {
+            return "$0";
+        }
         DecimalFormatSymbols s = new DecimalFormatSymbols(Locale.ROOT);
         s.setGroupingSeparator('.');
         return "$" + new DecimalFormat("#,##0", s).format(value.setScale(0, ROUNDING));
     }
 
     public static String qty(BigDecimal q) {
+        if (q == null) {
+            return "";
+        }
         return q.stripTrailingZeros().toPlainString();
     }
 }

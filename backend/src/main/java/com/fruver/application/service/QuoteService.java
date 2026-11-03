@@ -67,7 +67,14 @@ public class QuoteService {
             // "2 KG" como "4 LB" sin aviso.
             BigDecimal effectiveQty = it.quantity();
             String displayUnit = it.unit();
-            BigDecimal subtotal = problem == null ? Money.line(effectiveQty, applied) : null;
+            BigDecimal subtotal = null;
+            if (problem == null) {
+                if (effectiveQty != null && applied != null) {
+                    subtotal = Money.line(effectiveQty, applied);
+                } else if (it.manualPrice() != null && it.manualPrice().signum() > 0) {
+                    subtotal = it.manualPrice();
+                }
+            }
             boolean manual = it.manualPrice() != null && (catalog == null || it.manualPrice().compareTo(catalog) != 0);
             if (problem != null) { complete = false; } else if (subtotal != null) { total = total.add(subtotal); }
             lines.add(new QuoteLine(it.id(), p == null ? null : p.id(), p == null ? null : p.name(), effectiveQty,

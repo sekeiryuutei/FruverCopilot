@@ -14,8 +14,14 @@ public final class ConfirmationMessageBuilder {
         if (quote == null || !quote.complete()) return null;
         StringBuilder sb = new StringBuilder("Perfecto 😊 Te enviaremos:\n");
         for (QuoteLine l : quote.lines()) {
-            sb.append("• ").append(Money.qty(l.quantity())).append(' ').append(unitWord(l.unit(), l.quantity()))
-              .append(" de ").append(l.productName()).append('\n');
+            if (l.quantity() != null && l.quantity().signum() > 0) {
+                sb.append("• ").append(Money.qty(l.quantity())).append(' ').append(unitWord(l.unit(), l.quantity()))
+                  .append(" de ").append(l.productName()).append('\n');
+            } else if (l.subtotal() != null && l.subtotal().signum() > 0) {
+                sb.append("• ").append(Money.format(l.subtotal())).append(" de ").append(l.productName()).append('\n');
+            } else {
+                sb.append("• ").append(l.productName()).append('\n');
+            }
         }
         sb.append("\nTotal estimado: ").append(Money.format(quote.total())).append("\nEstamos preparando tu pedido.");
         return sb.toString();
