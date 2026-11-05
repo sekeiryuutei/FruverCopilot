@@ -124,120 +124,161 @@ function cacheMessage(id, messageProto) {
 
 loadMessageCache();
 
+let isStarting = false;
+let reconnectTimer = null;
+let lastActivityTimestamp = Date.now();
+
+function recordActivity() {
+  lastActivityTimestamp = Date.now();
+}
+
+function cleanupSocket() {
+  if (!sock) return;
+  try {
+    sock.ev.removeAllListeners();
+    sock.end(undefined);
+  } catch (e) {
+    logger.debug({ err: e.message }, 'Aviso al limpiar socket previo');
+  }
+  sock = null;
+}
+
 async function startWhatsApp() {
-  if (!fs.existsSync(AUTH_DIR)) {
-    fs.mkdirSync(AUTH_DIR, { recursive: true });
+  if (isStarting) {
+    logger.warn('startWhatsApp ya en ejecución, ignorando llamada redundante');
+    return;
+  }
+  isStarting = true;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
   }
 
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  const { version } = await fetchLatestBaileysVersion();
+  try {
+    cleanupSocket();
 
-  logger.info({ version }, 'Iniciando socket Baileys WhatsApp...');
-
-  const msgRetryCounterCache = new NodeCache({
-    stdTTL: 3600,
-    useClones: false
-  });
-
-  sock = makeWASocket({
-    version,
-    auth: state,
-    logger: pino({ level: 'warn' }),
-    printQRInTerminal: false,
-    generateHighQualityLinkPreview: false,
-    syncFullHistory: false,
-    browser: ['FruverCopilot', 'Chrome', '124.0.0.0'],
-    keepAliveIntervalMs: 25000,
-    connectTimeoutMs: 60000,
-    defaultQueryTimeoutMs: 60000,
-    retryRequestDelayMs: 250,
-    maxMsgRetryCount: 5,
-    msgRetryCounterCache,
-    markOnlineOnConnect: true,
-    getMessage: async (key) => {
-      const cached = messageCache.get(key.id);
-      if (cached) {
-        logger.info({ id: key.id, remoteJid: key.remoteJid }, 'Respondiendo reintento de llaves con mensaje en caché');
-        return proto.Message.fromObject(cached);
-      }
-      if (key.fromMe) {
-        logger.warn({ id: key.id, remoteJid: key.remoteJid }, 'Reintento de mensaje saliente no en caché, respondiendo con confirmación');
-        return proto.Message.fromObject({ conversation: '🙏🙏👍' });
-      }
-      return undefined;
+    if (!fs.existsSync(AUTH_DIR)) {
+      fs.mkdirSync(AUTH_DIR, { recursive: true });
     }
-  });
 
-  sock.ev.on('creds.update', saveCreds);
+    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    const { version } = await fetchLatestBaileysVersion();
 
-  sock.ev.on('contacts.upsert', (contacts) => {
-    let changed = false;
-    for (const c of (contacts || [])) {
-      if (c.lid && c.id && c.id.endsWith('@s.whatsapp.net')) {
-        const lidClean = c.lid.replace(/@.*/, '').replace(/:.*/, '');
-        const phoneClean = c.id.replace(/@.*/, '').replace(/:.*/, '');
-        if (lidClean && phoneClean && lidPhoneMap.get(lidClean) !== phoneClean) {
-          lidPhoneMap.set(lidClean, phoneClean);
-          changed = true;
+    logger.info({ version }, 'Iniciando socket Baileys WhatsApp (modo resiliente)...');
+
+    const msgRetryCounterCache = new NodeCache({
+      stdTTL: 3600,
+      useClones: false
+    });
+
+    sock = makeWASocket({
+      version,
+      auth: state,
+      logger: pino({ level: 'warn' }),
+      printQRInTerminal: false,
+      generateHighQualityLinkPreview: false,
+      syncFullHistory: false,
+      fireInitQueries: false,
+      shouldSyncHistoryMessage: () => false,
+      browser: ['FruverCopilot', 'Chrome', '124.0.0.0'],
+      keepAliveIntervalMs: 25000,
+      connectTimeoutMs: 30000,
+      defaultQueryTimeoutMs: 15000,
+      retryRequestDelayMs: 250,
+      maxMsgRetryCount: 5,
+      msgRetryCounterCache,
+      markOnlineOnConnect: true,
+      getMessage: async (key) => {
+        const cached = messageCache.get(key.id);
+        if (cached) {
+          logger.info({ id: key.id, remoteJid: key.remoteJid }, 'Respondiendo reintento de llaves con mensaje en caché');
+          return proto.Message.fromObject(cached);
+        }
+        if (key.fromMe) {
+          logger.warn({ id: key.id, remoteJid: key.remoteJid }, 'Reintento de mensaje saliente no en caché, respondiendo con confirmación');
+          return proto.Message.fromObject({ conversation: '🙏🙏👍' });
+        }
+        return undefined;
+      }
+    });
+
+    sock.ev.on('creds.update', () => {
+      recordActivity();
+      saveCreds();
+    });
+
+    sock.ev.on('contacts.upsert', (contacts) => {
+      recordActivity();
+      let changed = false;
+      for (const c of (contacts || [])) {
+        if (c.lid && c.id && c.id.endsWith('@s.whatsapp.net')) {
+          const lidClean = c.lid.replace(/@.*/, '').replace(/:.*/, '');
+          const phoneClean = c.id.replace(/@.*/, '').replace(/:.*/, '');
+          if (lidClean && phoneClean && lidPhoneMap.get(lidClean) !== phoneClean) {
+            lidPhoneMap.set(lidClean, phoneClean);
+            changed = true;
+          }
         }
       }
-    }
-    if (changed) saveLidMap();
-  });
+      if (changed) saveLidMap();
+    });
 
-  sock.ev.on('contacts.update', (updates) => {
-    let changed = false;
-    for (const c of (updates || [])) {
-      if (c.lid && c.id && c.id.endsWith('@s.whatsapp.net')) {
-        const lidClean = c.lid.replace(/@.*/, '').replace(/:.*/, '');
-        const phoneClean = c.id.replace(/@.*/, '').replace(/:.*/, '');
-        if (lidClean && phoneClean && lidPhoneMap.get(lidClean) !== phoneClean) {
-          lidPhoneMap.set(lidClean, phoneClean);
-          changed = true;
+    sock.ev.on('contacts.update', (updates) => {
+      recordActivity();
+      let changed = false;
+      for (const c of (updates || [])) {
+        if (c.lid && c.id && c.id.endsWith('@s.whatsapp.net')) {
+          const lidClean = c.lid.replace(/@.*/, '').replace(/:.*/, '');
+          const phoneClean = c.id.replace(/@.*/, '').replace(/:.*/, '');
+          if (lidClean && phoneClean && lidPhoneMap.get(lidClean) !== phoneClean) {
+            lidPhoneMap.set(lidClean, phoneClean);
+            changed = true;
+          }
         }
       }
-    }
-    if (changed) saveLidMap();
-  });
+      if (changed) saveLidMap();
+    });
 
-  sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, qr } = update;
+    sock.ev.on('connection.update', async (update) => {
+      recordActivity();
+      const { connection, lastDisconnect, qr } = update;
 
-    if (qr) {
-      connectionStatus = 'QR_READY';
-      try {
-        qrCodeBase64 = await qrcode.toDataURL(qr, { margin: 2, scale: 7 });
-        logger.info('Nuevo código QR generado para vinculación');
-      } catch (err) {
-        logger.error('Error generando Base64 del código QR:', err);
+      if (qr) {
+        connectionStatus = 'QR_READY';
+        try {
+          qrCodeBase64 = await qrcode.toDataURL(qr, { margin: 2, scale: 7 });
+          logger.info('Nuevo código QR generado para vinculación');
+        } catch (err) {
+          logger.error('Error generando Base64 del código QR:', err);
+        }
       }
-    }
 
-    if (connection === 'close') {
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      connectionStatus = 'DISCONNECTED';
-      qrCodeBase64 = null;
-      connectedPhone = null;
+      if (connection === 'close') {
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        connectionStatus = 'DISCONNECTED';
+        qrCodeBase64 = null;
+        connectedPhone = null;
 
-      logger.warn({ statusCode, shouldReconnect }, 'Conexión cerrada de WhatsApp.');
+        logger.warn({ statusCode, shouldReconnect }, 'Conexión cerrada de WhatsApp.');
 
-      if (statusCode === DisconnectReason.loggedOut) {
-        logger.warn('Sesión cerrada por el usuario. Limpiando credenciales...');
-        clearAuthDir();
-        startWhatsApp();
-      } else if (shouldReconnect) {
-        logger.info('Reconectando en 3 segundos...');
-        setTimeout(startWhatsApp, 3000);
+        if (statusCode === DisconnectReason.loggedOut) {
+          logger.warn('Sesión cerrada por el usuario. Limpiando credenciales...');
+          clearAuthDir();
+          startWhatsApp();
+        } else if (shouldReconnect) {
+          logger.info('Reconectando en 3 segundos...');
+          if (reconnectTimer) clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(startWhatsApp, 3000);
+        }
+      } else if (connection === 'open') {
+        connectionStatus = 'CONNECTED';
+        qrCodeBase64 = null;
+        const jid = sock.user?.id || '';
+        connectedPhone = jid.replace(/:.*@/, '@').replace(/@.*/, '');
+        logger.info({ connectedPhone }, '¡WhatsApp Conectado exitosamente!');
       }
-    } else if (connection === 'open') {
-      connectionStatus = 'CONNECTED';
-      qrCodeBase64 = null;
-      const jid = sock.user?.id || '';
-      connectedPhone = jid.replace(/:.*@/, '@').replace(/@.*/, '');
-      logger.info({ connectedPhone }, '¡WhatsApp Conectado exitosamente!');
-    }
-  });
+    });
 
 function unwrapMessage(msg) {
   let m = msg;
@@ -257,11 +298,12 @@ function unwrapMessage(msg) {
   return m;
 }
 
-// Escucha de mensajes entrantes
+// Escucha de mensajes entrantes (en vivo y acumulados offline)
   sock.ev.on('messages.upsert', async (upsert) => {
-    if (upsert.type !== 'notify') return;
+    recordActivity();
+    if (upsert.type !== 'notify' && upsert.type !== 'append') return;
 
-    for (const msg of upsert.messages) {
+    for (const msg of (upsert.messages || [])) {
       try {
         if (!msg.message) continue;
         if (msg.key?.id) {
@@ -270,6 +312,17 @@ function unwrapMessage(msg) {
         if (msg.key.fromMe) continue;
         const remoteJid = msg.key.remoteJid || '';
         if (remoteJid.endsWith('@g.us') || remoteJid.endsWith('@broadcast')) continue;
+
+        // Ventana de aceptación para mensajes acumulados tras caída: últimas 4 horas
+        const timestampSec = Number(msg.messageTimestamp || 0);
+        if (timestampSec > 0) {
+          const ageMs = Date.now() - (timestampSec * 1000);
+          const MAX_AGE_MS = 4 * 60 * 60 * 1000; // 4 horas
+          if (ageMs > MAX_AGE_MS) {
+            logger.debug({ id: msg.key.id, ageMinutes: Math.round(ageMs / 60000) }, 'Ignorando mensaje offline más antiguo de 4 horas');
+            continue;
+          }
+        }
 
         let rawId = remoteJid.replace(/@.*/, '').replace(/:.*/, '');
         let resolvedPhone = null;
@@ -373,6 +426,12 @@ function unwrapMessage(msg) {
       }
     }
   });
+  } catch (err) {
+    logger.error({ err: err.message }, 'Error en startWhatsApp');
+    connectionStatus = 'DISCONNECTED';
+  } finally {
+    isStarting = false;
+  }
 }
 
 async function forwardToBackend(from, pushName, messageObj) {
@@ -448,6 +507,7 @@ app.get('/media/:id', (req, res) => {
 
 // 3. Envío de Mensajes y Reacciones
 app.post('/messages', async (req, res) => {
+  recordActivity();
   if (connectionStatus !== 'CONNECTED' || !sock) {
     return res.status(503).json({ error: 'WhatsApp no está conectado' });
   }
@@ -567,20 +627,51 @@ app.post('/logout', async (req, res) => {
 
 // 5. Healthcheck con estado real del socket
 app.get('/health', (req, res) => {
-  const wsReady = sock?.ws?.readyState;
-  const isHealthy = connectionStatus === 'CONNECTED' && wsReady === 1;
-  res.json({ ok: isHealthy || connectionStatus === 'QR_READY', status: connectionStatus, wsReady });
+  const wsReady = sock?.ws?.socket?.readyState ?? (sock?.ws?.isOpen ? 1 : 3);
+  const isHealthy = connectionStatus === 'CONNECTED' && (sock?.ws?.isOpen || wsReady === 1);
+  const idleSeconds = Math.round((Date.now() - lastActivityTimestamp) / 1000);
+  res.json({
+    ok: isHealthy || connectionStatus === 'QR_READY',
+    status: connectionStatus,
+    wsReady,
+    idleSeconds,
+    connectedPhone
+  });
 });
 
-// Watchdog para detectar sockets muertos/zombies
+// 6. Endpoint de auto-sanación / reconexión forzada
+app.post('/reconnect', async (req, res) => {
+  logger.info('Solicitud manual de reconexión recibida vía HTTP');
+  startWhatsApp();
+  res.json({ success: true, message: 'Reconexión iniciada' });
+});
+
+// Watchdog para detectar sockets muertos, mudos o zombies
 setInterval(() => {
   if (connectionStatus === 'CONNECTED' && sock) {
-    const readyState = sock.ws?.readyState;
-    if (readyState !== undefined && readyState > 1) {
-      logger.warn({ readyState }, 'Watchdog: socket cerrado/zombie detectado. Forzando reinicio...');
+    const readyState = sock?.ws?.socket?.readyState ?? (sock?.ws?.isOpen ? 1 : 3);
+    // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
+    if (readyState > 1) {
+      logger.warn({ readyState }, 'Watchdog: socket cerrado o en cierre detectado. Forzando reconexión limpia...');
       connectionStatus = 'DISCONNECTED';
-      try { sock.ws?.close(); } catch(e) {}
       startWhatsApp();
+      return;
+    }
+
+    // Ping proactivo si lleva más de 2 minutos sin actividad en socket conectado
+    const idleMs = Date.now() - lastActivityTimestamp;
+    if (idleMs > 2 * 60 * 1000) {
+      try {
+        const rawSocket = sock?.ws?.socket;
+        if (rawSocket && typeof rawSocket.ping === 'function') {
+          rawSocket.ping();
+          recordActivity();
+        }
+      } catch (e) {
+        logger.warn({ err: e.message }, 'Watchdog: fallo en ping de WebSocket (socket mudo/zombie). Forzando reconexión...');
+        connectionStatus = 'DISCONNECTED';
+        startWhatsApp();
+      }
     }
   }
 }, 30000);
