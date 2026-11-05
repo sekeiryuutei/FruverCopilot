@@ -6,6 +6,7 @@ import com.fruver.application.dto.AIOrderResponse;
 import com.fruver.application.dto.ExtractionRequest;
 import com.fruver.application.port.ExtractionUnavailableException;
 import com.fruver.application.port.OrderExtractor;
+import com.fruver.application.service.OrderChunker;
 import com.fruver.config.AppProperties;
 import com.fruver.infrastructure.media.ImageOptimizer;
 import org.slf4j.Logger;
@@ -74,6 +75,31 @@ public class GeminiOrderExtractor implements OrderExtractor {
 
     @Override
     public AIOrderResponse extract(ExtractionRequest request) {
+        String msg = request.message();
+        if (msg != null && OrderChunker.shouldChunk(msg, OrderChunker.DEFAULT_THRESHOLD_LINES)) {
+            log.info("Mensaje extenso detectado ({} líneas). Activando extracción Map-Reduce en Chunks...", OrderChunker.countLines(msg));
+            List<String> chunks = OrderChunker.splitText(msg, OrderChunker.DEFAULT_CHUNK_SIZE);
+            List<AIOrderResponse> responses = new java.util.ArrayList<>();
+            for (int i = 0; i < chunks.size(); i++) {
+                log.info("Procesando sub-lote IA {}/{} ({} líneas)...", i + 1, chunks.size(), OrderChunker.countLines(chunks.get(i)));
+                ExtractionRequest chunkReq = new ExtractionRequest(
+                        chunks.get(i),
+                        request.recentTurns(),
+                        request.currentItems(),
+                        request.catalogCandidates(),
+                        request.deliveryZones(),
+                        request.customerHistory()
+                );
+                responses.add(extractSingle(chunkReq));
+            }
+            AIOrderResponse merged = OrderChunker.mergeResponses(responses);
+            log.info("Extracción Map-Reduce completada: {} ítems consolidados de {} sub-lotes.", merged.items().size(), chunks.size());
+            return merged;
+        }
+        return extractSingle(request);
+    }
+
+    public AIOrderResponse extractSingle(ExtractionRequest request) {
         String userPrompt = """
                 <turnos_previos>%s</turnos_previos>
                 <pedido_actual>%s</pedido_actual>

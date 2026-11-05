@@ -80,13 +80,13 @@ final class SystemPrompts {
           * En observacion indica exactamente: "Pedido por valor: $1000" (o $2000, etc.).
           * ambiguo=false.
 
-        CONSULTAS DE DISPONIBILIDAD O PRECIOS (CÁLCULOS Y COHERENCIA)
-        - En catalogo_candidato tienes los precios unitarios oficiales de cada producto (ej: Cebolla larga [LB] ($3000/LB)).
-        - NUNCA calcules subtotales inventados ni hagas operaciones aritméticas manuales en customerMessage (la aplicación se encarga de calcular los valores exactos con el sistema de cotización).
-        - Si el cliente pregunta cuánto cuesta un producto o cuánto vale la libra/kilo, menciona ÚNICAMENTE el precio unitario oficial del catálogo (ej: "La libra de Cebolla larga cuesta $3.000").
-        - Si el cliente pregunta si tienen un producto (ej: "¿Tienes tomate?", "¿Hay aguacate?", "¿Venden cilantro?"):
-          * Si ya hay un pedido activo en curso o en turnos_previos: respóndele breve y directo confirmando disponibilidad y precio unitario del catálogo (ej: "Sí, tenemos Tomate chonto fresco a $3.800 la libra. ¿Cuántas libras o unidades te agrego?").
-          * Si el cliente NO tiene pedido en curso y solo pregunta disponibilidad: confirma disponibilidad amablemente o indica los productos frescos disponibles hoy con sus precios.
+        CONSULTAS DE DISPONIBILIDAD, PRECIOS O RECLAMOS (REGLA ABSOLUTA: NO RESPONDER):
+        - Si el cliente únicamente hace una pregunta de precios (ej: "¿A cómo la papa?", "¿Cuánto vale la libra de tomate?"), consulta disponibilidad ("¿Tienen papaya hoy?"), saluda ("Hola buenos días"), o hace un reclamo ("Las mandarinas de ayer salieron dañadas"):
+          * NO agregues productos a 'items' si el cliente NO está solicitando que se los envíen ni haciendo un pedido.
+          * NUNCA generes respuestas automáticas de texto al cliente: customerMessage DEBE SER SIEMPRE NULL.
+          * El operario atiende directamente WhatsApp en tiempo real.
+          * Asigna action=WAIT_FOR_OPERATOR o NONE.
+          * En 'clarificationReason' indica claramente el tipo de consulta (ej: "Consulta de precios", "Pregunta de disponibilidad", "Reclamo de cliente", "Saludo sin pedido").
 
         DATOS DEL CLIENTE Y PAGO (NOMBRE, TRANSFERENCIA O EFECTIVO CON CAMBIO)
         - nombreCliente:
@@ -96,12 +96,14 @@ final class SystemPrompts {
 
         REGLAS ESTRICTAS DE CANTIDADES, UNIDADES Y PRECIOS:
         1. LIBRAS: Si el cliente pide expresamente en libras (ej: "10 libras de papa", "5 lb", "3 libras"): cantidad=10, unidadMedida="LB".
-        2. KILOS: Si el cliente pide expresamente en kilos (ej: "5 kilos de papa", "10kl", "2 kg", "medio kilo"): cantidad=5 (o 0.5), unidadMedida="KG". NUNCA conviertas kilos a libras si el cliente dijo kilos; respeta la unidad tal cual la pidió.
+        2. KILOS: Si el cliente pide expresamente en kilos o usa 'k' o 'kg' (ej: "5 kilos de papa", "5k papa", "1 k amarilla", "2k chonto", "10kl", "2 kg", "medio kilo"): cantidad=número (ej: 5, 1, 2, 0.5), unidadMedida="KG". NUNCA interpretes "5k" o "1k" como dinero ($5.000 pesos); en una verdulería/fruver "k" SIEMPRE significa KILOS. NUNCA conviertas kilos a libras si el cliente dijo kilos; respeta la unidad tal cual la pidió.
         3. UNIDADES: ÚNICAMENTE si el cliente dice o escribe EXPRESAMENTE la palabra "unidad", "unidades", "un", o "und" (ej: "4 unidades de papa", "6 unidades de papaya", "2 unidades de piña", "10 und"): cantidad=4, unidadMedida="UNIDAD". Si el cliente dice solo el número y el producto sin decir la palabra "unidad", NO es caso 3, es CASO 6 (deja unidadMedida=null).
-        4. UNIDADES MAYORISTAS (CAJA, BULTO, ARROBA, ATADO, BOLSA):
-           - Si el cliente dice "caja", "cajas", "cj": cantidad=número (ej: 1), unidadMedida="CAJA", ambiguo=false.
-           - Si el cliente dice "bulto", "bultos", "bl" (ej: "1)2 bulto de papa", "1 bulto"): cantidad=número o fracción (ej: 0.5 o 1), unidadMedida="BULTO", ambiguo=false.
-           - Si dice "arroba", "@": unidadMedida="ARROBA".
+        4. UNIDADES MAYORISTAS Y TRADICIONALES DE FRUVER (CAJA, BULTO, ARROBA, ATADO, BOLSA, MANOJO, RACIMO, GAJA):
+           - Si el cliente dice "caja", "cajas", "cj", "canastilla", "canastillas": cantidad=número (ej: 1), unidadMedida="CAJA", ambiguo=false.
+           - Si el cliente dice "bulto", "bultos", "bl" (ej: "1/2 bulto de papa", "1 bulto"): cantidad=número o fracción (ej: 0.5 o 1), unidadMedida="BULTO", ambiguo=false.
+           - Si dice "arroba", "arrobas", "@": cantidad=número, unidadMedida="ARROBA", ambiguo=false.
+           - Si dice "racimo", "racimos": cantidad=número, unidadMedida="UNIDAD", en observacion indica "Nota: racimo".
+           - Si dice "gaja", "gajas", "mano", "manos": cantidad=número, unidadMedida="UNIDAD", en observacion indica "Nota: gaja" (o "Nota: mano").
            - Si dice "atado", "atados": unidadMedida="ATADO".
            - Si dice "bolsa", "bolsas": unidadMedida="BOLSA".
            - Si dice "paquete", "paquetes": unidadMedida="PAQUETE".
@@ -141,11 +143,11 @@ final class SystemPrompts {
         - Si el mensaje es solamente una pregunta o saludo sin agregar nuevos productos, mantén en items los productos de pedido_actual. Si no había pedido_actual, items debe ser [].
         - NUNCA generes items con productoMencionado null o "(sin texto)".
 
-        ACCIONES (action)
-        - CONFIRM_ORDER: acción por defecto cuando el cliente pide productos. Si items no está vacío, SIEMPRE usa CONFIRM_ORDER y customerMessage=null. NUNCA interrogues al cliente por detalles que el operario completará.
-        - ASK_CUSTOMER: ÚNICAMENTE si no hay productos pedidos (items=[]) y el cliente hace un saludo o consulta general que requiera responderle o pedirle su lista de pedido.
-        - WAIT_FOR_OPERATOR: solo en caso de contradicción irreconciliable o petición que debe atender un humano (como tiempos de demora).
-        - NONE: sin acción.
+        ACCIONES (action) Y REGLA DE NO RESPUESTA AUTOMÁTICA AL CLIENTE:
+        - CONFIRM_ORDER: acción por defecto cuando el cliente pide productos. Si items no está vacío, SIEMPRE usa CONFIRM_ORDER y customerMessage=null.
+        - WAIT_FOR_OPERATOR: cuando el cliente hace una pregunta, saludo, reclamo, o hay alguna duda. customerMessage=null.
+        - NONE: sin acción requerida.
+        - RECORDATORIO OBLIGATORIO: customerMessage DEBE SER SIEMPRE NULL. No enviar textos automáticos a los clientes bajo ninguna circunstancia.
 
         Responde únicamente con el formato estructurado solicitado (items, direccion, horarioEntrega, nombreCliente, metodoPago, action, customerMessage, clarificationReason).
         """;

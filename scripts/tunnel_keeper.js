@@ -3,15 +3,14 @@
  * -------------------------------------------------------------
  * Mantiene vivo el túnel de ngrok 24/7:
  * 1. Envía un "keep-alive ping" cada 10 minutos para evitar que ngrok o la red lo cierren por inactividad.
- * 2. Si detecta que el túnel no responde, reinicia ngrok automáticamente con el mismo dominio fijo:
- *    https://jurist-resubmit-ended.ngrok-free.dev
+ * 2. Si detecta que el túnel no responde, reinicia ngrok automáticamente con el dominio configurado.
  */
 
 const { spawn, execSync } = require('child_process');
 
-const NGROK_DOMAIN = 'jurist-resubmit-ended.ngrok-free.dev';
+const NGROK_DOMAIN = process.env.NGROK_DOMAIN || 'uniquely-champion-modify.ngrok-free.dev';
 const HEALTH_URL = `https://${NGROK_DOMAIN}/login.html`;
-const LOCAL_PORT = 8085;
+const LOCAL_PORT = process.env.LOCAL_PORT || 8085;
 const PING_INTERVAL_MS = 10 * 60 * 1000; // cada 10 minutos
 
 let ngrokProcess = null;
@@ -46,7 +45,7 @@ function ensureNgrokRunning() {
         }
     } catch (e) {}
 
-    log(`Iniciando proceso ngrok con dominio fijo '${NGROK_DOMAIN}'...`);
+    log(`Iniciando proceso ngrok con dominio '${NGROK_DOMAIN}'...`);
     ngrokProcess = spawn('ngrok.exe', ['http', `--url=${NGROK_DOMAIN}`, LOCAL_PORT.toString()], {
         detached: true,
         stdio: 'ignore',

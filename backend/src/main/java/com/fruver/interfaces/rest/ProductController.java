@@ -39,7 +39,7 @@ public class ProductController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public Map<String, Object> create(@Valid @RequestBody CreateBody b) {
         for (BigDecimal price : new BigDecimal[]{b.retailPrice(), b.wholesalePrice()}) {
             if (price != null && (price.signum() < 0 || price.compareTo(new BigDecimal("100000000")) > 0)) {
@@ -53,19 +53,19 @@ public class ProductController {
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public void patch(@PathVariable long id, @Valid @RequestBody PatchBody b) {
         catalog.update(id, b.name(), b.unit(), b.active(), b.imageUrl());
     }
 
     @PutMapping("/{id}/prices/{type}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public void setPrice(@PathVariable long id, @PathVariable PriceType type, @Valid @RequestBody PriceBody b) {
         prices.setPrice(id, type, b.amount(), Actor.name());
     }
 
     @GetMapping("/{id}/price-history")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public List<PriceService.HistoryEntry> history(@PathVariable long id) {
         return prices.history(id);
     }

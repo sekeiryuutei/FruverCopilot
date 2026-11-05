@@ -135,7 +135,14 @@ public class ExtractionInterpreter {
     private static BigDecimal extractMoneyValue(ItemSugeridoDTO d, UnitOfMeasure unit) {
         String u = d.unidadMedida() != null ? d.unidadMedida().trim().toUpperCase() : "";
         String obs = d.observacion() != null ? d.observacion().trim() : "";
-        String ment = d.productoMencionado() != null ? d.productoMencionado().trim() : "";
+        String ment = d.productoMencionado() != null ? d.productoMencionado().trim().toLowerCase() : "";
+
+        // En fruver, '5k', '2k', '1 k' o 'kg' es KILOS, nunca dinero
+        if (unit == UnitOfMeasure.KG || u.equals("KG") || u.equals("K") || u.equals("KILO") || u.equals("KILOS")
+                || ment.matches(".*\\b\\d+\\s*(k|kg|kilo|kilos)\\b.*")) {
+            return null;
+        }
+
         boolean isValUnit = u.equals("VALOR") || u.equals("PESOS") || u.equals("$") || u.equals("COP") || u.equals("DINERO");
         boolean hasValObs = obs.toLowerCase().contains("valor") || obs.contains("$") || obs.toLowerCase().contains("pesos");
 

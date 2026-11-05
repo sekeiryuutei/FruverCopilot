@@ -36,7 +36,7 @@ public class ReportService {
         out.put("topProducts", jdbc.sql("""
                 SELECT COALESCE(i.product_name, 'Producto'), COALESCE(i.unit, ''), COALESCE(sum(i.quantity), 0), COALESCE(sum(i.subtotal), 0)
                 FROM sale_item i JOIN sale s ON s.id = i.sale_id WHERE s.created_at >= :a AND s.created_at < :b
-                GROUP BY i.product_name, i.unit ORDER BY COALESCE(sum(i.subtotal), 0) DESC, COALESCE(sum(i.quantity), 0) DESC LIMIT 10
+                GROUP BY i.product_name, i.unit ORDER BY COALESCE(sum(i.subtotal), 0) DESC, COALESCE(sum(i.quantity), 0) DESC LIMIT 15
                 """).param("a", start).param("b", end)
                 .query((rs, n) -> {
                     Map<String, Object> item = new LinkedHashMap<>();
@@ -44,6 +44,46 @@ public class ReportService {
                     item.put("unit", rs.getString(2) != null ? rs.getString(2) : "");
                     item.put("quantity", rs.getBigDecimal(3) != null ? rs.getBigDecimal(3) : java.math.BigDecimal.ZERO);
                     item.put("revenue", rs.getBigDecimal(4) != null ? rs.getBigDecimal(4) : java.math.BigDecimal.ZERO);
+                    return item;
+                }).list());
+
+        // Ranking de clientes que más compran
+        out.put("topCustomers", jdbc.sql("""
+                SELECT COALESCE(c.name, s.customer_name, 'Cliente'),
+                       COALESCE(c.phone, s.customer_phone, ''),
+                       count(s.id) AS sales_count,
+                       COALESCE(sum(s.total), 0) AS total_spent
+                FROM sale s
+                LEFT JOIN customer c ON c.id = s.customer_id
+                WHERE s.created_at >= :a AND s.created_at < :b
+                GROUP BY 1, 2
+                ORDER BY total_spent DESC, sales_count DESC
+                LIMIT 15
+                """).param("a", start).param("b", end)
+                .query((rs, n) -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("name", rs.getString(1) != null ? rs.getString(1) : "Cliente");
+                    item.put("phone", rs.getString(2) != null ? rs.getString(2) : "");
+                    item.put("sales", rs.getLong(3));
+                    item.put("total", rs.getBigDecimal(4) != null ? rs.getBigDecimal(4) : java.math.BigDecimal.ZERO);
+                    return item;
+                }).list());
+
+        // Ventas por día (qué días se vende más)
+        out.put("salesByDay", jdbc.sql("""
+                SELECT to_char(s.created_at AT TIME ZONE :tz, 'YYYY-MM-DD (Dy)') AS day_label,
+                       count(s.id) AS sales_count,
+                       COALESCE(sum(s.total), 0) AS total_revenue
+                FROM sale s
+                WHERE s.created_at >= :a AND s.created_at < :b
+                GROUP BY 1
+                ORDER BY total_revenue DESC, sales_count DESC
+                """).param("a", start).param("b", end).param("tz", zone.getId())
+                .query((rs, n) -> {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("day", rs.getString(1) != null ? rs.getString(1) : "Día");
+                    item.put("sales", rs.getLong(2));
+                    item.put("revenue", rs.getBigDecimal(3) != null ? rs.getBigDecimal(3) : java.math.BigDecimal.ZERO);
                     return item;
                 }).list());
 

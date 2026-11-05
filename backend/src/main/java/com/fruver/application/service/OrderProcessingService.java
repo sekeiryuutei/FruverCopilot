@@ -218,7 +218,7 @@ public class OrderProcessingService {
                 ORDER BY id ASC
                 """).param("id", orderId).query(String.class).list();
 
-        // Contexto conversacional previo: si el cliente escribió en las últimas 2 horas (ej: preguntó por un producto y luego mandó la cantidad)
+        // Contexto conversacional previo: si el cliente escribió en las últimas 2 horas en pedidos aún no cerrados
         List<String> priorTexts = List.of();
         if (clientPhone != null && !clientPhone.isBlank()) {
             priorTexts = jdbc.sql("""
@@ -227,6 +227,7 @@ public class OrderProcessingService {
                     JOIN orders o ON cm.order_id = o.id
                     WHERE o.customer_phone = :phone
                       AND cm.order_id <> :id
+                      AND o.status NOT IN ('APPROVED', 'CANCELLED')
                       AND cm.direction = 'INBOUND'
                       AND cm.content IS NOT NULL AND TRIM(cm.content) <> ''
                       AND cm.created_at >= NOW() - INTERVAL '2 hours'
@@ -468,7 +469,9 @@ public class OrderProcessingService {
                 ? printerConfig.get().autoPrintWholesale()
                 : (props.printing() != null && props.printing().autoPrintWholesale());
 
-        if (autoPrint) {
+        boolean isAfterCutoff = java.time.ZonedDateTime.now(java.time.ZoneId.of("America/Bogota"))
+                .isAfter(java.time.ZonedDateTime.parse("2026-11-04T15:00:00-05:00"));
+        if (autoPrint && isAfterCutoff) {
             boolean hasTrulyDoubtfulLines = io.items().isEmpty()
                     || io.items().stream().anyMatch(it -> (it.quantity() == null && it.aiQuantity() == null)
                     || (it.aiAmbiguous() && it.productId() == null));
@@ -506,7 +509,10 @@ public class OrderProcessingService {
                 ? printerConfig.get().orderGraceSeconds()
                 : (props.printing() != null ? props.printing().wholesaleGraceSeconds() : 60);
         if (normalGraceSec <= 0) normalGraceSec = 60;
-        int maxReviewSec = 120; // 2 minutos máximo de espera por validación del operario antes de imprimir directamente
+        int maxReviewSec = (printerConfig != null)
+                ? printerConfig.get().reviewTimeoutSeconds()
+                : (props.printing() != null ? props.printing().reviewTimeoutSeconds() : 120);
+        if (maxReviewSec <= 0) maxReviewSec = 120;
 
         // Auto-impresión inteligente:
         // 1. Pedidos limpios sin dudas: se imprimen al cumplirse el margen normal (1 minuto / 60s)
@@ -514,6 +520,7 @@ public class OrderProcessingService {
         List<Long> readyOrders = jdbc.sql("""
                 SELECT o.id FROM orders o
                 WHERE o.status = 'REVIEW'
+                  AND o.received_at >= '2026-11-04 15:00:00-05'
                   AND EXISTS (SELECT 1 FROM order_item oi WHERE oi.order_id = o.id)
                   AND (
                       (o.requires_verification = FALSE AND o.extracted_at <= NOW() - (:normalSec || ' seconds')::interval)

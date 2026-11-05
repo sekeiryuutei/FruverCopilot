@@ -1,0 +1,2618 @@
+[
+  {
+    "orderId": 25,
+    "customerName": "Guaduales",
+    "phone": "573216160710",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:38:26.880876-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "No había cilantro? 🥺"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 24,
+    "customerName": "Hoy",
+    "phone": "573234943830",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T10:35:19.700182-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      },
+      {
+        "type": "TEXT",
+        "content": "Me confirmas"
+      },
+      {
+        "type": "TEXT",
+        "content": "Ya está el chico"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "Cebolla morada 5 libras",
+        "product": "Cebolla cabezona roja",
+        "quantity": 5.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "Cebolla blanca 5 libras",
+        "product": "Cebolla cabezona blanca",
+        "quantity": 5.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "10 mil de Cilantro",
+        "product": "Cilantro",
+        "quantity": null,
+        "unit": null,
+        "price": 1000
+      },
+      {
+        "mentioned": "5 Pimentónes entre verdesito y rojo",
+        "product": "Pimenton rojo",
+        "quantity": 5.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "4 libras de Maracuya",
+        "product": "Maracuya",
+        "quantity": 4.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "3 Melon",
+        "product": "Melon",
+        "quantity": 3.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "3 Papayas bonitas",
+        "product": "Papaya",
+        "quantity": 3.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "4 Mangos tomy bonitos",
+        "product": "Mango Tommy",
+        "quantity": 4.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "4 aguacates",
+        "product": "Aguacate Hass",
+        "quantity": 4.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "1 libra de ajo",
+        "product": "Ajo cabeza",
+        "quantity": 1.0,
+        "unit": "LB",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 27,
+    "customerName": "Guaduales",
+    "phone": "573216160710",
+    "inputType": "IMAGE",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:41:48.756252-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 26,
+    "customerName": "Hoy",
+    "phone": "573234943830",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:41:19.703671-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Ya entregaste ?"
+      },
+      {
+        "type": "TEXT",
+        "content": "Se me olvidó pedir limón 😭"
+      },
+      {
+        "type": "TEXT",
+        "content": "10 mil de limón"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 11,
+    "customerName": "Picina 2 Yepes",
+    "phone": "573170360515",
+    "inputType": "IMAGE",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T10:05:56.052195-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      },
+      {
+        "type": "AUDIO",
+        "content": "Hola Don Juan, yo le pedí 8 libras de banano y me mandaron"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "8 libras de banano",
+        "product": "Banano",
+        "quantity": null,
+        "unit": null,
+        "price": 201
+      }
+    ]
+  },
+  {
+    "orderId": 28,
+    "customerName": "Hoy",
+    "phone": "573234943830",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:41:50.458253-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "???"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 3,
+    "customerName": "Panisimo",
+    "phone": "15694498414710",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T09:51:19.324759-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Menos mal, abuela, muchas gracias."
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 5,
+    "customerName": "El Local",
+    "phone": "573156793777",
+    "inputType": "IMAGE",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T09:51:22.700275-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      },
+      {
+        "type": "TEXT",
+        "content": "Gracias"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 29,
+    "customerName": "Wiliam Hermano",
+    "phone": "573105425241",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:44:20.16135-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "😘"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 12,
+    "customerName": "Hoy",
+    "phone": "573234943830",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T10:08:38.877433-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Cebolla morada 5 libras\n \nCebolla blanca 5 libras \n\n10 mil de Cilantro \n\n5 Pimentónes entre verdesito y rojo \n\n4 libras de Maracuya \n\n\n3 Melon\n\n3 Papayas bonitas \n\n4 Mangos tomy bonitos \n\n4 aguacates 1 para hoy , uno q esté para mañana y\nLos otros dos verdes porfa"
+      },
+      {
+        "type": "TEXT",
+        "content": "Hola buenos días"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "Cebolla morada",
+        "product": "Cebolla cabezona roja",
+        "quantity": 5.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "Cebolla blanca",
+        "product": "Cebolla cabezona blanca",
+        "quantity": 5.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "Cilantro",
+        "product": "Cilantro",
+        "quantity": null,
+        "unit": null,
+        "price": 10000
+      },
+      {
+        "mentioned": "Pimentónes",
+        "product": "Pimenton rojo",
+        "quantity": 5.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Maracuya",
+        "product": "Maracuya",
+        "quantity": 4.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "Melon",
+        "product": "Melon",
+        "quantity": 3.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Papayas",
+        "product": "Papaya",
+        "quantity": 3.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Mangos tomy",
+        "product": "Mango Tommy",
+        "quantity": 4.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "aguacates",
+        "product": "Aguacate",
+        "quantity": 4.0,
+        "unit": null,
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 15,
+    "customerName": "Virrey",
+    "phone": "573106554553",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:14:31.831216-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Eh chao, viene cobro del más veterano de allá, el cucho alto, pues sí el más veterano. Pero este yo le pagué a él y como siempre le preguntan que si conpe, yo le digo que sí, pero de pronto a la hora de cuadrar allá entregando es donde se dan cuenta."
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 30,
+    "customerName": "Hoy",
+    "phone": "573234943830",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:45:16.997932-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "?"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 13,
+    "customerName": "Saber Si Te Pidió Otra Cosita",
+    "phone": "573137443734",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:11:50.172274-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Buenos días, don David, una preguntica, de casualidad ya me mandó lo adicional de de Claudia Álamo para saber si te pidió otra cosita."
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 2,
+    "customerName": "Rosa Noidalia",
+    "phone": "573011807087",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T09:49:34.027961-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Buen día, mi corazón. Vea, es que como aquí en la factura dice que mandarina, es limón mandarino, de pronto me han facturado, es mandarina, pero yo quiero es limón mandarino, ¿no? Muchas gracias, mi vida."
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 18,
+    "customerName": "Juan David",
+    "phone": "573122732246",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T10:21:30.066017-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Buenos días"
+      },
+      {
+        "type": "TEXT",
+        "content": "Don Juan David"
+      },
+      {
+        "type": "TEXT",
+        "content": "Para pedirle unas verduras"
+      },
+      {
+        "type": "TEXT",
+        "content": "Ocho libras de papa parda mediana buena"
+      },
+      {
+        "type": "TEXT",
+        "content": "Una libra de habichuela buenas gruesas"
+      },
+      {
+        "type": "TEXT",
+        "content": "Una libra de amarilla buena grande"
+      },
+      {
+        "type": "TEXT",
+        "content": "1000 de cilantro con cimarrón"
+      },
+      {
+        "type": "TEXT",
+        "content": "Una libra de zanahoria mediana"
+      },
+      {
+        "type": "TEXT",
+        "content": "Gracias"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "papa parda",
+        "product": "Papa Parda",
+        "quantity": 8.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "habichuela",
+        "product": "Habichuela",
+        "quantity": 1.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "amarilla",
+        "product": "Papa amarilla",
+        "quantity": 1.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "cilantro con cimarrón",
+        "product": "Cilantro cimarron",
+        "quantity": null,
+        "unit": null,
+        "price": 1000
+      }
+    ]
+  },
+  {
+    "orderId": 31,
+    "customerName": "Guaduales",
+    "phone": "573216160710",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:46:41.649259-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Vale gracias"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 16,
+    "customerName": "Diego Alejandro",
+    "phone": "573182341504",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:15:59.175487-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Buen día"
+      },
+      {
+        "type": "TEXT",
+        "content": "Tienen cilantro?"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 14,
+    "customerName": "Claudia Álamo",
+    "phone": "573137443734",
+    "inputType": "AUDIO",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T10:13:15.979463-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Pues mira que me hizo falta fue un zapallo, pero si no ha enviado y si no ya esperemos a mañana para que no pongan a voltear a los muchachos."
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "zapallo",
+        "product": "Zapallo",
+        "quantity": null,
+        "unit": null,
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 4,
+    "customerName": "Rosa Noidalia",
+    "phone": "573011807087",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T09:51:21.55761-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Son dos kilitos, mi vida. Ve, corazón, eh cuénteme una cosa, los los tres kilos de tomate de árbol valen 21,000?"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "tomate de árbol",
+        "product": "Tomate de arbol",
+        "quantity": 3.0,
+        "unit": "KG",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 6,
+    "customerName": "cosecha valluna",
+    "phone": "573247585786",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T09:54:19.368178-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Se pagó"
+      },
+      {
+        "type": "TEXT",
+        "content": "Todo"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 1,
+    "customerName": "Quién Sería",
+    "phone": "573183473787",
+    "inputType": "AUDIO",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T09:48:50.259546-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Patrón, yo tenía una amarilla, 2 libras de amarilla de cambio, porque ayer las devolví que llegaron muy feas y no me llegó. Entonces, y el problema es que necesito la amarillita porque no tengo nada. Yo la pedí en la lista, pero como cambio,"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "amarilla",
+        "product": "Papa amarilla",
+        "quantity": 2.0,
+        "unit": "LB",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 17,
+    "customerName": "Hoy",
+    "phone": "573234943830",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T10:17:43.798295-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "A y 1 libra de ajo porfa"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "Cebolla morada",
+        "product": "Cebolla cabezona roja",
+        "quantity": 5.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "Cebolla blanca",
+        "product": "Cebolla cabezona blanca",
+        "quantity": 5.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "Cilantro",
+        "product": "Cilantro",
+        "quantity": null,
+        "unit": null,
+        "price": 10000
+      },
+      {
+        "mentioned": "Pimentónes",
+        "product": "Pimenton rojo",
+        "quantity": 5.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Maracuya",
+        "product": "Maracuya",
+        "quantity": 4.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "Melon",
+        "product": "Melon",
+        "quantity": 3.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Papayas",
+        "product": "Papaya",
+        "quantity": 3.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Mangos tomy",
+        "product": "Mango Tommy",
+        "quantity": 4.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "aguacates",
+        "product": "Aguacate Hass",
+        "quantity": 4.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "ajo",
+        "product": "ajo",
+        "quantity": 1.0,
+        "unit": "LB",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 7,
+    "customerName": "Don David",
+    "phone": "573166471594",
+    "inputType": "IMAGE",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T09:57:18.265228-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      },
+      {
+        "type": "TEXT",
+        "content": "Gracias"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 32,
+    "customerName": "Juan Verduras",
+    "phone": "573117356269",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T10:47:58.123629-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "3 lb maracuyá pesadas"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "maracuyá",
+        "product": "Maracuya",
+        "quantity": 3.0,
+        "unit": "LB",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 33,
+    "customerName": "Pagarla De Una Vez",
+    "phone": "573233627689",
+    "inputType": "AUDIO",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T10:48:01.61665-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Por favor, me envía la factura, porfa, para pagarla de una vez."
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "cebolla larga",
+        "product": "Cebolla larga",
+        "quantity": 5.0,
+        "unit": "KG",
+        "price": null
+      },
+      {
+        "mentioned": "pimentón rojo",
+        "product": "Pimenton rojo",
+        "quantity": 5.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "Batavia",
+        "product": "Lechuga batavia",
+        "quantity": 3.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "brócoli",
+        "product": "Brocoli",
+        "quantity": 4.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "coliflor",
+        "product": "Coliflor",
+        "quantity": 4.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "apio",
+        "product": "Apio",
+        "quantity": 2.0,
+        "unit": "KG",
+        "price": null
+      },
+      {
+        "mentioned": "zanahoria",
+        "product": "Zanahoria",
+        "quantity": 10.0,
+        "unit": "KG",
+        "price": null
+      },
+      {
+        "mentioned": "habichuela",
+        "product": "Habichuela",
+        "quantity": 5.0,
+        "unit": "KG",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 34,
+    "customerName": "Pagarla De Una Vez",
+    "phone": "573233627689",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:50:06.090264-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Nooo"
+      },
+      {
+        "type": "AUDIO",
+        "content": "No, no, no, entonces no, no, es que necesito el pedido completo, entonces mejor cancelo el pedido, gracias."
+      },
+      {
+        "type": "TEXT",
+        "content": "Entonces mejor no"
+      },
+      {
+        "type": "TEXT",
+        "content": "Les agradezco"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 35,
+    "customerName": "Pagarla De Una Vez",
+    "phone": "573233627689",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:50:43.015474-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "El pedido entonces non"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 8,
+    "customerName": "Carlos Zuluaga",
+    "phone": "44341393416311",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T09:58:52.664839-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "2 sapallos"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "sapallos",
+        "product": "Zapallo",
+        "quantity": 2.0,
+        "unit": null,
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 9,
+    "customerName": "Virrey",
+    "phone": "573106554553",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:04:15.317397-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Buenos días"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 10,
+    "customerName": "Virrey",
+    "phone": "573106554553",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:04:21.642246-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Q te dijeron del pago del sábado"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 19,
+    "customerName": "Diego Alejandro",
+    "phone": "573182341504",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T10:25:31.445285-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Dos atados porfavor"
+      },
+      {
+        "type": "TEXT",
+        "content": "Con cimarron"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "atados de cilantro",
+        "product": "Cilantro",
+        "quantity": 2.0,
+        "unit": "ATADO",
+        "price": null
+      },
+      {
+        "mentioned": "cimarron",
+        "product": "Cilantro cimarron",
+        "quantity": null,
+        "unit": null,
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 20,
+    "customerName": "😎",
+    "phone": "573233627689",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T10:28:16.882519-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Buenos días\n\n5 kilos cebolla larga\n5 unidades de pimentón rojo\n3 unidades de Batavia\n4 unidades de brócoli\n4 unidades de coliflor\n2 kilos de apio\n10 kilos zanahoria\n5 kilos de habichuela"
+      },
+      {
+        "type": "TEXT",
+        "content": "Me confirma si tienen todo?? Y si me lo pueden enviar ???"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "cebolla larga",
+        "product": "Cebolla larga",
+        "quantity": 5.0,
+        "unit": "KG",
+        "price": null
+      },
+      {
+        "mentioned": "pimentón rojo",
+        "product": "Pimenton rojo",
+        "quantity": 5.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "Batavia",
+        "product": "Lechuga batavia",
+        "quantity": 3.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "brócoli",
+        "product": "Brocoli",
+        "quantity": 4.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "coliflor",
+        "product": "Coliflor",
+        "quantity": 4.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "apio",
+        "product": "Apio",
+        "quantity": 2.0,
+        "unit": "KG",
+        "price": null
+      },
+      {
+        "mentioned": "zanahoria",
+        "product": "Zanahoria",
+        "quantity": 10.0,
+        "unit": "KG",
+        "price": null
+      },
+      {
+        "mentioned": "habichuela",
+        "product": "Habichuela",
+        "quantity": 5.0,
+        "unit": "KG",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 22,
+    "customerName": "Virrey",
+    "phone": "573106554553",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:32:14.595386-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "No, sí, porque cuando yo fui a a Pitalito que había pagado, miré la factura de ustedes y ahí fue donde me di cuenta que había 250,000 pesos de más, pero no, no, así fue."
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 21,
+    "customerName": "Yo Confiarme Que Llega Todo",
+    "phone": "573233627689",
+    "inputType": "AUDIO",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T10:31:08.027279-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Pero un favorcito, confírmeme si tienen todo, por favor. Si me envían todo, por favor, para yo confiarme que llega todo."
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "cebolla larga",
+        "product": "Cebolla larga",
+        "quantity": 5.0,
+        "unit": "KG",
+        "price": null
+      },
+      {
+        "mentioned": "pimentón rojo",
+        "product": "Pimenton rojo",
+        "quantity": 5.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "Batavia",
+        "product": "Lechuga batavia",
+        "quantity": 3.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "brócoli",
+        "product": "Brocoli",
+        "quantity": 4.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "coliflor",
+        "product": "Coliflor",
+        "quantity": 4.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "apio",
+        "product": "Apio",
+        "quantity": 2.0,
+        "unit": "KG",
+        "price": null
+      },
+      {
+        "mentioned": "zanahoria",
+        "product": "Zanahoria",
+        "quantity": 10.0,
+        "unit": "KG",
+        "price": null
+      },
+      {
+        "mentioned": "habichuela",
+        "product": "Habichuela",
+        "quantity": 5.0,
+        "unit": "KG",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 23,
+    "customerName": "Comercializadora Floralis",
+    "phone": "573011807087",
+    "inputType": "IMAGE",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T10:34:13.229122-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      },
+      {
+        "type": "AUDIO",
+        "content": "Mi corazón hermoso, entonces sí puedes mirar que ahí en el tomate de árbol dice 21 y yo la sumé y me da el total que usted me envió en la factura. Pero entonces me dices que el tomate de árbol vale 12. Entonces, ¿qué le digo? Yo acá voy a acomodarla porque sí está sí está eh liquidada con los 21,000 del tomate de árbol, ¿listo, mi hijo? Muchas gracias y que Dios lo bendiga."
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "Tomate Chonto",
+        "product": "Tomate chonto",
+        "quantity": 1.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Platano Maduro",
+        "product": "Platano maduro",
+        "quantity": 1.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Platano Verde",
+        "product": "Platano verde",
+        "quantity": 1.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Cebolla Larga",
+        "product": "Cebolla larga",
+        "quantity": 1.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Limon Tahiti",
+        "product": "Limon tahiti",
+        "quantity": 1.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Tomate de Arbol",
+        "product": "Tomate de arbol",
+        "quantity": 3.0,
+        "unit": "LB",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 36,
+    "customerName": "Carlos Zuluaga",
+    "phone": "44341393416311",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T10:58:32.252618-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Juanchita, hágame un favor, ¿cómo está el kilo de zapallo? ¿A cómo el kilo de zapallo?"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 49,
+    "customerName": "Diego Alejandro",
+    "phone": "573182341504",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T11:40:23.37628-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Ah bueno papi, este gracias, hágale."
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 57,
+    "customerName": "Allá",
+    "phone": "573106532494",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T12:12:11.48932-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Ve mi vida. Ah, como lo estoy llamando, pero yo creo que usted está ocupadito que no contesta. A la una mandan a Gustavo, te amo."
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 77,
+    "customerName": "Hoy",
+    "phone": "573234943830",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T14:19:25.459557-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Hola me envía la factura"
+      },
+      {
+        "type": "TEXT",
+        "content": "No me enviaron los aguacates"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 61,
+    "customerName": "Juan",
+    "phone": "573126611861",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T12:20:50.378448-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Buenas tardes \nJefe \nUsted depronto me puede hacer el favor de enviarme lo dela factura de anoche a este numero"
+      },
+      {
+        "type": "TEXT",
+        "content": "3126611861 \nMuchas gracias"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 78,
+    "customerName": "Hoy",
+    "phone": "573234943830",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T14:19:41.312745-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Y me enviaron demasiados pimentones"
+      },
+      {
+        "type": "TEXT",
+        "content": "Y eran solo 5"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 62,
+    "customerName": "Carmen Avepollo",
+    "phone": "573184164054",
+    "inputType": "IMAGE",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T12:22:18.452967-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      },
+      {
+        "type": "TEXT",
+        "content": "Gracias"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 63,
+    "customerName": "Juan",
+    "phone": "573126611861",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T12:23:00.764965-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Muchas gracias"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 64,
+    "customerName": "Carmen Avepollo",
+    "phone": "573184164054",
+    "inputType": "IMAGE",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T12:23:50.694287-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 65,
+    "customerName": "Chaggi Florez",
+    "phone": "573150294926",
+    "inputType": "IMAGE",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T12:25:29.16878-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 80,
+    "customerName": "Poder Tener Un Registro Fiable",
+    "phone": "573054278642",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T15:18:43.0697-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Buena tarde, para mañana \n40 guineos grandes \n1/2 bulto de papa \n6 mazorcas TIERNAS peladas \n10 lbs de tómate *grande y maduro* \n7 lbs de larga\n10 lbs de cabezona \n25 lbs de Maduro bueno \n2 repollos medianos \n$3.000 de zapallo \n7 lbs de zanahoria \n5 pepinos grandes \n2 calabacínes amarillo \nPulpa de tomate de árbol \n7 lbs de papa amarilla mediana fresca"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "Pulpa de tomate de árbol",
+        "product": "Tomate de arbol",
+        "quantity": null,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "guineos grandes",
+        "product": "Guineo",
+        "quantity": 40.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "papa",
+        "product": "Papa",
+        "quantity": 0.5,
+        "unit": "BULTO",
+        "price": null
+      },
+      {
+        "mentioned": "mazorcas TIERNAS peladas",
+        "product": "Mazorca",
+        "quantity": 6.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "tómate *grande y maduro*",
+        "product": "Tomate chonto",
+        "quantity": 10.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "larga",
+        "product": "Cebolla larga",
+        "quantity": 7.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "cabezona",
+        "product": "Cebolla cabezona",
+        "quantity": 10.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "Maduro bueno",
+        "product": "Platano maduro",
+        "quantity": 25.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "repollos medianos",
+        "product": "Repollo blanco",
+        "quantity": 2.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "zapallo",
+        "product": "Zapallo",
+        "quantity": null,
+        "unit": null,
+        "price": 3000
+      },
+      {
+        "mentioned": "zanahoria",
+        "product": "Zanahoria",
+        "quantity": 7.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "pepinos grandes",
+        "product": "Pepino cohombro",
+        "quantity": 5.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "calabacínes amarillo",
+        "product": "Calabacin",
+        "quantity": 2.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "papa amarilla mediana fresca",
+        "product": "Papa amarilla",
+        "quantity": 7.0,
+        "unit": "LB",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 66,
+    "customerName": "Gustavo Villegas",
+    "phone": "573108365260",
+    "inputType": "IMAGE",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T12:27:16.241216-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      },
+      {
+        "type": "TEXT",
+        "content": "Don Gustavo..queda pendiente un saldo de 29200"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "Tómate 3 libras",
+        "product": "Tomate chonto",
+        "quantity": 3.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "Cebolla larga 3 libras",
+        "product": "Cebolla larga",
+        "quantity": 3.0,
+        "unit": "LB",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 81,
+    "customerName": "S7 Norte 2 BN 04",
+    "phone": "573154312217",
+    "inputType": "IMAGE",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T15:23:25.498437-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 67,
+    "customerName": "Comlama 2",
+    "phone": "573113666245",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T12:35:00.438969-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Gracias pa"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 70,
+    "customerName": "James Chuspas",
+    "phone": "573158969525",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T13:26:31.892658-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Bnas tardes ok con gusto"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 75,
+    "customerName": "69 7 N 11",
+    "phone": "573013725421",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T14:10:25.215672-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Acomo tienes la papitas buenas y la picadora acomo me lada"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 82,
+    "customerName": "El Local",
+    "phone": "573156793777",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T15:35:22.390462-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "15 pajaritos y 20 Tahití"
+      },
+      {
+        "type": "TEXT",
+        "content": "“Buena tarde, para mañana \n40 guineos grandes \n1/2 bulto de papa \n6 mazorcas TIERNAS peladas \n10 lbs de tómate *grande y maduro* \n7 lbs de larga\n10 lbs de cabezona \n25 lbs de Maduro bueno \n2 repollos medianos \n$3.000 de zapallo \n7 lbs de zanahoria \n5 pepinos grandes \n2 calabacínes amarillo \nPulpa de tomate de árbol \n7 lbs de papa amarilla mediana fresca”"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "pajaritos",
+        "product": "Naranja pajarito",
+        "quantity": 15.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Tahití",
+        "product": "Limon tahiti",
+        "quantity": 20.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Pulpa de tomate de árbol",
+        "product": "Tomate de arbol",
+        "quantity": null,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "guineos grandes",
+        "product": "Guineo",
+        "quantity": 40.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "papa",
+        "product": "Papa",
+        "quantity": 0.5,
+        "unit": "BULTO",
+        "price": null
+      },
+      {
+        "mentioned": "mazorcas TIERNAS peladas",
+        "product": "Mazorca",
+        "quantity": 6.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "tómate *grande y maduro*",
+        "product": "Tomate chonto",
+        "quantity": 10.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "larga",
+        "product": "Cebolla larga",
+        "quantity": 7.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "cabezona",
+        "product": "Cebolla cabezona",
+        "quantity": 10.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "Maduro bueno",
+        "product": "Platano maduro",
+        "quantity": 25.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "repollos medianos",
+        "product": "Repollo blanco",
+        "quantity": 2.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "zapallo",
+        "product": "Zapallo",
+        "quantity": null,
+        "unit": null,
+        "price": 3000
+      },
+      {
+        "mentioned": "zanahoria",
+        "product": "Zanahoria",
+        "quantity": 7.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "pepinos grandes",
+        "product": "Pepino cohombro",
+        "quantity": 5.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "calabacínes amarillo",
+        "product": "Calabacin",
+        "quantity": 2.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "papa amarilla mediana fresca",
+        "product": "Papa amarilla",
+        "quantity": 7.0,
+        "unit": "LB",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 48,
+    "customerName": "Que Me Haga Un Favor",
+    "phone": "573147249966",
+    "inputType": "AUDIO",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T11:36:40.637281-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Mándeme seis y seis de esa."
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "mora",
+        "product": "Mora",
+        "quantity": 6.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "mango",
+        "product": "Mango Tommy",
+        "quantity": 6.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "lulo",
+        "product": "Lulo",
+        "quantity": 6.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "maracuyá",
+        "product": "Maracuya",
+        "quantity": 6.0,
+        "unit": null,
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 50,
+    "customerName": "Restaurante Sanluisito",
+    "phone": "573217098667",
+    "inputType": "IMAGE",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T11:50:36.440076-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 51,
+    "customerName": "Restaurante Sanluisito",
+    "phone": "573217098667",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T11:50:43.561664-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Buenos días, Juan David, mire, ahí está el pago de la verdura, oyó, muchas gracias."
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 79,
+    "customerName": "Mañana En La Mañanitica",
+    "phone": "573127763465",
+    "inputType": "IMAGE",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T15:01:16.994161-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      },
+      {
+        "type": "TEXT",
+        "content": "Gracias"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 54,
+    "customerName": "El Día",
+    "phone": "90491202838562",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T12:03:24.091142-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      },
+      {
+        "type": "AUDIO",
+        "content": "Hola, ¿cómo estás? Te digo algo, yo ayer pedí media libra de yuca y te cuento que salió horrible, no sé si hay manera de que ustedes ya me la manden abierta, pelada, no sé, porque la yuca es muy delicada. Te comparto la foto."
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 53,
+    "customerName": "Esposa Diego Cascos",
+    "phone": "573207334749",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T12:02:50.309431-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "mono buena tarde hágame un favor me envía 1 lb de papa y 2000 de arveja \n1 lb cabezona mediana"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "papa",
+        "product": "Papa",
+        "quantity": 1.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "arveja",
+        "product": "Arveja verde desgranada",
+        "quantity": null,
+        "unit": null,
+        "price": 2000
+      },
+      {
+        "mentioned": "cabezona mediana",
+        "product": "Cebolla cabezona",
+        "quantity": 1.0,
+        "unit": "LB",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 37,
+    "customerName": "Hoy",
+    "phone": "573189071277",
+    "inputType": "IMAGE",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T11:04:01.983395-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "1.928 kg banano",
+        "product": "Banano",
+        "quantity": null,
+        "unit": null,
+        "price": 1928
+      }
+    ]
+  },
+  {
+    "orderId": 55,
+    "customerName": "Vicky",
+    "phone": "573023278567",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T12:10:50.030818-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Buenas"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 38,
+    "customerName": "Que Me Haga El Favor",
+    "phone": "573184442481",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T11:04:15.7157-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Hola papi ya ke llegó el cilantro para que me haga el favor"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "cilantro",
+        "product": "Cilantro",
+        "quantity": null,
+        "unit": null,
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 39,
+    "customerName": "Confama 1",
+    "phone": "573212714357",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T11:06:30.97941-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "20 moras\n1 colantro"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "moras",
+        "product": "Mora",
+        "quantity": 20.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "colantro",
+        "product": "Cilantro",
+        "quantity": 1.0,
+        "unit": null,
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 46,
+    "customerName": "Quién Sería",
+    "phone": "573183473787",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T11:24:56.934006-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Patrón, una preguntica, ¿cómo la cebolla cabezona blanca, porfa?"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 40,
+    "customerName": "👧🏻",
+    "phone": "239852482212081",
+    "inputType": "IMAGE",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T11:11:24.324573-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "Cilantro cimarron",
+        "product": "Cilantro cimarron",
+        "quantity": 1.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Cilantro",
+        "product": "Cilantro",
+        "quantity": 1.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Cromto",
+        "product": "Cilantro cimarron",
+        "quantity": 1.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Zanahoria",
+        "product": "Zanahoria",
+        "quantity": 1.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Cabezona remolacha",
+        "product": "Cebolla cabezona",
+        "quantity": 1.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Cabezona roja",
+        "product": "Cebolla cabezona roja",
+        "quantity": 1.0,
+        "unit": null,
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 41,
+    "customerName": "👧🏻",
+    "phone": "239852482212081",
+    "inputType": "TEXT",
+    "status": "REVIEW",
+    "receivedAt": "2026-11-03T11:15:43.049956-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "cilantro Cimarron\n413 TOMILLO\nBREGANOY\nPEREJL.:*.\nESPINACA\nFRUOL\n8 ALBERIA\n9[UYUCOS\n10\nTORTILLAS\n1.131\nMORA\n12\nPIMENTON 6\n13 MANDARINA\n14\n| MARACUYA\n15\nT. DE ARBOL\n16\nLULO\n17\nMANGO\n18\nPAPAYA\n19\nTOMMY\n20\nGUAYABA\n21|AGUACATE\n22 M. ROJA\n23IM. VERDE\n24\nPERAS\n25\nUVAS\n26\nUCHUVAS\n27\nCURUBA\n28\nBANANO\n29 PEPINO\n30 LIMON22\n71(ТAHMI\n32 (LARGA\n33\nYUCA\n34| ARRACACHA\n35| CHOCLO\n36 AJOS\n37 NARANIA\n38 HAZR HUETA\nMibr\ncrono\ncabezora\nnemolacno\n44\nPAPA\n1745 AMARILLA\"\nA6 BÁTAVIA\nMILỘN *\n•48\nSANDIA\n49 ¡ERESAS\n50 REPOLLO\n51\nZAPÁLLO\n52\nORO MIEL\n53\nCAPIRA\n54 CERO\nGRÄNADILLA\n56\nMELOCOTÓN :\n57\nP.GUANABANA\n58\nP.MANGO\n59 BROCOLI\n60\nCOLFLOR e\n61\nR. MORADO\n62\nAPIO.\n63 KIWİ\n64\nCIRUELAS\n65\nPITALLA\n66\nUVA CHILENA\n67\nDRO MIEL\n68\nVERDES\n69\nMADURO\n70 ZUKINI V\n*71 20KINI A\n72\nARCHUCHAS\n73| CUCHUCO\n74\nZAPALLO\n75|M. DULCE\n76 COCOS\n77 ARANDANOS\n7SİLIMON MANDARINO\n•cabezona roja"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 52,
+    "customerName": "elsa Alameda Rio",
+    "phone": "573108365260",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T11:52:06.910164-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Buenos días"
+      },
+      {
+        "type": "TEXT",
+        "content": "Por favor me envías"
+      },
+      {
+        "type": "TEXT",
+        "content": "Cilantro 2000"
+      },
+      {
+        "type": "TEXT",
+        "content": "Plátano verde 5"
+      },
+      {
+        "type": "TEXT",
+        "content": "Plátano maduro 5 libras"
+      },
+      {
+        "type": "TEXT",
+        "content": "Papa 4 libras"
+      },
+      {
+        "type": "TEXT",
+        "content": "Tómate 3 libras"
+      },
+      {
+        "type": "TEXT",
+        "content": "Cebolla larga 3 libras"
+      },
+      {
+        "type": "TEXT",
+        "content": "Asi"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "Cilantro",
+        "product": "Cilantro",
+        "quantity": null,
+        "unit": null,
+        "price": 2000
+      },
+      {
+        "mentioned": "Plátano verde",
+        "product": "Platano verde",
+        "quantity": 5.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "Plátano maduro",
+        "product": "Platano maduro",
+        "quantity": 5.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "Papa",
+        "product": "Papa",
+        "quantity": 4.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "Tómate",
+        "product": "Tomate chonto",
+        "quantity": 3.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "Cebolla larga",
+        "product": "Cebolla larga",
+        "quantity": 3.0,
+        "unit": "LB",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 43,
+    "customerName": "Ribera",
+    "phone": "573162715114",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T11:18:59.120536-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Don David, buenas. Don David, hágame un favor. Mira que vienen facturadas seis libras de lulo, pero no llegaron. Si de pronto por purita casualidad le quedaría fácil, otro que venga por acá cerca o alguien en una moto, porque la verdad no hay lulo, está que la canasta pelada. Me hace el grande favor, le agradecería. Bueno."
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 42,
+    "customerName": "Juan Verduras",
+    "phone": "573117356269",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T11:17:44.84682-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "4 lb larga"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "maracuyá",
+        "product": "Maracuya",
+        "quantity": 3.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "larga",
+        "product": "Cebolla larga",
+        "quantity": 4.0,
+        "unit": "LB",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 59,
+    "customerName": "Bicicletero Nuevo",
+    "phone": "573506221123",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T12:17:05.646275-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Buenas tardes"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 44,
+    "customerName": "Que Me Haga Un Favor",
+    "phone": "573147249966",
+    "inputType": "AUDIO",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T11:24:14.557279-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Buenas, háganme el favor y me manda pulpa de mora que me olvidó pedir, pulpa de mora, mango, lulo, maracuyá las que tenga, unas cuatro o cinco de cada una."
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "pulpa de mora",
+        "product": "Mora",
+        "quantity": 4.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "mango",
+        "product": "Mango Tommy",
+        "quantity": 4.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "lulo",
+        "product": "Lulo",
+        "quantity": 4.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "maracuyá",
+        "product": "Maracuya",
+        "quantity": 4.0,
+        "unit": "UNIDAD",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 47,
+    "customerName": "Picina 2 Yepes",
+    "phone": "573170360515",
+    "inputType": "IMAGE",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T11:26:18.788657-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 45,
+    "customerName": "Diego Alejandro",
+    "phone": "573182341504",
+    "inputType": "AUDIO",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T11:24:20.483917-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Negrito, por si de pronto no ha salido el domicilio, usted me puede mandar unas 4 kg de yuca, papi."
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "cilantro",
+        "product": "Cilantro",
+        "quantity": 2.0,
+        "unit": "UNIDAD",
+        "price": null
+      },
+      {
+        "mentioned": "cimarron",
+        "product": "Cilantro cimarron",
+        "quantity": null,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "yuca",
+        "product": "Yuca",
+        "quantity": 4.0,
+        "unit": "KG",
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 56,
+    "customerName": "Vicky",
+    "phone": "573023278567",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T12:11:13.64983-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Porfa 10 libras de papa amarilla \n3000 de perejil \n500 de cilantro"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "papa amarilla",
+        "product": "Papa amarilla",
+        "quantity": 10.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "perejil",
+        "product": "Perejil crespo",
+        "quantity": null,
+        "unit": null,
+        "price": 3000
+      },
+      {
+        "mentioned": "cilantro",
+        "product": "Cilantro",
+        "quantity": null,
+        "unit": null,
+        "price": 500
+      }
+    ]
+  },
+  {
+    "orderId": 60,
+    "customerName": "Bicicletero Nuevo",
+    "phone": "573506221123",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T12:17:11.570661-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "La bicicleta ya está"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 58,
+    "customerName": "Comlama 2",
+    "phone": "573113666245",
+    "inputType": "AUDIO",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T12:13:07.900428-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": ""
+      },
+      {
+        "type": "AUDIO",
+        "content": "Papi, me dijeron que ayer devolvieron la habichuela que porque estaba feíta, entonces hay que descontarla ahí."
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "2 habichuela",
+        "product": "Habichuela",
+        "quantity": 2.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "5 tahity",
+        "product": "Limon tahiti",
+        "quantity": 5.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "2 Arbol",
+        "product": "Tomate de arbol",
+        "quantity": 2.0,
+        "unit": null,
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 68,
+    "customerName": "Pilar Valencia",
+    "phone": "273048318038258",
+    "inputType": "IMAGE",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T12:49:58.890917-05:00",
+    "messages": [
+      {
+        "type": "IMAGE",
+        "content": "Muchas gracias"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 73,
+    "customerName": "69 7 N 11",
+    "phone": "573013725421",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T14:01:38.573668-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Hola buenas buenas tardes hoy si tienes papitas picada"
+      },
+      {
+        "type": "TEXT",
+        "content": "Y aque precio"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 69,
+    "customerName": "S7 Norte 2 BN 04",
+    "phone": "573154312217",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T13:05:00.528878-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Hola, buenas tardes, no, no he pagado, es que he estado como ocupadita, entonces, tranquilo que yo ahora le pago, no, yo le dije al que por Nequi, pero pues he estado como muy ocupadita y no, no lo he hecho, pero denme unos 20 minuticos ya, ya me pongo en esas, ¿o yo? Ay, me disculpa."
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 71,
+    "customerName": "Mini Market Los Anjeles",
+    "phone": "573218389915",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T13:52:47.827557-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Buenos tardes"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 72,
+    "customerName": "Mini Market Los Anjeles",
+    "phone": "573218389915",
+    "inputType": "TEXT",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T13:53:19.01611-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Todavía tienen domicilio"
+      }
+    ],
+    "items": null
+  },
+  {
+    "orderId": 74,
+    "customerName": "69 7 N 11",
+    "phone": "573013725421",
+    "inputType": "TEXT",
+    "status": "APPROVED",
+    "receivedAt": "2026-11-03T14:06:06.314032-05:00",
+    "messages": [
+      {
+        "type": "TEXT",
+        "content": "Y de la buena acomo tienes \n20 libras necesito ha precio favorable \n2 de tomate duro no tan maduro \n2000 yerbas revuelto orégano tomillo cimaron cilantro 2 plátanos verdes 2 manzanas verdes 3lechugasbatavia grandes2 limontaiti 2 cabezas ajo"
+      },
+      {
+        "type": "TEXT",
+        "content": "👍"
+      }
+    ],
+    "items": [
+      {
+        "mentioned": "yerbas revuelto orégano",
+        "product": "Oregano fresco",
+        "quantity": null,
+        "unit": null,
+        "price": 2000
+      },
+      {
+        "mentioned": "tomillo",
+        "product": "Tomillo",
+        "quantity": null,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "cimaron",
+        "product": "Cilantro cimarron",
+        "quantity": null,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "cilantro",
+        "product": "Cilantro",
+        "quantity": null,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "papitas picada",
+        "product": "Papa",
+        "quantity": 20.0,
+        "unit": "LB",
+        "price": null
+      },
+      {
+        "mentioned": "tomate duro",
+        "product": "Tomate chonto",
+        "quantity": 2.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "yerbas revuelto orégano tomillo cimaron cilantro",
+        "product": "Hierbas de sopa",
+        "quantity": null,
+        "unit": null,
+        "price": 2000
+      },
+      {
+        "mentioned": "plátanos verdes",
+        "product": "Platano verde",
+        "quantity": 2.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "manzanas verdes",
+        "product": "Manzana verde",
+        "quantity": 2.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "lechugasbatavia",
+        "product": "Lechuga batavia",
+        "quantity": 3.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "limontaiti",
+        "product": "Limon tahiti",
+        "quantity": 2.0,
+        "unit": null,
+        "price": null
+      },
+      {
+        "mentioned": "cabezas ajo",
+        "product": "Ajo cabeza",
+        "quantity": 2.0,
+        "unit": null,
+        "price": null
+      }
+    ]
+  },
+  {
+    "orderId": 76,
+    "customerName": "Para Mirarla A Ver El Presupuesto",
+    "phone": "573013725421",
+    "inputType": "AUDIO",
+    "status": "CANCELLED",
+    "receivedAt": "2026-11-03T14:11:05.131969-05:00",
+    "messages": [
+      {
+        "type": "AUDIO",
+        "content": "Sí, a esa hora me sirve, tranquila, no importa, pero entonces necesito saber a cómo me da la papita picada y a cómo me da la buena para para mirarla a ver el presupuesto, a ver si le puedo abonar ahorita a la cuenta."
+      }
+    ],
+    "items": null
+  }
+]

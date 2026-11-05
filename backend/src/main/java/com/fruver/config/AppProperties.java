@@ -101,7 +101,8 @@ public record AppProperties(
             String homeHost,
             int homePort,
             boolean autoPrintWholesale,
-            int wholesaleGraceSeconds) {
+            int wholesaleGraceSeconds,
+            int reviewTimeoutSeconds) {
 
         public Printing {
             if (shopName == null || shopName.isBlank()) shopName = "FRUVER EL OASIS";
@@ -110,6 +111,7 @@ public record AppProperties(
             if (homeHost == null || homeHost.isBlank()) homeHost = (host != null && !host.isBlank()) ? host : "127.0.0.1";
             if (homePort <= 0) homePort = (port > 0) ? port : 9100;
             if (wholesaleGraceSeconds < 0) wholesaleGraceSeconds = 300;
+            if (reviewTimeoutSeconds <= 0) reviewTimeoutSeconds = 120;
         }
 
         public String currentTargetPrinter(String timezone) {
@@ -133,7 +135,18 @@ public record AppProperties(
     public record Audio(String storageType, String storagePath) {}
 
     public record Whatsapp(boolean enabled, String verifyToken, String appSecret, String accessToken,
-                           String phoneNumberId, String apiVersion) {}
+                           String phoneNumberId, String apiVersion,
+                           boolean sendErrorNoticesToUser,
+                           boolean sendOrderConfirmationEmoji,
+                           boolean autoRepliesEnabled) {
+        public Whatsapp {
+            if (verifyToken == null) verifyToken = "";
+            if (appSecret == null) appSecret = "";
+            if (accessToken == null) accessToken = "";
+            if (phoneNumberId == null) phoneNumberId = "";
+            if (apiVersion == null || apiVersion.isBlank()) apiVersion = "v21.0";
+        }
+    }
 
     public record Stt(String model, String apiKey, String baseUrl) {}
 

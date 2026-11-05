@@ -159,9 +159,9 @@ public class TalonarioRasterService {
                 originInfo = "<b>ORIGEN:</b> " + String.join(" + ", parts);
             }
         }
-        String orderNum = String.format("%06d", t.orderNumber());
+        String orderNum = String.format("%06d", t.printedInvoiceNumber());
 
-        var dt = t.at();
+        var dt = t.commercialDateTime();
         String day = dt != null ? String.format("%02d", dt.getDayOfMonth()) : "";
         String month = dt != null ? String.format("%02d", dt.getMonthValue()) : "";
         String year = dt != null ? String.valueOf(dt.getYear() % 100) : "";
@@ -259,6 +259,7 @@ public class TalonarioRasterService {
                           <td style="width:65%;padding-top:3px"><b>DIR:</b> <span style="font-size:15px;font-weight:bold">{{ADDRESS}}</span></td>
                           <td style="width:35%;padding-top:3px;font-size:13px">{{ORIGIN_INFO}}</td>
                         </tr>
+                        {{NOTES_ROW}}
                       </table>
                     </div>
                     """
@@ -270,7 +271,10 @@ public class TalonarioRasterService {
                     .replace("{{CUSTOMER}}", customer)
                     .replace("{{PHONE}}", phone)
                     .replace("{{ADDRESS}}", address)
-                    .replace("{{ORIGIN_INFO}}", originInfo);
+                    .replace("{{ORIGIN_INFO}}", originInfo)
+                    .replace("{{NOTES_ROW}}", (t.notes() != null && !t.notes().isBlank())
+                            ? "<tr><td colspan=\"2\" style=\"padding-top:4px;border-top:1px dashed #000;font-size:13px\"><b>OBSERVACIONES:</b> <span style=\"font-size:14.5px;font-weight:900\">" + t.notes().trim().toUpperCase() + "</span></td></tr>"
+                            : "");
             } else {
                 headerHtml = """
                     <div style="border-bottom:2px solid #000;padding-bottom:5px;margin-bottom:7px">

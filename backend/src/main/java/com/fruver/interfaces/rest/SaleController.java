@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -178,16 +179,25 @@ public class SaleController {
     @PostMapping("/orders/{orderId}/reprint")
     @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public Map<String, Object> reprintByOrder(@PathVariable long orderId, @RequestParam(required = false) String printer) {
-        Long saleId = sales.reprintByOrderId(orderId, Actor.name(), printer);
-        hub.orderChanged(orderId);
-        return Map.of("status", "PRINT_PENDING", "saleId", saleId, "orderId", orderId, "printer", printer != null ? printer : "AUTO");
+        Long resolvedOrderId = jdbc.sql("SELECT order_id FROM sale WHERE invoice_number = :o LIMIT 1")
+                .param("o", orderId).query(Long.class).optional().orElse(orderId);
+        Long saleId = sales.reprintByOrderId(resolvedOrderId, Actor.name(), printer);
+        hub.orderChanged(resolvedOrderId);
+        return Map.of("status", "PRINT_PENDING", "saleId", saleId, "orderId", resolvedOrderId, "printer", printer != null ? printer : "AUTO");
     }
 
-    /** Vista previa de comanda / factura por ID de Pedido (no muta ni aprueba) */
+    /** Vista previa de comanda / factura por ID de Pedido o consecutivo de Factura (no muta ni aprueba) */
     @GetMapping("/orders/{orderId}/ticket")
     @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public Map<String, Object> ticketByOrder(@PathVariable long orderId) {
-        Long saleId = jdbc.sql("SELECT id FROM sale WHERE order_id = :o").param("o", orderId).query(Long.class).optional().orElse(null);
+        // Prioridad 1: Buscar por consecutivo de Factura (invoice_number)
+        Long saleId = jdbc.sql("SELECT id FROM sale WHERE invoice_number = :o ORDER BY id DESC LIMIT 1")
+                .param("o", orderId).query(Long.class).optional().orElse(null);
+        // Prioridad 2: Buscar por ID de Pedido (order_id)
+        if (saleId == null) {
+            saleId = jdbc.sql("SELECT id FROM sale WHERE order_id = :o ORDER BY id DESC LIMIT 1")
+                    .param("o", orderId).query(Long.class).optional().orElse(null);
+        }
         if (saleId != null) {
             return ticket(saleId);
         }
@@ -199,10 +209,17 @@ public class SaleController {
     @GetMapping("/sales/{id}/ticket")
     @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public Map<String, Object> ticket(@PathVariable long id) {
-        Integer exists = jdbc.sql("SELECT 1 FROM sale WHERE id = :id").param("id", id).query(Integer.class).optional().orElse(null);
-        if (exists == null) throw new ApiException(404, "SALE_NOT_FOUND", "Venta no encontrada");
-        TicketData t = tickets.build(id, false);
-        return toTicketResponse(t, id);
+        // Prioridad 1: Búsqueda estricta por ID único de venta (sale.id)
+        Long saleId = jdbc.sql("SELECT id FROM sale WHERE id = :id LIMIT 1")
+                .param("id", id).query(Long.class).optional().orElse(null);
+        // Prioridad 2: Si no coincide con ninguna clave primaria, buscar por consecutivo de factura
+        if (saleId == null) {
+            saleId = jdbc.sql("SELECT id FROM sale WHERE invoice_number = :id ORDER BY id DESC LIMIT 1")
+                    .param("id", id).query(Long.class).optional().orElse(null);
+        }
+        if (saleId == null) throw new ApiException(404, "SALE_NOT_FOUND", "Venta no encontrada");
+        TicketData t = tickets.build(saleId, false);
+        return toTicketResponse(t, saleId);
     }
 
     private Map<String, Object> toTicketResponse(TicketData t, Long saleId) {
@@ -213,6 +230,8 @@ public class SaleController {
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("saleId", saleId != null ? saleId : -1L);
         resp.put("orderId", t.orderNumber());
+        Long invNum = t.invoiceNumber() != null ? t.invoiceNumber() : (saleId != null && saleId > 0 ? saleId : t.orderNumber());
+        resp.put("invoiceNumber", invNum);
         resp.put("shop", t.shop() != null ? t.shop() : "FRUVER EL OASIS");
         // Modulo de precios no habilitado para impresion: ni total ni individual
         resp.put("total", BigDecimal.ZERO);
@@ -228,11 +247,12 @@ public class SaleController {
         resp.put("deliveryPersonName", t.deliveryPersonName() != null ? t.deliveryPersonName() : "");
         resp.put("inputType", t.inputType() != null ? t.inputType() : "");
         resp.put("origin", t.inputType() != null ? t.inputType() : "");
-        if (t.at() != null) {
-            resp.put("date", t.at().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
-            resp.put("day", String.format("%02d", t.at().getDayOfMonth()));
-            resp.put("month", String.format("%02d", t.at().getMonthValue()));
-            resp.put("year", String.valueOf(t.at().getYear()));
+        OffsetDateTime dt = t.commercialDateTime() != null ? t.commercialDateTime() : t.at();
+        if (dt != null) {
+            resp.put("date", dt.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+            resp.put("day", String.format("%02d", dt.getDayOfMonth()));
+            resp.put("month", String.format("%02d", dt.getMonthValue()));
+            resp.put("year", String.valueOf(dt.getYear()));
         } else {
             resp.put("date", "");
             resp.put("day", "");
@@ -248,11 +268,24 @@ public class SaleController {
                 String qStr = l.quantity() != null ? Money.qty(l.quantity()) : "";
                 String uLabel = TicketFormatter.unitLabel(l.unit());
                 String cant = uLabel.isBlank() ? qStr : (qStr.isBlank() ? uLabel : qStr + " " + uLabel);
-                m.put("quantity", qStr);
-                m.put("unit", uLabel);
-                m.put("cant", cant);
-                m.put("price", "");
-                m.put("subtotal", "");
+
+                boolean isMoney = "VALOR".equalsIgnoreCase(l.unit())
+                        || "PESOS".equalsIgnoreCase(l.unit())
+                        || "COP".equalsIgnoreCase(l.unit());
+                if (isMoney) {
+                    BigDecimal moneyVal = l.subtotal() != null && l.subtotal().signum() > 0 ? l.subtotal() : l.price();
+                    m.put("quantity", "");
+                    m.put("unit", "VALOR");
+                    m.put("cant", "");
+                    m.put("price", moneyVal != null ? moneyVal.toPlainString() : "");
+                    m.put("subtotal", moneyVal != null ? moneyVal.toPlainString() : "");
+                } else {
+                    m.put("quantity", qStr);
+                    m.put("unit", uLabel);
+                    m.put("cant", cant);
+                    m.put("price", "");
+                    m.put("subtotal", "");
+                }
                 itemLines.add(m);
             }
         }
@@ -262,7 +295,7 @@ public class SaleController {
     }
 
     @GetMapping("/reports/sales")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public Map<String, Object> report(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
@@ -309,7 +342,7 @@ public class SaleController {
     }
 
     @PutMapping("/customers/{id}/type")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public void setType(@PathVariable long id, @Valid @RequestBody TypeBody b) {
         customers.setType(id, b.customerType(), Actor.name());
     }
@@ -348,19 +381,19 @@ public class SaleController {
     ) {}
 
     @PostMapping("/delivery-zones")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public DeliveryZoneService.DeliveryZoneView createDeliveryZone(@Valid @RequestBody DeliveryZoneBody b) {
         return deliveryZones.create(b.name(), b.covered(), b.fee(), b.minFree(), b.estimatedTime(), Actor.name());
     }
 
     @PutMapping("/delivery-zones/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public DeliveryZoneService.DeliveryZoneView updateDeliveryZone(@PathVariable long id, @Valid @RequestBody DeliveryZoneBody b) {
         return deliveryZones.update(id, b.name(), b.covered(), b.fee(), b.minFree(), b.estimatedTime(), Actor.name());
     }
 
     @DeleteMapping("/delivery-zones/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public void deleteDeliveryZone(@PathVariable long id) {
         deliveryZones.delete(id, Actor.name());
     }

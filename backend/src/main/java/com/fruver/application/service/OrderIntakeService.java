@@ -37,11 +37,23 @@ public class OrderIntakeService {
     @Transactional
     public IntakeResult record(String phone, String name, String externalId, OrderInputType type, String text,
                                String mediaId, String storageKey, String mime, String channel) {
+        String normPhone = Phones.normalize(phone);
+        String initialSource = (name != null && !name.isBlank()) ? "WHATSAPP_PROFILE" : "UNVERIFIED";
         CustomerRef customer = jdbc.sql("""
-                INSERT INTO customer(name, phone) VALUES (:n, :p)
-                ON CONFLICT (phone) DO UPDATE SET name = COALESCE(customer.name, EXCLUDED.name)
+                INSERT INTO customer(name, phone, name_source) VALUES (:n, :p, :src)
+                ON CONFLICT (phone) DO UPDATE SET
+                    name = CASE
+                        WHEN customer.name_source IN ('MANUAL','IMPORTED_CONTACT') THEN customer.name
+                        WHEN customer.name IS NOT NULL AND customer.name <> '' AND customer.name <> 'Cliente' THEN customer.name
+                        ELSE COALESCE(EXCLUDED.name, customer.name)
+                    END,
+                    name_source = CASE
+                        WHEN customer.name_source IN ('MANUAL','IMPORTED_CONTACT') THEN customer.name_source
+                        WHEN EXCLUDED.name IS NOT NULL AND EXCLUDED.name <> '' THEN 'WHATSAPP_PROFILE'
+                        ELSE customer.name_source
+                    END
                 RETURNING id, customer_type
-                """).param("n", name).param("p", phone)
+                """).param("n", name).param("p", normPhone).param("src", initialSource)
                 .query((rs, i) -> new CustomerRef(rs.getLong(1), rs.getString(2))).single();
 
         boolean wholesaleMode = props.printing().autoPrintWholesale();

@@ -46,12 +46,12 @@ public class ConversationService {
     /** La llamada al proveedor ocurre SIN transaccion; el registro posterior es atomico. */
     public void send(long orderId, String text, Kind kind, String actor) {
         if ("ia".equalsIgnoreCase(actor)) {
-            if (kind == Kind.CONFIRM && (props == null || !props.conversation().autoConfirmClearOrders())) {
-                log.info("Envío bloqueado: Confirmación automática de IA cancelada (autoConfirmClearOrders=false, orderId={})", orderId);
+            if (props == null || !props.conversation().aiAutoReply() || (props.whatsapp() != null && !props.whatsapp().autoRepliesEnabled())) {
+                log.info("Envío bloqueado: Mensaje automático de IA desactivado por política de negocio (orderId={})", orderId);
                 return;
             }
-            if (props == null || !props.conversation().aiAutoReply()) {
-                log.info("Envío bloqueado: Mensaje automático de IA cancelado (aiAutoReply=false, orderId={})", orderId);
+            if (kind == Kind.CONFIRM && !props.conversation().autoConfirmClearOrders()) {
+                log.info("Envío bloqueado: Confirmación automática de IA cancelada (autoConfirmClearOrders=false, orderId={})", orderId);
                 return;
             }
         }

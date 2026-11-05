@@ -70,7 +70,7 @@ public class MetaCloudApiStrategy implements WhatsAppProviderStrategy {
     @Override
     public MessagingGateway.DeliveryStatus sendReaction(String phone, String messageId, String emoji) {
         if (messageId == null || messageId.isBlank()) {
-            return sendText(phone, emoji);
+            return MessagingGateway.DeliveryStatus.FAILED;
         }
         Map<String, Object> body = Map.of(
                 "messaging_product", "whatsapp",
@@ -87,8 +87,8 @@ public class MetaCloudApiStrategy implements WhatsAppProviderStrategy {
                     .toBodilessEntity();
             return MessagingGateway.DeliveryStatus.SENT;
         } catch (RestClientException e) {
-            log.warn("Fallo al enviar reacción con Meta Cloud API: {}. Fallback a texto.", e.getMessage());
-            return sendText(phone, emoji);
+            log.warn("Fallo al enviar reacción con Meta Cloud API: {}", e.getMessage());
+            return MessagingGateway.DeliveryStatus.FAILED;
         }
     }
 

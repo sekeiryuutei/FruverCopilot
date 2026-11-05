@@ -13,7 +13,7 @@ import java.util.*;
 @Service
 public class SalesQueryService {
 
-    public record SaleSummary(long id, long orderId, String customerName, String phone, String phoneMasked, String customerType,
+    public record SaleSummary(long id, long orderId, Long invoiceNumber, String customerName, String phone, String phoneMasked, String customerType,
                               String inputType, BigDecimal total, String printStatus, String printError,
                               String approvedBy, OffsetDateTime createdAt) {}
 
@@ -34,7 +34,7 @@ public class SalesQueryService {
         LocalDate t = to == null ? f : to;
         StringBuilder sql = new StringBuilder("""
                 SELECT s.id, s.order_id, s.customer_name, s.customer_phone, s.customer_type, s.input_type, s.total,
-                       s.print_status, s.print_error, s.approved_by, s.created_at
+                       s.print_status, s.print_error, s.approved_by, s.created_at, s.invoice_number
                 FROM sale s WHERE s.created_at >= :from AND s.created_at < :to
                 """);
         Map<String, Object> p = new HashMap<>();
@@ -52,17 +52,19 @@ public class SalesQueryService {
             if (term.length() > 100) term = term.substring(0, 100);
             // Escapa comodines LIKE para que "%%%" no liste todo ni ralentice la consulta.
             String esc = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
-            // Si parece busqueda por telefono (solo digitos/+), exige minimo 4 digitos para no oracular numeros.
-            String digits = term.replaceAll("\\D", "");
-            if (!digits.isEmpty() && digits.length() < 4 && term.matches("[+\\d\\s\\-()]+")) {
-                throw new com.fruver.application.service.ApiException(400, "VALIDATION_ERROR", "Para buscar por telefono escribe al menos 4 digitos");
+            // Si es un número puro, permite buscar directamente por consecutivo de factura o pedido
+            if (term.matches("^\\d+$")) {
+                sql.append(" AND (s.invoice_number = :numVal OR s.order_id = :numVal OR s.customer_name ILIKE :q ESCAPE '\\' OR s.customer_phone ILIKE :q ESCAPE '\\' OR s.address ILIKE :q ESCAPE '\\')");
+                p.put("numVal", Long.parseLong(term));
+            } else {
+                sql.append(" AND (s.customer_name ILIKE :q ESCAPE '\\' OR s.customer_phone ILIKE :q ESCAPE '\\' OR s.address ILIKE :q ESCAPE '\\')");
             }
-            sql.append(" AND (s.customer_name ILIKE :q ESCAPE '\\' OR s.customer_phone ILIKE :q ESCAPE '\\' OR s.address ILIKE :q ESCAPE '\\')");
             p.put("q", "%" + esc + "%");
         }
         sql.append(" ORDER BY s.id DESC LIMIT 500");
-        return jdbc.sql(sql.toString()).params(p).query((rs, n) -> new SaleSummary(rs.getLong(1), rs.getLong(2), rs.getString(3),
-                rs.getString(4), Phones.mask(rs.getString(4)), rs.getString(5), rs.getString(6), rs.getBigDecimal(7), rs.getString(8),
+        return jdbc.sql(sql.toString()).params(p).query((rs, n) -> new SaleSummary(rs.getLong(1), rs.getLong(2),
+                rs.getObject(12) != null ? rs.getLong(12) : rs.getLong(1),
+                rs.getString(3), rs.getString(4), rs.getString(4), rs.getString(5), rs.getString(6), rs.getBigDecimal(7), rs.getString(8),
                 rs.getString(9), rs.getString(10), rs.getObject(11, OffsetDateTime.class))).list();
     }
 

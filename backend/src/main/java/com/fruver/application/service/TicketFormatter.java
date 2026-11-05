@@ -35,12 +35,14 @@ public final class TicketFormatter {
         out.add(new TicketLine(sep, false));
 
         // Número de factura grande y prominente
+        long invNum = t.printedInvoiceNumber();
+        var dt = t.commercialDateTime();
         if (cols >= 40) {
-            out.add(new TicketLine(center("*** FACTURA #" + t.orderNumber() + " ***", cols), true));
-            out.add(new TicketLine("FECHA: " + t.at().format(DATE), false));
+            out.add(new TicketLine(center("*** FACTURA #" + invNum + " ***", cols), true));
+            out.add(new TicketLine("FECHA: " + dt.format(DATE), false));
         } else {
-            out.add(new TicketLine(center("** FACTURA #" + t.orderNumber() + " **", cols), true));
-            out.add(new TicketLine("FECHA: " + t.at().format(DATE), false));
+            out.add(new TicketLine(center("** FACTURA #" + invNum + " **", cols), true));
+            out.add(new TicketLine("FECHA: " + dt.format(DATE), false));
         }
 
         out.add(new TicketLine(sep, false));
@@ -67,6 +69,7 @@ public final class TicketFormatter {
         }
         if (t.address() != null && !t.address().isBlank()) wrap("DIRECCION: " + t.address(), cols, false, out);
         if (t.deliveryPersonName() != null && !t.deliveryPersonName().isBlank()) wrap("REPARTIDOR: " + t.deliveryPersonName(), cols, true, out);
+        if (t.notes() != null && !t.notes().isBlank()) wrap("OBS: " + t.notes(), cols, true, out);
 
         out.add(new TicketLine(doubleSep, false));
         // Cabecera de la tabla: CANTIDAD / UNIDAD primero, luego DESCRIPCION y VALOR
@@ -79,9 +82,17 @@ public final class TicketFormatter {
         for (TicketData.Line l : t.lines()) {
             String qtyStr = l.quantity() != null ? Money.qty(l.quantity()) : "";
             String uLabel = unitLabel(l.unit());
-            String qtyAndUnit = uLabel.isBlank() ? qtyStr : (qtyStr.isBlank() ? uLabel : qtyStr + " " + uLabel);
-            // Modulo de precios no habilitado para tickets/facturas: siempre espacio en blanco para calculo manual
-            String priceStr = "$          ";
+            boolean isMoney = "VALOR".equalsIgnoreCase(l.unit()) || "PESOS".equalsIgnoreCase(l.unit()) || "COP".equalsIgnoreCase(l.unit());
+            String qtyAndUnit;
+            String priceStr;
+            if (isMoney) {
+                qtyAndUnit = "";
+                BigDecimal val = l.subtotal() != null && l.subtotal().signum() > 0 ? l.subtotal() : l.price();
+                priceStr = val != null ? "$" + Money.format(val) : "$          ";
+            } else {
+                qtyAndUnit = uLabel.isBlank() ? qtyStr : (qtyStr.isBlank() ? uLabel : qtyStr + " " + uLabel);
+                priceStr = "$          ";
+            }
             formatItemLine(l.name(), qtyAndUnit, priceStr, cols, out);
         }
 

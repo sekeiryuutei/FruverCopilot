@@ -1,6 +1,6 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#14361f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="El Oasis">
+<meta name="theme-color" content="#14361f"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="El Oasis">
 <title>Fruver El Oasis</title><link rel="icon" href="/oasis-logo.png"><link rel="manifest" href="/manifest.json"><link rel="apple-touch-icon" href="/oasis-logo.png">
 <style>
 :root{--bg:#f4f6f4;--card:#fff;--ink:#14231a;--mut:#607066;--line:#dbe3dd;--g:#1f9d55;--y:#d99a00;--r:#d33;--brand:#14361f;--bnav-h:64px}
@@ -259,12 +259,19 @@ h3{margin:18px 0 8px}.mut{color:var(--mut)}.scroll{overflow-x:auto;-webkit-overf
     <button id="btnHeaderInstall" class="b" style="display:none;padding:5px 9px;font-size:12px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-weight:700" title="Instalar app en tu pantalla de inicio">📲 Instalar</button>
     <span id="printerBadge" title="Impresora activa según horario">🖨️ FRUVER</span>
     <span id="printStatusWidget" class="pill green" style="cursor:pointer;font-size:11.5px;padding:4px 9px;font-weight:700;display:inline-flex;align-items:center;gap:4px" title="Estado de impresión · Clic para verificar o reimprimir">✓ 🖨️ Al día</span>
+    <span id="waStatusWidget" class="pill green" style="cursor:pointer;font-size:11.5px;padding:4px 9px;font-weight:700;display:inline-flex;align-items:center;gap:4px" title="Estado de WhatsApp · Clic para ver o escanear QR" onclick="showWhatsAppQrModal()">💬 WhatsApp</span>
     <span class="cnt" id="cnt"></span>
     <button class="b" style="padding:6px 11px;font-size:13px;background:#1b3824;color:#fff;border:1px solid #ffffff44;display:inline-flex;align-items:center;gap:4px" id="logoutBtn" title="Cerrar sesión">🚪 Salir</button>
   </div>
   <!-- Nav solo en escritorio -->
   <div id="desktopNav"></div>
 </header>
+
+<!-- ── Barra de Alerta WhatsApp Desconectado / Sin Señal ──── -->
+<div id="waAlertBanner" style="display:none;background:#b91c1c;color:#fff;padding:10px 16px;font-size:13.5px;font-weight:700;align-items:center;justify-content:center;gap:12px;position:sticky;top:52px;z-index:25;box-shadow:0 3px 10px rgba(0,0,0,0.3);text-align:center">
+  <span id="waAlertMsg">⚠️ WHATSAPP DESCONECTADO — No están llegando pedidos ni se pueden imprimir facturas.</span>
+  <button id="waScanBtn" class="b" style="background:#fff;color:#b91c1c;border:none;padding:5px 12px;border-radius:6px;font-weight:800;font-size:12.5px;cursor:pointer" onclick="showWhatsAppQrModal()">📷 Escanear QR Ahora</button>
+</div>
 
 <!-- ── Barra de Modo Sin Conexión (Offline Banner) ──── -->
 <div id="offlineBar" style="display:none;background:#b45309;color:#fff;padding:8px 14px;font-size:13.5px;font-weight:700;align-items:center;justify-content:center;gap:10px;position:sticky;top:52px;z-index:24;box-shadow:0 2px 8px rgba(0,0,0,0.25);text-align:center">
@@ -294,7 +301,7 @@ const $$=(s,p=document)=>[...p.querySelectorAll(s)];
 const cop=n=>n==null?'—':'$'+Math.round(n).toLocaleString('es-CO');
 const cleanPhone=p=>(p||'').replace(/^57(?=\d{10}$)/,'');
 const num=v=>v===''||v==null?null:Number(v);
-function h(tag,attrs={},...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(k==='class')e.className=v;else if(k==='checked'){e.checked=!!v;if(v)e.setAttribute('checked','')}else if(k==='dataset')Object.assign(e.dataset,v);else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);else if(v!==false&&v!=null)e.setAttribute(k,v===true?'':v)}
+function h(tag,attrs={},...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(k==='class')e.className=v;else if(k==='innerHTML')e.innerHTML=v;else if(k==='checked'){e.checked=!!v;if(v)e.setAttribute('checked','')}else if(k==='dataset')Object.assign(e.dataset,v);else if(k.startsWith('on'))e.addEventListener(k.slice(2),v);else if(v!==false&&v!=null)e.setAttribute(k,v===true?'':v)}
   for(const c of kids.flat()){if(c==null||c===false)continue;e.append(c.nodeType?c:document.createTextNode(String(c)))}return e}
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',4500)}
 function csrf(){return decodeURIComponent((document.cookie.match(/XSRF-TOKEN=([^;]+)/)||[])[1]||'')}
@@ -553,7 +560,6 @@ function totalOf(o,d){
   if(!allPriced)return null;
   return d.items.reduce((s,it)=>s+subtotalOf(o,it),0);
 }
-function totalOf(o,d){return d.items.reduce((s,it)=>{if(it.qtyError||it.priceError)return s;const p=priceFor(o,it);return s+(p!=null&&it.quantity>0?Math.round(it.quantity*p):0)},0)}
 
 async function updatePrinterStatus(){
   try{
@@ -573,12 +579,12 @@ async function updatePrinterStatus(){
     if(pw){
       if(st.failedCount>0){
         pw.className='pill red';
-        pw.textContent=`🔴 ${st.failedCount} sin imprimir`;
-        pw.title=`Hay ${st.failedCount} factura(s) fallida(s). Clic para reintentar todas.`;
+        pw.textContent=`🖨️ ${st.failedCount} fallo(s) impresión`;
+        pw.title=`Hay ${st.failedCount} factura(s) fallida(s) en la impresora física. Clic para reintentar todas.`;
         pw.onclick=reprintAllPending;
       } else if(st.pendingCount>0){
         pw.className='pill amber';
-        pw.textContent=`⏳ ${st.pendingCount} en cola`;
+        pw.textContent=`⏳ ${st.pendingCount} en cola impresión`;
         pw.title=`Hay ${st.pendingCount} trabajo(s) en cola de impresión. Clic para actualizar.`;
         pw.onclick=updatePrinterStatus;
       } else {
@@ -588,7 +594,91 @@ async function updatePrinterStatus(){
         pw.onclick=async()=>{toast('✓ Impresora al día. No hay facturas pendientes.');await updatePrinterStatus();};
       }
     }
+    // Estado y Alerta en Pantalla de WhatsApp
+    const waWidget=$('#waStatusWidget');
+    const waBanner=$('#waAlertBanner');
+    const waMsg=$('#waAlertMsg');
+    const waStatus=S.whatsappStatus?.status;
+    if(waStatus==='CONNECTED'){
+      if(waWidget){
+        waWidget.className='pill green';
+        waWidget.textContent='✓ 💬 WA Conectado';
+        waWidget.title=`WhatsApp conectado (+${cleanPhone(S.whatsappStatus?.phone||'')}). Clic para ver estado.`;
+      }
+      if(waBanner) waBanner.style.display='none';
+    } else if(waStatus==='QR_READY'){
+      if(waWidget){
+        waWidget.className='pill red';
+        waWidget.textContent='🔴 💬 Escanear QR';
+        waWidget.title='WhatsApp desconectado: Escanea el QR para recibir mensajes.';
+      }
+      if(waBanner){
+        waBanner.style.display='flex';
+        if(waMsg) waMsg.textContent='⚠️ WHATSAPP DESCONECTADO — Escanea el código QR ahora para recibir pedidos e imprimir facturas.';
+      }
+    } else {
+      if(waWidget){
+        waWidget.className='pill red';
+        waWidget.textContent='🔴 💬 Desconectado';
+        waWidget.title='WhatsApp sin señal o desconectado. Clic para reconectar.';
+      }
+      if(waBanner){
+        waBanner.style.display='flex';
+        if(waMsg) waMsg.textContent='⚠️ WHATSAPP SIN SEÑAL / DESCONECTADO — No están entrando mensajes de clientes.';
+      }
+    }
   }catch(e){}
+}
+
+async function showWhatsAppQrModal(){
+  const overlay=h('div',{class:'modal-overlay',onclick:e=>{if(e.target===overlay){clearInterval(timer);overlay.remove();}}});
+  const qrImg=h('img',{style:'width:250px;height:250px;object-fit:contain;border:2px solid var(--line);border-radius:10px;background:#fff;padding:8px;display:none'});
+  const statusMsg=h('div',{style:'font-size:14px;color:var(--ink);text-align:center;line-height:1.4'},'Consultando estado de WhatsApp…');
+  const btnClose=h('button',{class:'b',onclick:()=>{clearInterval(timer);overlay.remove();}},'✕ Cerrar');
+
+  const refresh=async()=>{
+    try{
+      const wa=await api('/api/whatsapp/status');
+      S.whatsappStatus=wa;
+      if(wa?.status==='CONNECTED'){
+        statusMsg.innerHTML='<span style="font-size:24px">✅</span><br><b style="color:var(--g);font-size:15px">¡WhatsApp Conectado Exitosamente!</b><br><span class="mut" style="font-size:12.5px">Número: +'+cleanPhone(wa.phone||'')+'</span>';
+        qrImg.style.display='none';
+        setTimeout(()=>{clearInterval(timer);overlay.remove();updatePrinterStatus();},1800);
+      } else if(wa?.status==='QR_READY' && wa.qr){
+        statusMsg.innerHTML='<b style="color:var(--r);font-size:15px">📱 Escanea este código desde WhatsApp</b><br><span class="mut" style="font-size:12.5px">En tu celular ve a: <b>Ajustes > Dispositivos vinculados > Vincular dispositivo</b></span>';
+        qrImg.src=wa.qr;
+        qrImg.style.display='block';
+      } else {
+        statusMsg.innerHTML='<b style="color:var(--y)">⏳ Conectando o esperando código QR…</b>';
+        qrImg.style.display='none';
+      }
+    }catch(err){
+      statusMsg.textContent='Error al conectar: '+err.message;
+    }
+  };
+
+  await refresh();
+  const timer=setInterval(refresh,3000);
+
+  const card=h('div',{class:'modal-card',style:'max-width:360px;gap:14px;align-items:center;text-align:center'},
+    h('div',{class:'top',style:'width:100%'},
+      h('b',{style:'font-size:16px'},'📱 Conexión WhatsApp El Oasis'),
+      h('span',{class:'sp'}),
+      btnClose
+    ),
+    qrImg,
+    statusMsg,
+    h('div',{class:'row',style:'justify-content:center;gap:8px;margin-top:6px'},
+      h('button',{class:'b main',onclick:refresh},'🔄 Actualizar'),
+      h('button',{class:'b',title:'Cerrar sesión actual para generar nuevo QR limpio',onclick:async()=>{
+        if(confirm('¿Deseas reiniciar la sesión de WhatsApp y generar un nuevo código QR?')){
+          try{await api('/api/whatsapp/logout',{method:'POST'});toast('Sesión cerrada. Esperando nuevo QR...');await refresh();}catch(x){toast(x.message)}
+        }
+      }},'🔌 Reiniciar Sesión')
+    )
+  );
+  overlay.append(card);
+  document.body.append(overlay);
 }
 
 async function reprintAllPending(){
@@ -686,7 +776,7 @@ function buildTalonarioView(t){
   const d = t.day || '';
   const m = t.month || '';
   const y = t.year || '';
-  const orderNum = String(t.orderId || t.saleId || '').padStart(6, '0');
+  const orderNum = String(t.invoiceNumber || t.saleId || t.orderId || '').padStart(6, '0');
   const customerName = (t.customer || 'CLIENTE GENERAL').toUpperCase();
   const rawPhone = (t.phone || '').trim();
   let phone = rawPhone.replace(/^(\+?57)/, '');
@@ -816,6 +906,7 @@ function buildTalonarioView(t){
         </div>
         <div style="margin-top:2px"><b>DIR:</b> <span style="font-weight:bold">${address ? address : '________________________________________________'}</span></div>
         ${originInfo ? `<div style="margin-top:2px;font-size:11.5px;color:#222">${originInfo}</div>` : ''}
+        ${t.notes ? `<div style="margin-top:4px;padding-top:3px;border-top:1px dashed #000;font-size:12.5px"><b>OBSERVACIONES:</b> <span style="font-weight:900">${t.notes}</span></div>` : ''}
       </div>`;
     } else {
       headerHtml = `
@@ -901,7 +992,7 @@ function showTicketModal(t){
       const q = printerLoc ? `?printer=${printerLoc}` : '';
       const endpoint = t.orderId ? `/api/orders/${t.orderId}/reprint${q}` : `/api/sales/${t.saleId}/reprint${q}`;
       await api(endpoint,{method:'POST'});
-      toast(`✓ Factura #${t.orderId || t.saleId} enviada a imprimir en ${printerLoc || S.printerStatus?.activePrinter || 'impresora'}`);
+      toast(`✓ Factura #${t.invoiceNumber || t.saleId || t.orderId} enviada a imprimir en ${printerLoc || S.printerStatus?.activePrinter || 'impresora'}`);
       overlay.remove();
       await updatePrinterStatus();
       if(typeof loadOrders === 'function') await loadOrders();
@@ -956,9 +1047,12 @@ function showTicketModal(t){
     }
   }, '🧾 Ticket Térmico 80mm');
 
+  const fNum = t.invoiceNumber || t.saleId || t.orderId;
+  const pNote = (t.orderId && t.orderId != fNum) ? ` (Pedido #${t.orderId})` : '';
+
   const m=h('div',{class:'modal-card',style:'max-width:660px;max-height:92vh;overflow-y:auto'},
     h('div',{class:'top',style:'margin-bottom:10px'},
-      h('b',{style:'font-size:16px'},'Factura Pedido #'+(t.orderId || t.saleId)),
+      h('b',{style:'font-size:16px'},'Factura #'+fNum+pNote),
       h('span',{class:'sp'}),
       h('button',{class:'b',onclick:()=>overlay.remove()},'✕ Cerrar')
     ),
@@ -1067,8 +1161,21 @@ function renderOps(){
   const active=S.orders.filter(o=>o.status!=='APPROVED'),done=S.orders.filter(o=>o.status==='APPROVED');
   active.sort((a,b)=>b.id-a.id);
   done.sort((a,b)=>b.id-a.id);
+
+  const filterVal = (S.opsFilter || '').trim().toLowerCase();
+  const matchOrder = o => {
+    if (!filterVal) return true;
+    const inv = String(o.invoiceNumber || '');
+    const id = String(o.id || '');
+    const name = (o.customer?.name || '').toLowerCase();
+    const phone = (o.customer?.phone || '').toLowerCase();
+    return inv === filterVal || inv.includes(filterVal) || id === filterVal || id.includes(filterVal) || name.includes(filterVal) || phone.includes(filterVal);
+  };
+  const displayActive = active.filter(matchOrder);
+  const displayDone = done.filter(matchOrder);
+
   const c={GREEN:0,YELLOW:0,RED:0};active.forEach(o=>c[o.reviewStatus]!==undefined&&c[o.reviewStatus]++);
-  $('#cnt').textContent=`Pedidos: ${active.length}  🟢 ${c.GREEN}  🟡 ${c.YELLOW}  🔴 ${c.RED}`;
+  $('#cnt').textContent=`Revisión: ${active.length}  🟢 ${c.GREEN}  🟡 ${c.YELLOW}  🔴 ${c.RED}`;
   for(const id of Object.keys(S.draft))if(!S.orders.some(o=>String(o.id)===id))delete S.draft[id];
   const m=$('#main');
   const existing=new Map([...m.children].filter(n=>n.classList.contains('card')).map(n=>[n.dataset.id,n]));
@@ -1129,22 +1236,52 @@ function renderOps(){
     actionsPanel,
     h('div',{style:'display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap'},
       h('span',{style:'font-size:13px;font-weight:700;color:var(--mut)'},'🔍 Buscar Factura:'),
-      h('input',{id:'quickReprintId',type:'number',placeholder:'# Factura / Pedido',style:'width:150px;height:38px;font-size:15px;font-weight:700;text-align:center'}),
+      h('input',{
+        id:'quickReprintId',
+        type:'text',
+        value: S.opsFilter || '',
+        placeholder:'# Factura / Pedido / Cliente',
+        style:'width:220px;height:38px;font-size:14.5px;font-weight:700;text-align:center',
+        oninput: e => {
+          S.opsFilter = e.target.value;
+          renderOps();
+        },
+        onkeydown: e => {
+          if (e.key === 'Enter') {
+            const val = e.target.value.trim();
+            if (!val) return;
+            const match = S.orders.find(o => String(o.invoiceNumber) === val) || S.orders.find(o => String(o.id) === val);
+            if (match && match.saleId) showTicket(match.saleId);
+            else if (match) showTicketByOrder(match.id);
+            else showTicketByOrder(val);
+          }
+        }
+      }),
+      (S.opsFilter ? h('button',{class:'b',style:'height:38px;padding:0 12px;font-weight:700',title:'Limpiar búsqueda',onclick:()=>{S.opsFilter='';renderOps()}},'✕') : null),
       h('button',{class:'b',style:'height:38px;font-size:13.5px;font-weight:700;background:#1e3a5f;color:#93c5fd;border-color:#1e3a5f',onclick:async()=>{
         const idInput=$('#quickReprintId');
-        const val=idInput?.value?.trim();
+        const val=idInput?.value?.trim() || S.opsFilter?.trim();
         if(!val){toast('Digita el número de factura/pedido');return}
+        const match = S.orders.find(o => String(o.invoiceNumber) === val) || S.orders.find(o => String(o.id) === val);
         try{
-          await api(`/api/orders/${val}/reprint`,{method:'POST'});
-          toast(`✓ Factura #${val} enviada a reimprimir`);
+          if (match && match.saleId) {
+            await api(`/api/sales/${match.saleId}/reprint`,{method:'POST'});
+            toast(`✓ Factura #${val} (Venta #${match.saleId}) enviada a reimprimir`);
+          } else {
+            await api(`/api/orders/${val}/reprint`,{method:'POST'});
+            toast(`✓ Factura #${val} enviada a reimprimir`);
+          }
           await updatePrinterStatus();await loadOrders();
         }catch(e){toast('Error al reimprimir: '+e.message)}
       }},'🖨️ Reimprimir #'),
       h('button',{class:'b',style:'height:38px;font-size:13.5px',onclick:()=>{
         const idInput=$('#quickReprintId');
-        const val=idInput?.value?.trim();
+        const val=idInput?.value?.trim() || S.opsFilter?.trim();
         if(!val){toast('Digita el número de factura/pedido');return}
-        showTicketByOrder(val);
+        const match = S.orders.find(o => String(o.invoiceNumber) === val) || S.orders.find(o => String(o.id) === val);
+        if(match && match.saleId) showTicket(match.saleId);
+        else if(match) showTicketByOrder(match.id);
+        else showTicketByOrder(val);
       }},'🧾 Ver Factura'),
       reprintSelBtn
     )
@@ -1152,8 +1289,8 @@ function renderOps(){
   if(existing.get('toolbar')){
     const mutEl=opsBar.querySelector('#toolbarStats');if(mutEl)mutEl.textContent=!S.ordersLoaded?'Cargando pedidos...':`Activos: ${active.length} · Facturas de hoy: ${done.length}`;
   }
-  const centerContent=!S.ordersLoaded?[loadingOrdersMsg]:(active.length?[]:[emptyMsg]);
-  const wanted=[...(alertBanner?[alertBanner]:[]),opsBar,...centerContent,...(!S.ordersLoaded?[]:active.map(o=>cardFor(o,existing))),...(done.length&&S.ordersLoaded?[doneTitle]:[]),...(!S.ordersLoaded?[]:done.map(o=>cardFor(o,existing)))];
+  const centerContent=!S.ordersLoaded?[loadingOrdersMsg]:(displayActive.length?[]:[emptyMsg]);
+  const wanted=[...(alertBanner?[alertBanner]:[]),opsBar,...centerContent,...(!S.ordersLoaded?[]:displayActive.map(o=>cardFor(o,existing))),...(displayDone.length&&S.ordersLoaded?[doneTitle]:[]),...(!S.ordersLoaded?[]:displayDone.map(o=>cardFor(o,existing)))];
   const keep=new Set(wanted);[...m.children].forEach(n=>{if(!keep.has(n))n.remove()});
   let ref=m.firstElementChild;
   for(const el of wanted){if(el===ref)ref=ref.nextElementSibling;else m.insertBefore(el,ref)}}
@@ -1274,7 +1411,7 @@ function doneCard(o){
       const clean = n.trim();
       try{
         if(o.customer?.id){
-          await api(`/api/customers/${o.customer.id}`,{method:'PUT',body:{name:clean,phone:o.customer.phoneMasked}});
+          await api(`/api/customers/${o.customer.id}`,{method:'PUT',body:{name:clean,phone:o.customer.phone||o.customer.phoneMasked}});
           toast(`✓ Nombre actualizado: "${clean}"`);
           await loadOrders();
         }
@@ -1282,9 +1419,13 @@ function doneCard(o){
     }
   }}, (o.customer?.name || 'Cliente') + ' ✏️');
 
+  const invNum = o.invoiceNumber || o.saleId || o.id;
   const topRow = h('div',{class:'top',style:'gap:8px;align-items:center'},
     chk,
-    h('b',{style:'font-size:22px;color:var(--g);font-weight:900'},'#'+o.id),
+    h('div',{style:'display:flex;flex-direction:column;line-height:1.1'},
+      h('b',{style:'font-size:20px;color:var(--g);font-weight:900'},'Factura #'+invNum),
+      h('span',{style:'font-size:11px;color:var(--mut);font-weight:600'},'(Ped. #'+o.id+')')
+    ),
     inputPill,
     h('span',{style:'font-weight:700;font-size:15px'},custNameEl,' · '+phoneStr),
     o.deliveryPersonName ? h('span',{class:'pill',style:'background:rgba(59,130,246,0.15);color:#60a5fa'},'🛵 '+o.deliveryPersonName) : null,
@@ -1416,7 +1557,7 @@ function card(o){
       mark();
       try{
         if(o.customer?.id){
-          await api(`/api/customers/${o.customer.id}`,{method:'PUT',body:{name:clean,phone:o.customer.phoneMasked}});
+          await api(`/api/customers/${o.customer.id}`,{method:'PUT',body:{name:clean,phone:o.customer.phone||o.customer.phoneMasked}});
           toast(`✓ Nombre actualizado: "${clean}"`);
           await loadOrders();
         }
@@ -1449,7 +1590,11 @@ function card(o){
   el.append(h('div',{class:'top',style:'align-items:center;gap:8px'},
     inputPill,
     offlinePill,
-    h('b',{style:'font-size:22px;font-weight:900'},'#'+o.id),
+    o.invoiceNumber
+      ? h('span',{style:'display:inline-flex;align-items:baseline;gap:6px'},
+          h('b',{style:'font-size:20px;font-weight:900;color:var(--g)'},'Factura #'+o.invoiceNumber),
+          h('span',{style:'font-size:12px;color:var(--mut)'},'(Ped. #'+o.id+')'))
+      : h('b',{style:'font-size:22px;font-weight:900'},'Pedido #'+o.id),
     statusPill(o),
     verifPill,
     validateBtn,
@@ -1655,11 +1800,13 @@ function card(o){
 
   const approve=h('button',{class:'b main'},'APROBAR E IMPRIMIR');
   approve.onclick=async()=>{
+    if (approve.dataset.busy === '1') return;
     const draftItems = view.items || [];
     if (!draftItems.length) {
       toast('⚠️ El pedido no tiene productos. Agrega al menos un producto antes de aprobar e imprimir.');
       return;
     }
+    approve.dataset.busy = '1';
     approve.disabled=true;
     approve.dataset.origHtml = approve.innerHTML;
     approve.innerHTML = '<span class="spin">⏳</span> Imprimiendo...';
@@ -1668,19 +1815,32 @@ function card(o){
       const dpId = deliveryPersonSelect.value ? Number(deliveryPersonSelect.value) : (view.deliveryPersonId || null);
       const r=await api(`/api/orders/${o.id}/approve`,{method:'POST',body:{version:b.version, deliveryPersonId: dpId}});
       delete S.draft[o.id];
-      toast('✓ Venta '+cop(r.total)+' aprobada · Factura generada');
+      const invNum = r.invoiceNumber ? '#' + String(r.invoiceNumber).padStart(6,'0') : ('#' + r.saleId);
+      toast(`✓ Factura ${invNum} generada · Venta ${cop(r.total)}`);
       await loadOrders();
       showTicket(r.saleId);
+      let cd = 8;
+      const tm = setInterval(() => {
+        cd--;
+        if (cd > 0) {
+          approve.innerHTML = `✓ Aprobado (${cd}s)`;
+        } else {
+          clearInterval(tm);
+          approve.disabled = false;
+          approve.dataset.busy = '0';
+          if (approve.dataset.origHtml) approve.innerHTML = approve.dataset.origHtml;
+        }
+      }, 1000);
     }catch(e){
+      approve.disabled=false;
+      approve.dataset.busy = '0';
+      if(approve.dataset.origHtml) approve.innerHTML = approve.dataset.origHtml;
       let msg=e.message;
       if(e.code==='ORDER_REQUIRES_REVIEW'&&e.details&&e.details.length){
         msg='Falta revisar: '+e.details.join('; ');
       }
       toast(msg);
       if(e.code==='ORDER_CONFLICT'){delete S.draft[o.id];loadOrders()}
-    }finally{
-      approve.disabled=false;
-      if(approve.dataset.origHtml) approve.innerHTML = approve.dataset.origHtml;
     }
   };
   el.append(h('div',{class:'row'},h('button',{class:'b',onclick:addRow},'+ Producto'),
@@ -1695,9 +1855,9 @@ function card(o){
 async function save(o,d){
   const bad=d.items.find(i=>i.qtyError||i.priceError);
   if(bad)throw Object.assign(new Error("Corrige "+(bad.name||"la línea")+": "+(bad.qtyError||bad.priceError)),{code:"LOCAL"});
-  if(d.items.some(i=>!i.productId||(!isMoneyOrder(i)&&!(i.quantity>0))))throw Object.assign(new Error("Completa producto y cantidad de todas las líneas (o elimina la línea vacía)"),{code:"LOCAL"});
+  if(d.items.some(i=>!i.productId))throw Object.assign(new Error("Completa producto de todas las líneas (o elimina la línea vacía)"),{code:"LOCAL"});
   const items=payloadItems(d.items);                      // une repetidas antes de enviar; el servidor también las rechaza
-  const body={version:d.version,customerName:d.customerName,address:d.address,notes:d.notes,deliveryPersonId:d.deliveryPersonId||null,items:items.map(i=>({id:i.id,productId:i.productId,quantity:i.quantity,unit:i.unit,manualPrice:i.manualPrice,priceChangeReason:i.reason}))};
+  const body={version:d.version,customerName:d.customerName,address:d.address,notes:d.notes,deliveryPersonId:d.deliveryPersonId||null,items:items.map(i=>({id:i.id,productId:i.productId,quantity:(i.quantity!=null&&Number(i.quantity)>0)?i.quantity:null,unit:i.unit,manualPrice:i.manualPrice,priceChangeReason:i.reason}))};
   const r=await api(`/api/orders/${o.id}`,{method:'PUT',body});d.version=r.version;return r}
 function replyPanel(el,o,kind,text){
   el.querySelector('.reply')?.remove();
@@ -2598,16 +2758,19 @@ async function renderPrinterConfig(){
 async function renderSales(){const m=$('#main');const today=new Date().toISOString().slice(0,10);const from=h('input',{type:'date',value:today}),to=h('input',{type:'date',value:today}),q=h('input',{placeholder:'Cliente, teléfono, dirección'});
   const ct=h('select',{},h('option',{value:''},'Todos'),h('option',{value:'RETAIL'},'Minorista'),h('option',{value:'WHOLESALE'},'Mayorista'));const out=h('div');
   const go=async()=>{try{const p=new URLSearchParams({from:from.value,to:to.value});if(q.value)p.set('q',q.value);if(ct.value)p.set('customerType',ct.value);const rows=await api('/api/sales?'+p);
-    out.replaceChildren(h('p',{class:'mut'},rows.length+' ventas · '+cop(rows.reduce((s,r)=>s+r.total,0))),h('div',{class:'scroll'},h('table',{},h('thead',{},h('tr',{},['#','Hora','Cliente','Tipo','Origen','Total','Impresión','Acciones'].map(t=>h('th',{},t)))),
+    out.replaceChildren(h('p',{class:'mut'},rows.length+' ventas · '+cop(rows.reduce((s,r)=>s+r.total,0))),h('div',{class:'scroll'},h('table',{},h('thead',{},h('tr',{},['Factura','Fecha y Hora','Cliente','Tipo','Origen','Total','Impresión','Acciones'].map(t=>h('th',{},t)))),
       h('tbody',{},rows.map(r=>{
         const ph = cleanPhone(r.phone || r.phoneMasked || '');
+        const invNum = r.invoiceNumber ? `Factura #${r.invoiceNumber}` : `Factura #${r.id}`;
+        const pedSpan = r.orderId ? h('span',{style:'font-size:11px;color:var(--mut);margin-left:4px;font-weight:600'}, `(Ped. #${r.orderId})`) : null;
+        const fullDateStr = new Date(r.createdAt).toLocaleString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
         return h('tr',{},
-          h('td',{},r.orderId),
-          h('td',{},new Date(r.createdAt).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})),
+          h('td',{style:'font-weight:700;white-space:nowrap'}, h('span',{},invNum), pedSpan),
+          h('td',{style:'white-space:nowrap;font-size:13px'}, fullDateStr),
           h('td',{},(r.customerName||'Cliente')+(ph?' · '+ph:'')),
           h('td',{},r.customerType==='WHOLESALE'?'Mayorista':'Minorista'),
           h('td',{},r.inputType==='AUDIO'?'🎙️':r.inputType==='MANUAL'?'🏪':'📝'),
-          h('td',{},cop(r.total)),
+          h('td',{style:'font-weight:700;color:var(--g)'},cop(r.total)),
           h('td',{},r.printStatus==='PRINTED'?'🖨 OK':r.printStatus==='PRINT_FAILED'?'🔴 Falló':'…'),
           h('td',{},h('button',{
             class:'b',
@@ -2744,72 +2907,87 @@ async function renderChats() {
   showEmptyState('Cargando conversaciones…');
 
   let allChats = [];
+  let lastChatListSig = '';
 
-  const loadChatList = async () => {
+  const renderChatItem = (c, isSelected) => {
+    const timeStr = c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+    const dateStr = c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' }) : '';
+
+    let prefix = '';
+    if (c.lastMessageType === 'AUDIO') prefix = '🎤 Audio: ';
+    else if (c.lastMessageType === 'IMAGE') prefix = '📷 Foto: ';
+    else if (c.lastDirection === 'OUTBOUND') prefix = '✓ ';
+
+    let badgeClass = 'gray';
+    let badgeLabel = 'Chat';
+    if (c.hasOrder && c.lastOrderStatus !== 'CANCELLED') {
+      badgeClass = 'green';
+      badgeLabel = '🛍️ Pedido ' + (c.lastOrderStatus === 'APPROVED' ? 'Aprobado' : 'Activo');
+    } else if (c.lastMessage && (c.lastMessage.toLowerCase().includes('pago') || c.lastMessage.toLowerCase().includes('comprobante') || c.lastMessage.toLowerCase().includes('transferencia'))) {
+      badgeClass = 'amber';
+      badgeLabel = '💳 Pago';
+    }
+
+    const phoneDisplay = c.phone && c.phone.length > 12 && !c.phone.startsWith('573') ? 'WhatsApp Web (LID)' : ('+' + c.phone);
+
+    const channelBadge = (isBoth && c.channel) ? h('span', {
+      class: 'pill',
+      style: `font-size:10px;padding:1px 5px;font-weight:700;margin-left:6px;background:${c.channel === 'META_CLOUD_API' ? '#1e3a8a' : '#065f46'};color:#fff`
+    }, c.channel === 'META_CLOUD_API' ? '☁️ API' : '📱 QR') : null;
+
+    return h('div', {
+      class: 'chat-item' + (isSelected ? ' active' : ''),
+      dataset: { phone: c.phone },
+      onclick: () => selectChat(c)
+    },
+      h('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
+        h('div', { style: 'display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px' },
+          h('b', { style: 'font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, c.name || 'Cliente'),
+          channelBadge
+        ),
+        h('span', { style: 'font-size:11.5px;color:var(--mut)' }, dateStr + ' ' + timeStr)
+      ),
+      h('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
+        h('span', { style: 'font-size:12px;color:var(--mut)' }, phoneDisplay),
+        h('span', { class: 'pill ' + badgeClass, style: 'font-size:10.5px;padding:2px 6px' }, badgeLabel)
+      ),
+      h('div', { style: 'font-size:13px;color:var(--ink);opacity:0.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px' },
+        prefix + (c.lastMessage || (c.lastMessageType === 'IMAGE' ? 'Foto / Comprobante' : 'Nota de voz'))
+      )
+    );
+  };
+
+  const loadChatList = async (isSilent = false) => {
     try {
-      chatList.replaceChildren(h('div', { style: 'padding:20px;text-align:center;color:var(--mut)' }, 'Cargando conversaciones…'));
-      allChats = await api('/api/chats?q=' + encodeURIComponent(qInp.value.trim()));
-      if (!allChats || allChats.length === 0) {
-        chatList.replaceChildren(h('div', { style: 'padding:30px;text-align:center;color:var(--mut)' }, 'No se encontraron conversaciones.'));
-        showEmptyState('No se encontraron conversaciones en los últimos 2 días.');
+      if (!isSilent && chatList.children.length === 0) {
+        chatList.replaceChildren(h('div', { style: 'padding:20px;text-align:center;color:var(--mut)' }, 'Cargando conversaciones…'));
+      }
+      const newChats = await api('/api/chats?q=' + encodeURIComponent(qInp.value.trim()));
+      const sig = (newChats || []).map(c => `${c.phone}:${c.lastMessageAt}:${c.lastMessage}:${c.hasOrder}:${c.lastOrderStatus}`).join('|');
+      if (isSilent && sig === lastChatListSig) {
         return;
       }
-      chatList.replaceChildren(...allChats.map(c => {
-        const isSelected = activeChatPhone === c.phone;
-        const timeStr = c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
-        const dateStr = c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' }) : '';
+      lastChatListSig = sig;
+      allChats = newChats || [];
 
-        let prefix = '';
-        if (c.lastMessageType === 'AUDIO') prefix = '🎤 Audio: ';
-        else if (c.lastMessageType === 'IMAGE') prefix = '📷 Foto: ';
-        else if (c.lastDirection === 'OUTBOUND') prefix = '✓ ';
-
-        let badgeClass = 'gray';
-        let badgeLabel = 'Chat';
-        if (c.hasOrder && c.lastOrderStatus !== 'CANCELLED') {
-          badgeClass = 'green';
-          badgeLabel = '🛍️ Pedido ' + (c.lastOrderStatus === 'APPROVED' ? 'Aprobado' : 'Activo');
-        } else if (c.lastMessage && (c.lastMessage.toLowerCase().includes('pago') || c.lastMessage.toLowerCase().includes('comprobante') || c.lastMessage.toLowerCase().includes('transferencia'))) {
-          badgeClass = 'amber';
-          badgeLabel = '💳 Pago';
+      if (allChats.length === 0) {
+        if (!isSilent) {
+          chatList.replaceChildren(h('div', { style: 'padding:30px;text-align:center;color:var(--mut)' }, 'No se encontraron conversaciones.'));
+          showEmptyState('No se encontraron conversaciones en los últimos 2 días.');
         }
+        return;
+      }
 
-        const phoneDisplay = c.phone && c.phone.length > 12 && !c.phone.startsWith('573') ? 'WhatsApp Web (LID)' : ('+' + c.phone);
+      chatList.replaceChildren(...allChats.map(c => renderChatItem(c, activeChatPhone === c.phone)));
 
-        const channelBadge = (isBoth && c.channel) ? h('span', {
-          class: 'pill',
-          style: `font-size:10px;padding:1px 5px;font-weight:700;margin-left:6px;background:${c.channel === 'META_CLOUD_API' ? '#1e3a8a' : '#065f46'};color:#fff`
-        }, c.channel === 'META_CLOUD_API' ? '☁️ API' : '📱 QR') : null;
-
-        const item = h('div', {
-          class: 'chat-item' + (isSelected ? ' active' : ''),
-          onclick: () => selectChat(c)
-        },
-          h('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
-            h('div', { style: 'display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px' },
-              h('b', { style: 'font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, c.name || 'Cliente'),
-              channelBadge
-            ),
-            h('span', { style: 'font-size:11.5px;color:var(--mut)' }, dateStr + ' ' + timeStr)
-          ),
-          h('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
-            h('span', { style: 'font-size:12px;color:var(--mut)' }, phoneDisplay),
-            h('span', { class: 'pill ' + badgeClass, style: 'font-size:10.5px;padding:2px 6px' }, badgeLabel)
-          ),
-          h('div', { style: 'font-size:13px;color:var(--ink);opacity:0.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px' },
-            prefix + (c.lastMessage || (c.lastMessageType === 'IMAGE' ? 'Foto / Comprobante' : 'Nota de voz'))
-          )
-        );
-        return item;
-      }));
-
-      // Auto-seleccionar chat: si ya había uno seleccionado y está en la lista, seleccionarlo; si no, el primero
-      const target = (activeChatPhone && allChats.find(c => c.phone === activeChatPhone)) || allChats[0];
-      if (target) {
-        selectChat(target);
+      if (!activeChatPhone) {
+        const target = allChats[0];
+        if (target) selectChat(target);
       }
     } catch (e) {
-      chatList.replaceChildren(h('div', { style: 'padding:20px;color:var(--r)' }, 'Error cargando chats: ' + e.message));
+      if (!isSilent) {
+        chatList.replaceChildren(h('div', { style: 'padding:20px;color:var(--r)' }, 'Error cargando chats: ' + e.message));
+      }
     }
   };
 
@@ -2847,7 +3025,7 @@ async function renderChats() {
             h('span', { style: 'font-weight:700;font-size:15px;line-height:1.2' }, c.name || 'Cliente'),
             headerChanBadge
           ),
-          h('div', { style: 'font-size:12px;color:var(--mut)' }, phoneDisplay + (c.lastOrderId ? ' • Factura / Pedido #' + c.lastOrderId : ''))
+          h('div', { style: 'font-size:12px;color:var(--mut)' }, phoneDisplay + (c.lastOrderId ? ' • Pedido #' + c.lastOrderId : ''))
         )
       ),
       h('div', { style: 'display:flex;gap:8px;align-items:center' },
@@ -2859,7 +3037,7 @@ async function renderChats() {
         h('button', {
           class: 'b',
           style: 'padding:6px 12px;font-size:13px',
-          onclick: () => loadMessages(c.phone)
+          onclick: () => loadMessages(c.phone, false)
         }, '🔄 Actualizar')
       )
     );
@@ -2868,94 +3046,123 @@ async function renderChats() {
       channelSel.value = c.channel;
     }
 
-    await loadMessages(c.phone);
+    await loadMessages(c.phone, false);
     composeInp.focus();
   };
 
-  const loadMessages = async (phone) => {
+  const buildBubble = (m) => {
+    const isIn = m.direction === 'INBOUND';
+    const timeStr = m.createdAt ? new Date(m.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
+    const dateStr = m.createdAt ? new Date(m.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' }) : '';
+
+    const bubble = h('div', { class: 'chat-bubble ' + (isIn ? 'inbound' : 'outbound'), dataset: { msgId: m.id } });
+
+    // Cita previa si existe
+    if (m.quotedContent) {
+      bubble.append(h('div', { class: 'chat-quoted-preview' },
+        h('div', { style: 'font-weight:700;color:#22c55e;font-size:10.5px;margin-bottom:2px' }, '↩ Respondiendo a:'),
+        m.quotedContent
+      ));
+    }
+
+    // Insignia de canal condicional (solo en BOTH)
+    if (isBoth) {
+      const mChan = m.channel || 'BAILEYS_QR';
+      const isQr = (mChan === 'BAILEYS_QR');
+      bubble.append(h('span', {
+        class: 'pill',
+        style: `font-size:10px;padding:1px 6px;margin-bottom:4px;display:inline-block;font-weight:700;background:${isQr ? '#065f46' : '#1e3a8a'};color:#fff`
+      }, isQr ? '📱 QR Fruver' : '☁️ API Cloud'));
+    }
+
+    if (m.messageType === 'AUDIO' && m.audioId) {
+      const aEl = h('audio', {
+        controls: true,
+        src: '/api/chats/audio/' + m.audioId,
+        style: 'width:240px;height:36px;outline:none'
+      });
+      aEl.onerror = () => {
+        aEl.style.display = 'none';
+        bubble.append(h('div', { class: 'mut', style: 'font-size:12px;color:#f87171;margin-top:4px' }, '⚠️ Nota de voz no disponible o expirada'));
+      };
+      bubble.append(
+        h('div', { style: 'display:flex;align-items:center;gap:6px;margin-bottom:6px' },
+          h('span', { style: 'font-size:16px' }, '🎤'),
+          h('b', { style: 'font-size:13px' }, 'Nota de voz')
+        ),
+        aEl
+      );
+    } else if (m.messageType === 'IMAGE' && m.imageId) {
+      bubble.append(
+        h('img', {
+          src: '/api/chats/images/' + m.imageId,
+          style: 'max-width:260px;max-height:260px;border-radius:8px;display:block;cursor:pointer',
+          title: 'Clic para ver imagen en tamaño completo',
+          onclick: () => window.open('/api/chats/images/' + m.imageId, '_blank')
+        })
+      );
+      if (m.content) {
+        bubble.append(h('div', { style: 'margin-top:6px;white-space:pre-wrap' }, m.content));
+      }
+    } else {
+      bubble.append(h('div', { style: 'white-space:pre-wrap' }, m.content || ''));
+    }
+
+    // Botón Responder
+    const replyBtn = h('button', {
+      class: 'chat-bubble-reply-btn',
+      style: 'background:none;border:none;color:var(--mut);cursor:pointer;padding:2px 6px;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:3px;border-radius:4px',
+      title: 'Responder a este mensaje',
+      onclick: (e) => {
+        e.stopPropagation();
+        setReplyTo(m);
+      }
+    }, '↩ Responder');
+
+    bubble.append(
+      h('div', { style: 'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px' },
+        replyBtn,
+        h('div', { class: 'chat-bubble-time', style: 'margin:0' }, dateStr + ' ' + timeStr + (isIn ? '' : ' ✓'))
+      )
+    );
+
+    return bubble;
+  };
+
+  const loadMessages = async (phone, isSilent = false) => {
     try {
-      messagesBox.replaceChildren(h('div', { style: 'padding:30px;text-align:center;color:var(--mut)' }, 'Cargando mensajes…'));
+      if (!isSilent && messagesBox.children.length === 0) {
+        messagesBox.replaceChildren(h('div', { style: 'padding:30px;text-align:center;color:var(--mut)' }, 'Cargando mensajes…'));
+      }
       const msgs = await api('/api/chats/' + encodeURIComponent(phone) + '/messages');
       if (!msgs || msgs.length === 0) {
-        messagesBox.replaceChildren(h('div', { style: 'padding:40px;text-align:center;color:var(--mut)' }, 'No hay mensajes en este chat.'));
+        if (!isSilent) {
+          messagesBox.replaceChildren(h('div', { style: 'padding:40px;text-align:center;color:var(--mut)' }, 'No hay mensajes en este chat.'));
+        }
         return;
       }
-      messagesBox.replaceChildren(...msgs.map(m => {
-        const isIn = m.direction === 'INBOUND';
-        const timeStr = m.createdAt ? new Date(m.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : '';
-        const dateStr = m.createdAt ? new Date(m.createdAt).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' }) : '';
 
-        const bubble = h('div', { class: 'chat-bubble ' + (isIn ? 'inbound' : 'outbound') });
+      const renderedEls = messagesBox.querySelectorAll('[data-msg-id]');
+      const renderedIds = new Set([...renderedEls].map(el => el.dataset.msgId));
 
-        // Cita previa si existe
-        if (m.quotedContent) {
-          bubble.append(h('div', { class: 'chat-quoted-preview' },
-            h('div', { style: 'font-weight:700;color:#22c55e;font-size:10.5px;margin-bottom:2px' }, '↩ Respondiendo a:'),
-            m.quotedContent
-          ));
+      if (isSilent && renderedEls.length > 0) {
+        const newMsgs = msgs.filter(m => !renderedIds.has(String(m.id)));
+        if (newMsgs.length === 0) return; // Sin cambios: cero parpadeo
+
+        const wasAtBottom = (messagesBox.scrollHeight - messagesBox.scrollTop - messagesBox.clientHeight) < 100;
+        const newBubbles = newMsgs.map(m => buildBubble(m));
+        messagesBox.append(...newBubbles);
+        if (wasAtBottom) {
+          messagesBox.scrollTop = messagesBox.scrollHeight;
         }
-
-        // Insignia de canal condicional (solo en BOTH)
-        if (isBoth) {
-          const mChan = m.channel || 'BAILEYS_QR';
-          const isQr = (mChan === 'BAILEYS_QR');
-          bubble.append(h('span', {
-            class: 'pill',
-            style: `font-size:10px;padding:1px 6px;margin-bottom:4px;display:inline-block;font-weight:700;background:${isQr ? '#065f46' : '#1e3a8a'};color:#fff`
-          }, isQr ? '📱 QR Fruver' : '☁️ API Cloud'));
-        }
-
-        if (m.messageType === 'AUDIO' && m.audioId) {
-          bubble.append(
-            h('div', { style: 'display:flex;align-items:center;gap:6px;margin-bottom:6px' },
-              h('span', { style: 'font-size:16px' }, '🎤'),
-              h('b', { style: 'font-size:13px' }, 'Nota de voz')
-            ),
-            h('audio', {
-              controls: true,
-              src: '/api/chats/audio/' + m.audioId,
-              style: 'width:240px;height:36px;outline:none'
-            })
-          );
-        } else if (m.messageType === 'IMAGE' && m.imageId) {
-          bubble.append(
-            h('img', {
-              src: '/api/chats/images/' + m.imageId,
-              style: 'max-width:260px;max-height:260px;border-radius:8px;display:block;cursor:pointer',
-              title: 'Clic para ver imagen en tamaño completo',
-              onclick: () => window.open('/api/chats/images/' + m.imageId, '_blank')
-            })
-          );
-          if (m.content) {
-            bubble.append(h('div', { style: 'margin-top:6px;white-space:pre-wrap' }, m.content));
-          }
-        } else {
-          bubble.append(h('div', { style: 'white-space:pre-wrap' }, m.content || ''));
-        }
-
-        // Botón Responder
-        const replyBtn = h('button', {
-          class: 'chat-bubble-reply-btn',
-          style: 'background:none;border:none;color:var(--mut);cursor:pointer;padding:2px 6px;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:3px;border-radius:4px',
-          title: 'Responder a este mensaje',
-          onclick: (e) => {
-            e.stopPropagation();
-            setReplyTo(m);
-          }
-        }, '↩ Responder');
-
-        bubble.append(
-          h('div', { style: 'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:4px' },
-            replyBtn,
-            h('div', { class: 'chat-bubble-time', style: 'margin:0' }, dateStr + ' ' + timeStr + (isIn ? '' : ' ✓'))
-          )
-        );
-
-        return bubble;
-      }));
-      messagesBox.scrollTop = messagesBox.scrollHeight;
+      } else {
+        messagesBox.replaceChildren(...msgs.map(m => buildBubble(m)));
+        messagesBox.scrollTop = messagesBox.scrollHeight;
+      }
     } catch (e) {
-      messagesBox.replaceChildren(h('div', { style: 'padding:20px;color:var(--r)' }, 'Error: ' + e.message));
+      if (!isSilent) {
+        messagesBox.replaceChildren(h('div', { style: 'padding:20px;color:var(--r)' }, 'Error: ' + e.message));
+      }
     }
   };
 
@@ -2979,8 +3186,8 @@ async function renderChats() {
       clearReply();
       composeInp.value = '';
       toast('✓ Mensaje enviado');
-      await loadMessages(activeChatPhone);
-      await loadChatList();
+      await loadMessages(activeChatPhone, false);
+      await loadChatList(true);
     } catch (e) {
       toast('Error enviando mensaje: ' + e.message);
     } finally {
@@ -2997,10 +3204,18 @@ async function renderChats() {
   });
 
   qInp.addEventListener('input', () => {
-    loadChatList();
+    loadChatList(false);
   });
 
-  loadChatList();
+  window.refreshChatTab = async () => {
+    if (S.tab !== 'chats') return;
+    try {
+      if (activeChatPhone) await loadMessages(activeChatPhone, true);
+      await loadChatList(true);
+    } catch(e) {}
+  };
+
+  loadChatList(false);
 }
 
 /* ---------- Clientes ---------- */
@@ -3027,7 +3242,7 @@ async function renderCustomers(){
           }},'✏️')
         ),
         h('td',{},
-          h('span',{},c.phoneMasked||c.phone||'—'),
+          h('span',{},c.phone||c.phoneMasked||'—'),
           h('button',{class:'b',style:'padding:2px 6px;margin-left:6px;font-size:11px',title:'Editar teléfono',onclick:async()=>{
             const p = prompt('Nuevo teléfono para el cliente:', c.phone || '');
             if(p !== null && p.trim() && p.trim() !== c.phone){
@@ -3071,17 +3286,32 @@ async function renderCustomers(){
   load();
 }
 
-/* ---------- Reportes (ADMIN) ---------- */
+/* ---------- Reportes ---------- */
 async function renderReports(){const m=$('#main');const today=new Date().toISOString().slice(0,10);const from=h('input',{type:'date',value:today}),to=h('input',{type:'date',value:today}),out=h('div');
-  const kv=(t,rows)=>h('div',{},h('h3',{},t),h('table',{},rows.map(r=>h('tr',{},r.map(c=>h('td',{},c))))));
+  const kv=(t,rows,headers)=>h('div',{style:'margin-bottom:20px'},h('h3',{style:'margin:10px 0 6px'},t),h('table',{},headers?h('thead',{},h('tr',{},headers.map(hd=>h('th',{},hd)))):null,h('tbody',{},rows.map(r=>h('tr',{},r.map(c=>h('td',{},c)))))));
   const go=async()=>{try{const r=await api(`/api/reports/sales?from=${from.value}&to=${to.value}`);
-    out.replaceChildren(h('p',{class:'total'},cop(r.totals.revenue)+' · '+r.totals.sales+' ventas'),
+    out.replaceChildren(h('p',{class:'total'},cop(r.totals.revenue)+' · '+r.totals.sales+' ventas facturadas'),
+      kv('🏆 Ranking de Productos Más Vendidos', (r.topProducts||[]).map((x,i)=>[
+        `#${i+1} ${x.product}`,
+        `${x.quantity} ${x.unit}`,
+        cop(x.revenue)
+      ]), ['Producto', 'Cantidad', 'Venta Total']),
+      kv('🥇 Ranking de Clientes que Más Compran', (r.topCustomers||[]).map((x,i)=>[
+        `#${i+1} ${x.name}` + (x.phone ? ` (${cleanPhone(x.phone)})` : ''),
+        `${x.sales} facturas`,
+        cop(x.total)
+      ]), ['Cliente', 'Compras', 'Total Comprado']),
+      kv('📅 Ventas por Día (Qué días se vende más)', (r.salesByDay||[]).map(x=>[
+        x.day,
+        `${x.sales} ventas`,
+        cop(x.revenue)
+      ]), ['Día / Fecha', 'Facturas', 'Venta Total']),
       kv('Por tipo de cliente',r.byCustomerType.map(x=>[x.key==='WHOLESALE'?'Mayorista':'Minorista',x.sales+' ventas',cop(x.revenue)])),
       kv('Por origen',r.byInputType.map(x=>[x.key==='AUDIO'?'🎙️ Audio':x.key==='IMAGE'?'📸 Foto':x.key==='MANUAL'?'🏪 Mostrador':'📝 Texto',x.sales+' ventas',cop(x.revenue)])),
       kv('Semáforo (pedidos recibidos)',r.reviewStatus.map(x=>[x.status,x.orders])),
       kv('Calidad de la IA y velocidad',[['Pedidos recibidos',r.orders.received],['Corregidos por empleados',r.orders.correctedByHumans+' ('+r.orders.correctedPercent+'%)'],['Fallas de IA/transcripción',r.orders.aiFailures],
-        ['Promedio recibido → aprobado',r.orders.avgSecondsReceivedToApproved+' s'],['Promedio aprobado → impreso',r.avgSecondsApprovedToPrinted+' s']]),
-      kv('Más vendidos',r.topProducts.map(x=>[x.product,x.quantity+' '+x.unit,cop(x.revenue)])))}catch(e){toast(e.message)}};
+        ['Promedio recibido → aprobado',r.orders.avgSecondsReceivedToApproved+' s'],['Promedio aprobado → impreso',r.avgSecondsApprovedToPrinted+' s']])
+    )}catch(e){toast(e.message)}};
   m.replaceChildren(h('div',{class:'row'},h('label',{},'Desde ',from),h('label',{},'Hasta ',to),h('button',{class:'b',onclick:go},'Ver')),out);go()}
 
 /* ---------- Zonas de Domicilio y Cobertura (ADMIN) ---------- */
@@ -3513,46 +3743,110 @@ window.addEventListener('resize',applyNavLayout);
 
 function fillDl(){$('#dl').replaceChildren(...S.products.filter(p=>p.active).map(p=>h('option',{value:p.name})))}
 
-/* Iconos y etiquetas para el bottom nav mobile */
-const TAB_ICONS={ops:['📋','Pedidos'],chats:['💬','Chats'],sales:['🧾','Ventas'],config:['⚙️','Ajustes'],customers:['👥','Clientes'],'delivery-persons':['🚴','Repartos'],users:['👤','Usuarios'],prices:['💲','Precios'],zones:['📍','Zonas'],reports:['📊','Reportes']};
-const DISABLED_TABS=new Set(['customers','users','prices']);
+/* Iconos y etiquetas para navegación */
+const TAB_ICONS={ops:['📋','Pedidos'],chats:['💬','Chats'],sales:['🧾','Ventas'],reports:['📊','Reportes'],config:['⚙️','Ajustes'],customers:['👥','Clientes'],'delivery-persons':['🚴','Repartos'],users:['👤','Usuarios'],prices:['💲','Precios'],zones:['📍','Zonas']};
+const DISABLED_TABS=new Set();
+
+function getMoreMenuItems(){
+  const items = [
+    {key:'customers', label:'👥 Clientes', desc:'Directorio de clientes, teléfonos y direcciones'},
+    {key:'zones', label:'📍 Zonas de Domicilio', desc:'Tarifas y cobertura de domicilios'},
+    {key:'prices', label:'💲 Precios y Productos', desc:'Catálogo, precios minorista y mayorista'}
+  ];
+  if(S.me && S.me.role==='ADMIN'){
+    items.push(
+      {key:'config', label:'⚙️ Ajustes / Impresora', desc:'Horarios de impresión y hardware'},
+      {key:'delivery-persons', label:'🚴 Repartidores', desc:'Gestión de domiciliarios'},
+      {key:'users', label:'👤 Usuarios del Sistema', desc:'Cuentas de acceso y roles'}
+    );
+  }
+  return items;
+}
+
+function openMoreMenu(){
+  const overlay=h('div',{class:'modal-overlay',onclick:e=>{if(e.target===overlay)overlay.remove()}});
+  const items=getMoreMenuItems();
+  const list=items.map(it=>{
+    const isCur=S.tab===it.key;
+    return h('button',{
+      class:'b'+(isCur?' main':''),
+      style:'text-align:left;padding:12px 14px;border-radius:10px;display:flex;flex-direction:column;gap:3px;background:'+(isCur?'var(--brand)':'var(--bg)')+';border:1px solid var(--line);cursor:pointer;width:100%',
+      onclick:()=>{
+        overlay.remove();
+        S.tab=it.key;
+        nav();
+        show();
+      }
+    },
+      h('div',{style:'font-weight:700;font-size:15px;color:'+(isCur?'#fff':'var(--ink)')},it.label),
+      h('div',{style:'font-size:12.5px;color:'+(isCur?'#cfe':'var(--mut)')},it.desc)
+    );
+  });
+
+  const card=h('div',{class:'modal-card',style:'max-width:390px;gap:14px'},
+    h('div',{class:'top',style:'border-bottom:1px solid var(--line);padding-bottom:10px'},
+      h('b',{style:'font-size:17px;font-weight:800'},'⚙️ Menú de Módulos'),
+      h('span',{class:'sp'}),
+      h('button',{class:'b',onclick:()=>overlay.remove()},'✕ Cerrar')
+    ),
+    h('div',{style:'display:flex;flex-direction:column;gap:8px'},...list)
+  );
+  overlay.append(card);
+  document.body.append(overlay);
+}
 
 function nav(){
-  const tabs=[['ops','Operación'],['chats','💬 Chats'],['sales','Ventas'],['config','Ajustes'],['customers','Clientes']];
-  if(S.me.role==='ADMIN')tabs.push(['delivery-persons','Repartidores'],['users','Usuarios'],['prices','Precios'],['zones','Zonas Domicilio'],['reports','Reportes']);
-  // Desktop nav (tabs horizontales)
-  $('#desktopNav').replaceChildren(...tabs.map(([k,l])=>{
-    const disabled=DISABLED_TABS.has(k);
-    return h('button',{
-      class:S.tab===k?'on':'',
-      style:disabled?'opacity:0.42;cursor:not-allowed;filter:grayscale(0.85);':'',
-      title:disabled?'Módulo temporalmente desactivado':'',
-      onclick:()=>{
-        if(disabled){toast('Módulo temporalmente desactivado');return}
-        S.tab=k;nav();show();if(k==='ops')loadOrders();
-      }
-    },l);
-  }));
+  const mainTabs=[['ops','Operación'],['chats','💬 Chats'],['sales','Ventas'],['reports','Reportes']];
+  const moreKeys=['customers','zones','prices','config','delivery-persons','users'];
+  const isMoreActive=moreKeys.includes(S.tab);
+  const activeItem=getMoreMenuItems().find(it=>it.key===S.tab);
+
+  // Desktop nav
+  const desktopBtns=mainTabs.map(([k,l])=>h('button',{
+    class:S.tab===k?'on':'',
+    onclick:()=>{
+      S.tab=k;
+      nav();
+      show();
+      if(k==='ops')loadOrders();
+    }
+  },l));
+
+  const moreDesktopLabel=isMoreActive&&activeItem?activeItem.label.split(' ')[0]+' '+activeItem.label.split(' ').slice(1).join(' ')+' ▾':'⚙️ Más ▾';
+  desktopBtns.push(h('button',{
+    class:isMoreActive?'on':'',
+    style:'display:inline-flex;align-items:center;gap:4px',
+    onclick:()=>openMoreMenu()
+  },moreDesktopLabel));
+
+  $('#desktopNav').replaceChildren(...desktopBtns);
+
   // Mobile bottom nav
-  const mobileCore=[['ops','Pedidos'],['chats','Chats'],['sales','Ventas'],['config','Ajustes'],['customers','Clientes']];
-  const mobileAdmin=[['users','Usuarios'],['prices','Precios']];
-  const mobileTabs=S.me.role==='ADMIN'?[...mobileCore,...mobileAdmin]:mobileCore;
-  $('#bnav').replaceChildren(...mobileTabs.map(([k])=>{
-    const [ico,lbl]=TAB_ICONS[k]||['⚙️',k];
-    const disabled=DISABLED_TABS.has(k);
+  const mobileCore=[
+    ['ops','Pedidos'],
+    ['chats','Chats'],
+    ['sales','Ventas'],
+    ['reports','Reportes'],
+    ['more',isMoreActive&&activeItem?activeItem.label.split(' ')[1]||'Más':'Más']
+  ];
+  $('#bnav').replaceChildren(...mobileCore.map(([k,lbl])=>{
+    const isThisOn=(k==='more'?isMoreActive:S.tab===k);
+    const ico=k==='more'?'⚙️':(TAB_ICONS[k]?.[0]||'📋');
     return h('button',{
-      class:S.tab===k?'on':'',
-      style:disabled?'opacity:0.42;cursor:not-allowed;filter:grayscale(0.85);':'',
-      title:disabled?'Módulo temporalmente desactivado':'',
+      class:isThisOn?'on':'',
       onclick:()=>{
-        if(disabled){toast('Módulo temporalmente desactivado');return}
-        S.tab=k;nav();show();if(k==='ops')loadOrders();
+        if(k==='more'){
+          openMoreMenu();
+        }else{
+          S.tab=k;
+          nav();
+          show();
+          if(k==='ops')loadOrders();
+        }
       }
     },h('span',{class:'ico'},ico),lbl);
   }));
-  // Ajustar columnas del grid según cantidad de tabs mobile
-  const n=mobileTabs.length;
-  $('#bnav').style.gridTemplateColumns=`repeat(${n},1fr)`;
+  $('#bnav').style.gridTemplateColumns=`repeat(${mobileCore.length}, 1fr)`;
 }
 function show(){({ops:()=>{renderOps()},chats:renderChats,sales:renderSales,config:renderPrinterConfig,'delivery-persons':renderDeliveryPersons,users:renderUsers,prices:renderPrices,customers:renderCustomers,zones:renderDeliveryZones,reports:renderReports})[S.tab]?.()}
 $('#logoutBtn').onclick=doLogout;
@@ -3610,9 +3904,14 @@ $('#logoutBtn').onclick=doLogout;
     }catch(e){}
   };
   connectSse();
-  // Auto-actualización periódica de respaldo (cada 3.5 segundos en operaciones):
+  // Auto-actualización periódica de respaldo (cada 3.5 segundos en operaciones y chats):
   setInterval(async()=>{
     if(S.tab==='ops'&&!loading){try{await updatePrinterStatus();await loadOrders();refreshOpenConvs()}catch(e){}}
+    else if(S.tab==='chats'&&typeof window.refreshChatTab==='function'){try{await window.refreshChatTab()}catch(e){}}
   },3500);
+  // Monitoreo permanente de estado de WhatsApp e impresora en todas las pantallas (cada 5s):
+  setInterval(async()=>{
+    try{await updatePrinterStatus()}catch(e){}
+  },5000);
   setInterval(()=>document.querySelectorAll('.ago').forEach(x=>{x.textContent=ago(x.dataset.t)}),15000)})();
 </script></body></html>

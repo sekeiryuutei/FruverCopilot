@@ -19,26 +19,44 @@ public record TicketData(
         String deliveryPersonName,
         boolean requiresVerification,
         String verificationReason,
-        String inputType) {
+        String inputType,
+        Long invoiceNumber,
+        OffsetDateTime commercialAt) {
+
+    public TicketData(
+            String shop, long orderNumber, OffsetDateTime at, String customer, String phone,
+            String customerType, List<Line> lines, BigDecimal total, String address, String notes,
+            boolean reprint, String deliveryPersonName, boolean requiresVerification, String verificationReason,
+            String inputType) {
+        this(shop, orderNumber, at, customer, phone, customerType, lines, total, address, notes, reprint, deliveryPersonName, requiresVerification, verificationReason, inputType, null, null);
+    }
 
     public TicketData(
             String shop, long orderNumber, OffsetDateTime at, String customer, String phone,
             String customerType, List<Line> lines, BigDecimal total, String address, String notes,
             boolean reprint, String deliveryPersonName, boolean requiresVerification, String verificationReason) {
-        this(shop, orderNumber, at, customer, phone, customerType, lines, total, address, notes, reprint, deliveryPersonName, requiresVerification, verificationReason, null);
+        this(shop, orderNumber, at, customer, phone, customerType, lines, total, address, notes, reprint, deliveryPersonName, requiresVerification, verificationReason, null, null, null);
     }
 
     public TicketData(
             String shop, long orderNumber, OffsetDateTime at, String customer, String phone,
             String customerType, List<Line> lines, BigDecimal total, String address, String notes, boolean reprint) {
-        this(shop, orderNumber, at, customer, phone, customerType, lines, total, address, notes, reprint, null, false, null, null);
+        this(shop, orderNumber, at, customer, phone, customerType, lines, total, address, notes, reprint, null, false, null, null, null, null);
     }
 
     public TicketData(
             String shop, long orderNumber, OffsetDateTime at, String customer, String phone,
             String customerType, List<Line> lines, BigDecimal total, String address, String notes,
             boolean reprint, String deliveryPersonName) {
-        this(shop, orderNumber, at, customer, phone, customerType, lines, total, address, notes, reprint, deliveryPersonName, false, null, null);
+        this(shop, orderNumber, at, customer, phone, customerType, lines, total, address, notes, reprint, deliveryPersonName, false, null, null, null, null);
+    }
+
+    public OffsetDateTime commercialDateTime() {
+        return commercialAt != null ? commercialAt : at;
+    }
+
+    public long printedInvoiceNumber() {
+        return (invoiceNumber != null && invoiceNumber > 0) ? invoiceNumber : orderNumber;
     }
 
     public record Line(String name, BigDecimal quantity, String unit, BigDecimal price, BigDecimal subtotal) {}

@@ -90,6 +90,17 @@ public class OrderViewService {
                     }).list();
         }
 
+        Map<Long, Long> invoiceNumberBySale = new HashMap<>();
+        List<Long> saleIds = rows.stream().map(OrderRow::saleId).filter(Objects::nonNull).distinct().toList();
+        if (!saleIds.isEmpty()) {
+            jdbc.sql("SELECT id, invoice_number FROM sale WHERE id IN (:sids)")
+                    .param("sids", saleIds)
+                    .query((rs, n) -> {
+                        invoiceNumberBySale.put(rs.getLong(1), rs.getObject(2) != null ? rs.getLong(2) : rs.getLong(1));
+                        return 0;
+                    }).list();
+        }
+
         List<OrderView> out = new ArrayList<>();
         for (OrderRow r : rows) {
             List<ItemRow> items = itemsByOrder.getOrDefault(r.id(), List.of());
@@ -100,6 +111,7 @@ public class OrderViewService {
             boolean active = "REVIEW".equals(r.status());
             Long pendingDispatchOrderId = (!"APPROVED".equals(r.status()) && r.customerId() != null)
                     ? pendingDispatchMap.get(r.customerId()) : null;
+            Long invNum = r.saleId() != null ? invoiceNumberBySale.get(r.saleId()) : null;
             out.add(new OrderView(r.id(), r.version(), r.status(), r.conversationStatus(), r.reviewStatus(),
                     r.inputType(), r.aiStatus(), r.aiNote(), r.suggestedReply(),
                     active ? ConfirmationMessageBuilder.build(quote) : null,
@@ -109,7 +121,7 @@ public class OrderViewService {
                     r.dispatchedAt(), r.dispatchedBy(), msgCounts.getOrDefault(r.id(), 0), pendingDispatchOrderId,
                     r.deliveryPersonId(), r.deliveryPersonName(),
                     r.requiresVerification(), r.verificationReason(),
-                    r.targetPrinter(), r.printedPrinter()));
+                    r.targetPrinter(), r.printedPrinter(), invNum));
         }
         return out;
     }

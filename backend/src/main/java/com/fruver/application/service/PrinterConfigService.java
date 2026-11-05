@@ -44,6 +44,7 @@ public class PrinterConfigService {
             int printTimeoutSeconds,
             boolean autoPrintWholesale,
             int customerDebounceSeconds,
+            int reviewTimeoutSeconds,
             String smtpHost,
             int smtpPort,
             String smtpUser,
@@ -66,7 +67,7 @@ public class PrinterConfigService {
                 SELECT office_host, office_port, office_print_type, office_email,
                        home_host, home_port, home_print_type, home_email,
                        enabled, mode, order_grace_seconds, print_timeout_seconds,
-                       auto_print_wholesale, customer_debounce_seconds,
+                       auto_print_wholesale, customer_debounce_seconds, review_timeout_seconds,
                        schedule_office_start, schedule_office_end,
                        smtp_host, smtp_port, smtp_user, smtp_password, smtp_ssl
                 FROM printer_setting WHERE id = 'DEFAULT'
@@ -86,13 +87,14 @@ public class PrinterConfigService {
                         rs.getObject(12) != null ? rs.getInt(12) : null,
                         rs.getObject(13) != null ? rs.getBoolean(13) : null,
                         rs.getObject(14) != null ? rs.getInt(14) : null,
-                        rs.getString(15),
+                        rs.getObject(15) != null ? rs.getInt(15) : null,
                         rs.getString(16),
                         rs.getString(17),
-                        rs.getInt(18),
-                        rs.getString(19),
+                        rs.getString(18),
+                        rs.getInt(19),
                         rs.getString(20),
-                        rs.getBoolean(21)
+                        rs.getString(21),
+                        rs.getBoolean(22)
                 }).optional();
 
         String officeHost = (props.printing() != null && props.printing().officeHost() != null) ? props.printing().officeHost() : "127.0.0.1";
@@ -110,7 +112,8 @@ public class PrinterConfigService {
         int orderGraceSeconds = (props.printing() != null) ? props.printing().wholesaleGraceSeconds() : 300;
         int printTimeoutSeconds = 5;
         boolean autoPrintWholesale = (props.printing() != null) ? props.printing().autoPrintWholesale() : true;
-        int customerDebounceSeconds = (props.conversation() != null) ? props.conversation().debounceSeconds() : 20;
+        int customerDebounceSeconds = (props.conversation() != null) ? props.conversation().debounceSeconds() : 30;
+        int reviewTimeoutSeconds = (props.printing() != null) ? props.printing().reviewTimeoutSeconds() : 120;
 
         String scheduleStart = "04:00";
         String scheduleEnd = "19:00";
@@ -143,15 +146,18 @@ public class PrinterConfigService {
             } else if (data[13] != null && ((Integer) data[13]) >= 0) {
                 customerDebounceSeconds = (Integer) data[13];
             }
+            if (data[14] != null && ((Integer) data[14]) > 0) {
+                reviewTimeoutSeconds = (Integer) data[14];
+            }
 
-            if (data[14] != null) scheduleStart = (String) data[14];
-            if (data[15] != null) scheduleEnd = (String) data[15];
+            if (data[15] != null) scheduleStart = (String) data[15];
+            if (data[16] != null) scheduleEnd = (String) data[16];
 
-            if (data[16] != null) smtpHost = (String) data[16];
-            if (data[17] != null && ((Integer) data[17]) > 0) smtpPort = (Integer) data[17];
-            if (data[18] != null) smtpUser = (String) data[18];
-            if (data[19] != null) smtpPassword = (String) data[19];
-            if (data[20] != null) smtpSsl = (Boolean) data[20];
+            if (data[17] != null) smtpHost = (String) data[17];
+            if (data[18] != null && ((Integer) data[18]) > 0) smtpPort = (Integer) data[18];
+            if (data[19] != null) smtpUser = (String) data[19];
+            if (data[20] != null) smtpPassword = (String) data[20];
+            if (data[21] != null) smtpSsl = (Boolean) data[21];
         }
 
         String active = currentTargetPrinter(mode, scheduleStart, scheduleEnd);
@@ -181,6 +187,7 @@ public class PrinterConfigService {
                 printTimeoutSeconds,
                 autoPrintWholesale,
                 customerDebounceSeconds,
+                reviewTimeoutSeconds,
                 smtpHost,
                 smtpPort,
                 smtpUser,
@@ -204,7 +211,7 @@ public class PrinterConfigService {
         return update(officeHost, officePort, current.officePrintType(), current.officeEmail(),
                 homeHost, homePort, current.homePrintType(), current.homeEmail(),
                 enabled, mode, current.scheduleOfficeStart(), current.scheduleOfficeEnd(),
-                orderGraceSeconds, printTimeoutSeconds, autoPrintWholesale, current.customerDebounceSeconds());
+                orderGraceSeconds, printTimeoutSeconds, autoPrintWholesale, current.customerDebounceSeconds(), current.reviewTimeoutSeconds());
     }
 
     public PrinterConfig update(String officeHost, Integer officePort, String officePrintType, String officeEmail,
@@ -213,12 +220,26 @@ public class PrinterConfigService {
                                 String scheduleOfficeStart, String scheduleOfficeEnd,
                                 Integer orderGraceSeconds, Integer printTimeoutSeconds, Boolean autoPrintWholesale,
                                 Integer customerDebounceSeconds) {
+        return update(officeHost, officePort, officePrintType, officeEmail,
+                homeHost, homePort, homePrintType, homeEmail,
+                enabled, mode, scheduleOfficeStart, scheduleOfficeEnd,
+                orderGraceSeconds, printTimeoutSeconds, autoPrintWholesale,
+                customerDebounceSeconds, get().reviewTimeoutSeconds());
+    }
+
+    public PrinterConfig update(String officeHost, Integer officePort, String officePrintType, String officeEmail,
+                                String homeHost, Integer homePort, String homePrintType, String homeEmail,
+                                Boolean enabled, String mode,
+                                String scheduleOfficeStart, String scheduleOfficeEnd,
+                                Integer orderGraceSeconds, Integer printTimeoutSeconds, Boolean autoPrintWholesale,
+                                Integer customerDebounceSeconds, Integer reviewTimeoutSeconds) {
         jdbc.sql("""
                 INSERT INTO printer_setting(id, office_host, office_port, office_print_type, office_email,
                                             home_host, home_port, home_print_type, home_email,
                                             enabled, mode, schedule_office_start, schedule_office_end,
-                                            order_grace_seconds, print_timeout_seconds, auto_print_wholesale, customer_debounce_seconds, updated_at)
-                VALUES ('DEFAULT', :oh, :op, :opt, :oe, :hh, :hp, :hpt, :he, :en, :m, :sos, :soe, :ogs, :pts, :apw, :cds, now())
+                                            order_grace_seconds, print_timeout_seconds, auto_print_wholesale,
+                                            customer_debounce_seconds, review_timeout_seconds, updated_at)
+                VALUES ('DEFAULT', :oh, :op, :opt, :oe, :hh, :hp, :hpt, :he, :en, :m, :sos, :soe, :ogs, :pts, :apw, :cds, :rts, now())
                 ON CONFLICT (id) DO UPDATE SET
                     office_host = EXCLUDED.office_host,
                     office_port = EXCLUDED.office_port,
@@ -236,6 +257,7 @@ public class PrinterConfigService {
                     print_timeout_seconds = EXCLUDED.print_timeout_seconds,
                     auto_print_wholesale = EXCLUDED.auto_print_wholesale,
                     customer_debounce_seconds = EXCLUDED.customer_debounce_seconds,
+                    review_timeout_seconds = EXCLUDED.review_timeout_seconds,
                     updated_at = now()
                 """).param("oh", (officeHost != null && !officeHost.isBlank()) ? officeHost.trim() : "127.0.0.1")
                 .param("op", (officePort != null && officePort > 0) ? officePort : 9100)
@@ -252,7 +274,8 @@ public class PrinterConfigService {
                 .param("ogs", (orderGraceSeconds != null && orderGraceSeconds >= 0) ? orderGraceSeconds : 300)
                 .param("pts", (printTimeoutSeconds != null && printTimeoutSeconds >= 1) ? printTimeoutSeconds : 5)
                 .param("apw", autoPrintWholesale != null ? autoPrintWholesale : true)
-                .param("cds", (customerDebounceSeconds != null && customerDebounceSeconds >= 0) ? customerDebounceSeconds : 20)
+                .param("cds", (customerDebounceSeconds != null && customerDebounceSeconds >= 0) ? customerDebounceSeconds : 30)
+                .param("rts", (reviewTimeoutSeconds != null && reviewTimeoutSeconds > 0) ? reviewTimeoutSeconds : 120)
                 .update();
 
         return get();

@@ -50,9 +50,18 @@ public class OrderBatchingCoordinator {
         this(processing, props, null);
     }
 
+    public void cancelTimer(long orderId) {
+        ScheduledFuture<?> old = timers.remove(orderId);
+        if (old != null) {
+            old.cancel(false);
+            log.info("Pedido #{}: temporizador de espera cancelado (pedido aprobado o procesado).", orderId);
+        }
+        burstStarts.remove(orderId);
+    }
+
     public void scheduleProcessing(IntakeResult result) {
         long orderId = result.orderId();
-        int debounceSec = 20;
+        int debounceSec = 30;
         if (printerConfig != null && printerConfig.get().customerDebounceSeconds() >= 0) {
             debounceSec = printerConfig.get().customerDebounceSeconds();
         } else if (props.conversation() != null) {

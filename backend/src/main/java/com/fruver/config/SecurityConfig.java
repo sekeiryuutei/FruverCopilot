@@ -84,8 +84,10 @@ public class SecurityConfig {
                     })
                     .permitAll())
             .logout(l -> l.logoutUrl("/logout").logoutSuccessUrl("/login.html"))
-            .exceptionHandling(e -> e.defaultAuthenticationEntryPointFor(
-                    new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED), r -> r.getRequestURI().startsWith("/api/")));
+            .exceptionHandling(e -> e
+                    .authenticationEntryPoint(new org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint("/login.html"))
+                    .defaultAuthenticationEntryPointFor(
+                            new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED), r -> r.getRequestURI().startsWith("/api/")));
         return http.build();
     }
 

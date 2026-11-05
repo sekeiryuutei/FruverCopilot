@@ -80,7 +80,7 @@ public class OrderEditService {
         for (ItemEdit e : incoming) {
             validate(e);
             String unit = (e.unit() == null || e.unit().isBlank()) ? null : UnitOfMeasure.parse(e.unit()).map(Enum::name).orElse(null);
-            BigDecimal qty = e.quantity().setScale(3, RoundingMode.HALF_UP);
+            BigDecimal qty = e.quantity() != null ? e.quantity().setScale(3, RoundingMode.HALF_UP) : null;
             BigDecimal price = e.manualPrice() == null ? null : e.manualPrice().setScale(0, Money.ROUNDING);
             String reason = e.priceChangeReason() == null || e.priceChangeReason().isBlank() ? null : clip(e.priceChangeReason(), 200);
             ItemRow prev = e.id() == null ? null : existing.get(e.id());
@@ -91,11 +91,11 @@ public class OrderEditService {
                         VALUES (:o, :ln, (SELECT name FROM product WHERE id = :p), :p, :q, :u, :mp, :r, TRUE)
                         """).param("o", orderId).param("ln", line).param("p", e.productId()).param("q", qty)
                         .param("u", unit).param("mp", price).param("r", reason).update();
-                changes.add("+ producto " + e.productId() + " " + Money.qty(qty) + " " + unit);
+                changes.add("+ producto " + e.productId() + " " + (qty != null ? Money.qty(qty) : "s/c") + " " + (unit != null ? unit : ""));
                 corrected = true;
             } else {
                 boolean productChanged = !Objects.equals(prev.productId(), e.productId());
-                boolean qtyChanged = prev.quantity() == null || prev.quantity().compareTo(qty) != 0;
+                boolean qtyChanged = !Objects.equals(prev.quantity(), qty);
                 boolean unitChanged = !java.util.Objects.equals(unit, prev.unit());
                 boolean priceChanged = !Objects.equals(prev.manualPrice() == null ? null : prev.manualPrice().longValue(),
                         price == null ? null : price.longValue());
@@ -122,12 +122,13 @@ public class OrderEditService {
             review = ReviewStatus.RED;
         } else {
             for (ItemEdit e : incoming) {
-                String unit = UnitOfMeasure.parse(e.unit()).orElseThrow().name();
+                String unit = (e.unit() == null || e.unit().isBlank()) ? null : UnitOfMeasure.parse(e.unit()).map(Enum::name).orElse(null);
                 String productUnit = jdbc.sql("SELECT unit FROM product WHERE id = :p").param("p", e.productId())
                         .query(String.class).optional().orElse(null);
                 Boolean active = jdbc.sql("SELECT active FROM product WHERE id = :p").param("p", e.productId())
                         .query(Boolean.class).optional().orElse(null);
-                if (active == null || !active || productUnit == null || !unit.equals(productUnit)) {
+                boolean isMoney = e.manualPrice() != null && e.manualPrice().signum() > 0;
+                if (active == null || !active || (!isMoney && (productUnit == null || !java.util.Objects.equals(unit, productUnit)))) {
                     review = ReviewStatus.YELLOW;
                     break;
                 }
@@ -383,14 +384,17 @@ public class OrderEditService {
     private void validate(ItemEdit e) {
         if (e.productId() == null) throw new ApiException(422, "ITEM_INVALID", "Cada linea necesita un producto del catálogo");
         boolean isMoney = e.manualPrice() != null && e.manualPrice().signum() > 0;
-        if (!isMoney && (e.quantity() == null || e.quantity().signum() <= 0 || e.quantity().compareTo(new BigDecimal("100000")) > 0)) {
-            throw new ApiException(422, "ITEM_INVALID", "Cantidad inválida");
+        if (e.quantity() != null) {
+            if (e.quantity().compareTo(new BigDecimal("100000")) > 0) {
+                throw new ApiException(422, "ITEM_INVALID", "Cantidad demasiado grande (máx 100000)");
+            }
+            if (e.quantity().signum() < 0) {
+                throw new ApiException(422, "ITEM_INVALID", "La cantidad no puede ser negativa");
+            }
+            if (e.quantity().setScale(3, RoundingMode.HALF_UP).signum() <= 0 && !isMoney) {
+                throw new ApiException(422, "ITEM_INVALID", "Cantidad demasiado pequeña");
+            }
         }
-        // Rechaza cantidades que al redondear a 3 decimales quedan en 0 (ej. 0.0004): el frontend no debe aceptarlas.
-        if (e.quantity() != null && e.quantity().setScale(3, RoundingMode.HALF_UP).signum() <= 0) {
-            throw new ApiException(422, "ITEM_INVALID", "Cantidad demasiado pequeña");
-        }
-        if (e.unit() != null && !e.unit().isBlank() && UnitOfMeasure.parse(e.unit()).isEmpty()) throw new ApiException(422, "ITEM_INVALID", "Unidad invalida");
         if (e.manualPrice() != null && (e.manualPrice().signum() < 0 || e.manualPrice().compareTo(new BigDecimal("100000000")) > 0)) {
             throw new ApiException(422, "ITEM_INVALID", "Precio manual invalido");
         }

@@ -1,5 +1,5 @@
-﻿// Service Worker para Fruver El Oasis PWA (Soporte Offline Completo)
-const CACHE_NAME = 'oasis-cache-v2';
+// Service Worker para Fruver El Oasis PWA (Soporte Offline Completo)
+const CACHE_NAME = 'oasis-cache-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -27,16 +27,20 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // Las peticiones a la API o subidas no se guardan en el cache del service worker (las maneja la app con fallback a localStorage)
-  if (!event.request.url.startsWith('http') || event.request.url.includes('/api/') || event.request.method !== 'GET') {
+  const url = event.request.url || '';
+  // Solo cachear peticiones HTTP/HTTPS que no sean de API y sean GET
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return;
+  }
+  if (url.includes('/api/') || event.request.method !== 'GET') {
     return;
   }
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        if (response && response.status === 200) {
+        if (response && response.status === 200 && response.type === 'basic') {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+          caches.open(CACHE_NAME).then(c => c.put(event.request, clone)).catch(() => {});
         }
         return response;
       })

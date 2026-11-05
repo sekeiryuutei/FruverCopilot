@@ -37,7 +37,8 @@ public record OrderView(
         boolean requiresVerification,
         String verificationReason,
         String targetPrinter,
-        String printedPrinter) {
+        String printedPrinter,
+        Long invoiceNumber) {
 
     public OrderView(
             long id, int version, String status, String conversationStatus, String reviewStatus,
@@ -48,7 +49,7 @@ public record OrderView(
         this(id, version, status, conversationStatus, reviewStatus, inputType, aiStatus, aiNote,
                 suggestedReply, confirmationDraft, customer, address, notes, receivedAt, messageText,
                 hasAudio, false, corrected, items, total, complete, saleId, printStatus, null, null, 0, null, null, null,
-                false, null, null, null);
+                false, null, null, null, null);
     }
 
     public OrderView(
@@ -62,7 +63,7 @@ public record OrderView(
         this(id, version, status, conversationStatus, reviewStatus, inputType, aiStatus, aiNote,
                 suggestedReply, confirmationDraft, customer, address, notes, receivedAt, messageText,
                 hasAudio, false, corrected, items, total, complete, saleId, printStatus, dispatchedAt, dispatchedBy,
-                messageCount, pendingDispatchOrderId, deliveryPersonId, deliveryPersonName, false, null, null, null);
+                messageCount, pendingDispatchOrderId, deliveryPersonId, deliveryPersonName, false, null, null, null, null);
     }
 
     /** Telefono enmascarado para pantallas generales; phone expone el número completo para operaciones internas. */

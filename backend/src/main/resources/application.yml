@@ -1,4 +1,4 @@
-﻿server:
+server:
   port: ${SERVER_PORT:8080}
   forward-headers-strategy: framework
   shutdown: graceful
@@ -65,7 +65,7 @@ app:
   conversation:
     ai-auto-reply: ${AI_AUTO_REPLY:false}
     auto-confirm-clear-orders: ${AUTO_CONFIRM_CLEAR_ORDERS:false}
-    debounce-seconds: ${CUSTOMER_DEBOUNCE_SECONDS:20}
+    debounce-seconds: ${CUSTOMER_DEBOUNCE_SECONDS:30}
     debounce-max-seconds: ${CUSTOMER_DEBOUNCE_MAX_SECONDS:90}
   printing:
     enabled: ${PRINTER_ENABLED:false}
@@ -81,7 +81,8 @@ app:
     home-host: ${PRINTER_HOME_HOST:127.0.0.1}
     home-port: ${PRINTER_HOME_PORT:9100}
     auto-print-wholesale: ${AUTO_PRINT_WHOLESALE:true}
-    wholesale-grace-seconds: ${WHOLESALE_GRACE_SECONDS:300}
+    wholesale-grace-seconds: ${WHOLESALE_GRACE_SECONDS:60}
+    review-timeout-seconds: ${REVIEW_TIMEOUT_SECONDS:120}
   audio:
     storage-type: ${AUDIO_STORAGE_TYPE:local}
     storage-path: ${AUDIO_STORAGE_PATH:./data/audio}
@@ -92,6 +93,9 @@ app:
     access-token: ${WHATSAPP_ACCESS_TOKEN:}
     phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
     api-version: ${WHATSAPP_API_VERSION:v21.0}
+    send-error-notices-to-user: ${WHATSAPP_SEND_ERROR_NOTICES_TO_USER:false}
+    send-order-confirmation-emoji: ${WHATSAPP_SEND_ORDER_CONFIRMATION_EMOJI:false}
+    auto-replies-enabled: ${WHATSAPP_AUTO_REPLIES_ENABLED:false}
   ai:
     provider: ${AI_PROVIDER:gemini}
     gemini:

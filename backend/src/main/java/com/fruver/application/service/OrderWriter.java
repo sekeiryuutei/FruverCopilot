@@ -3,6 +3,8 @@ package com.fruver.application.service;
 import com.fruver.application.dto.InterpretedOrder;
 import com.fruver.domain.enums.ConversationAction;
 import com.fruver.domain.enums.ReviewStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,6 +15,8 @@ import java.util.Map;
 /** Escrituras cortas y transaccionales del resultado de IA. Nunca se llama al LLM desde aqui. */
 @Service
 public class OrderWriter {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderWriter.class);
 
     private final JdbcClient jdbc;
     private final AuditService audit;
@@ -115,6 +119,11 @@ public class OrderWriter {
                             INSERT INTO order_item(order_id, line_no, mentioned, ai_product_name, ai_quantity, ai_unit, ai_ambiguous,
                                                    observation, product_id, quantity, unit, manual_price)
                             VALUES (:o, :ln, :m, :apn, :aq, :au, :aa, :obs, :pid, :q, :u, :mp)
+                            ON CONFLICT (order_id, product_id, unit) WHERE product_id IS NOT NULL
+                            DO UPDATE SET quantity = EXCLUDED.quantity,
+                                          ai_quantity = EXCLUDED.ai_quantity,
+                                          manual_price = COALESCE(EXCLUDED.manual_price, order_item.manual_price),
+                                          observation = EXCLUDED.observation
                             """).param("o", orderId).param("ln", line++).param("m", i.mentioned()).param("apn", i.aiProductName())
                             .param("aq", i.aiQuantity()).param("au", i.aiUnit()).param("aa", i.aiAmbiguous())
                             .param("obs", i.observation()).param("pid", i.productId()).param("q", i.quantity())
@@ -198,9 +207,39 @@ public class OrderWriter {
     public void updateCustomerName(long orderId, String name) {
         if (name == null || name.isBlank()) return;
         String clean = name.strip();
+
+        var customerData = jdbc.sql("""
+                SELECT c.id, c.name, COALESCE(c.name_source, 'UNVERIFIED')
+                FROM customer c
+                JOIN orders o ON o.customer_id = c.id
+                WHERE o.id = :id
+                """).param("id", orderId)
+                .query((rs, n) -> new Object[]{rs.getLong(1), rs.getString(2), rs.getString(3)})
+                .optional();
+
+        if (customerData.isPresent()) {
+            long customerId = (Long) customerData.get()[0];
+            String currentName = (String) customerData.get()[1];
+            String source = (String) customerData.get()[2];
+            boolean isProtected = "MANUAL".equalsIgnoreCase(source)
+                    || "IMPORTED_CONTACT".equalsIgnoreCase(source)
+                    || "WHATSAPP_PROFILE".equalsIgnoreCase(source)
+                    || (currentName != null && !currentName.isBlank() && !currentName.equalsIgnoreCase("Cliente"));
+
+            if (isProtected) {
+                // El contacto guardado o verificado prevalece siempre sobre la extracción de IA
+                jdbc.sql("UPDATE orders SET customer_name = :n WHERE id = :id AND (customer_name IS NULL OR customer_name = '' OR customer_name = 'Cliente')")
+                        .param("n", currentName).param("id", orderId).update();
+                log.info("Pedido #{}: nombre guardado/verificado '{}' ({}) prevalece sobre extracción de IA '{}'", orderId, currentName, source, clean);
+                return;
+            }
+
+            // Si el cliente no tenía nombre ni estaba protegido, registrar extracción de IA
+            jdbc.sql("UPDATE customer SET name = :n, name_source = 'AI_EXTRACTED' WHERE id = :cid AND (name IS NULL OR name_source IN ('UNVERIFIED', 'AI_EXTRACTED'))")
+                    .param("n", clean).param("cid", customerId).update();
+        }
+
         jdbc.sql("UPDATE orders SET customer_name = :n WHERE id = :id")
-                .param("n", clean).param("id", orderId).update();
-        jdbc.sql("UPDATE customer SET name = :n WHERE id = (SELECT customer_id FROM orders WHERE id = :id)")
                 .param("n", clean).param("id", orderId).update();
     }
 

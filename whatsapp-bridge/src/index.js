@@ -224,7 +224,7 @@ async function startWhatsApp() {
 
       if (statusCode === DisconnectReason.loggedOut) {
         logger.warn('Sesión cerrada por el usuario. Limpiando credenciales...');
-        fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+        clearAuthDir();
         startWhatsApp();
       } else if (shouldReconnect) {
         logger.info('Reconectando en 3 segundos...');
@@ -239,7 +239,25 @@ async function startWhatsApp() {
     }
   });
 
-  // Escucha de mensajes entrantes
+function unwrapMessage(msg) {
+  let m = msg;
+  while (m) {
+    if (m.ephemeralMessage?.message) {
+      m = m.ephemeralMessage.message;
+    } else if (m.viewOnceMessage?.message) {
+      m = m.viewOnceMessage.message;
+    } else if (m.viewOnceMessageV2?.message) {
+      m = m.viewOnceMessageV2.message;
+    } else if (m.documentWithCaptionMessage?.message) {
+      m = m.documentWithCaptionMessage.message;
+    } else {
+      break;
+    }
+  }
+  return m;
+}
+
+// Escucha de mensajes entrantes
   sock.ev.on('messages.upsert', async (upsert) => {
     if (upsert.type !== 'notify') return;
 
@@ -287,10 +305,10 @@ async function startWhatsApp() {
         const pushName = msg.pushName || '';
         const msgId = msg.key.id;
 
-        const messageContent = msg.message;
+        const messageContent = unwrapMessage(msg.message);
         let formattedMessage = null;
 
-        // 1. TEXTO
+        // 1. TEXTO (incluyendo mensajes reenviados y extendidos)
         const textBody = messageContent.conversation || messageContent.extendedTextMessage?.text;
         if (textBody && textBody.trim().length > 0) {
           formattedMessage = {
@@ -513,13 +531,29 @@ app.post('/messages', async (req, res) => {
   }
 });
 
+function clearAuthDir() {
+  try {
+    if (fs.existsSync(AUTH_DIR)) {
+      for (const file of fs.readdirSync(AUTH_DIR)) {
+        try {
+          fs.rmSync(path.join(AUTH_DIR, file), { recursive: true, force: true });
+        } catch (e) {
+          logger.warn(`No se pudo eliminar archivo ${file}: ${e.message}`);
+        }
+      }
+    }
+  } catch (e) {
+    logger.warn('Error limpiando auth_dir:', e.message);
+  }
+}
+
 // 4. Cerrar sesión / Desvincular
 app.post('/logout', async (req, res) => {
   try {
     if (sock) {
       await sock.logout().catch(() => {});
     }
-    fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+    clearAuthDir();
     connectionStatus = 'DISCONNECTED';
     qrCodeBase64 = null;
     connectedPhone = null;
@@ -531,10 +565,25 @@ app.post('/logout', async (req, res) => {
   }
 });
 
-// 5. Healthcheck
+// 5. Healthcheck con estado real del socket
 app.get('/health', (req, res) => {
-  res.json({ ok: true, status: connectionStatus });
+  const wsReady = sock?.ws?.readyState;
+  const isHealthy = connectionStatus === 'CONNECTED' && wsReady === 1;
+  res.json({ ok: isHealthy || connectionStatus === 'QR_READY', status: connectionStatus, wsReady });
 });
+
+// Watchdog para detectar sockets muertos/zombies
+setInterval(() => {
+  if (connectionStatus === 'CONNECTED' && sock) {
+    const readyState = sock.ws?.readyState;
+    if (readyState !== undefined && readyState > 1) {
+      logger.warn({ readyState }, 'Watchdog: socket cerrado/zombie detectado. Forzando reinicio...');
+      connectionStatus = 'DISCONNECTED';
+      try { sock.ws?.close(); } catch(e) {}
+      startWhatsApp();
+    }
+  }
+}, 30000);
 
 app.listen(PORT, '0.0.0.0', () => {
   logger.info(`Microservicio whatsapp-bridge escuchando en puerto ${PORT}`);
@@ -545,5 +594,9 @@ process.on('uncaughtException', (err) => {
   logger.error({ err: err.message }, 'Excepción no capturada en whatsapp-bridge (protegido contra cierre)');
 });
 process.on('unhandledRejection', (reason) => {
-  logger.error({ reason }, 'Promesa rechazada en whatsapp-bridge (protegido contra cierre)');
+  logger.error({ reason: reason?.message || reason }, 'Promesa rechazada en whatsapp-bridge (protegido contra cierre)');
+  if (reason && (String(reason).includes('Timed Out') || String(reason.message).includes('Timed Out'))) {
+    logger.warn('Timeout detectado en consultas de Baileys. Forzando reinicio del socket...');
+    setTimeout(startWhatsApp, 3000);
+  }
 });

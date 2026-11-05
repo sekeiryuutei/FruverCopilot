@@ -30,7 +30,11 @@ public class SaleService {
 
     private static final Logger log = LoggerFactory.getLogger(SaleService.class);
 
-    public record SaleResult(long saleId, long orderId, String printStatus, BigDecimal total) {}
+    public record SaleResult(long saleId, long orderId, String printStatus, BigDecimal total, Long invoiceNumber) {
+        public SaleResult(long saleId, long orderId, String printStatus, BigDecimal total) {
+            this(saleId, orderId, printStatus, total, null);
+        }
+    }
 
     private final JdbcClient jdbc;
     private final OrderRepository orders;
@@ -39,6 +43,10 @@ public class SaleService {
     private final MessagingGateway gateway;
     private final SseHub hub;
     private final AppProperties props;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @org.springframework.context.annotation.Lazy
+    private OrderBatchingCoordinator batchingCoordinator;
 
     public SaleService(JdbcClient jdbc, OrderRepository orders, QuoteService quotes, AuditService audit,
                        MessagingGateway gateway, SseHub hub, AppProperties props) {
@@ -49,6 +57,29 @@ public class SaleService {
         this.gateway = gateway;
         this.hub = hub;
         this.props = props;
+    }
+
+    public static String extractItemNote(String observation) {
+        if (observation == null || observation.isBlank()) return null;
+        String clean = observation.trim();
+        int idx = clean.toLowerCase().indexOf("nota:");
+        if (idx >= 0) {
+            String sub = clean.substring(idx + 5).trim();
+            if (!sub.isBlank()) return sub;
+        }
+        if (clean.toLowerCase().startsWith("pedido por valor") || clean.toLowerCase().startsWith("pedido por dinero")) {
+            return null;
+        }
+        return clean;
+    }
+
+    public static String buildProductNameWithNote(String baseName, String observation) {
+        if (baseName == null || baseName.isBlank()) baseName = "Artículo";
+        String note = extractItemNote(observation);
+        if (note != null && !note.isBlank() && !baseName.toLowerCase().contains(note.toLowerCase())) {
+            return baseName + " (" + note + ")";
+        }
+        return baseName;
     }
 
     @Transactional
@@ -94,21 +125,27 @@ public class SaleService {
         String targetPrinter = props.printing().currentTargetPrinter(props.timezone());
         BigDecimal total = quote.complete() ? quote.total() : null;
 
-        long saleId = jdbc.sql("""
+        var saleRow = jdbc.sql("""
                 INSERT INTO sale(order_id, customer_id, customer_name, customer_phone, address, notes, customer_type, price_type,
-                                 input_type, total, approved_by, delivery_person_id, delivery_person_name, target_printer)
-                VALUES (:o, :c, :n, :p, :a, :no, :ct, :pt, :it, :t, :u, :dpid, :dpname, :tp) RETURNING id
+                                 input_type, total, approved_by, delivery_person_id, delivery_person_name, target_printer, invoice_number)
+                VALUES (:o, :c, :n, :p, :a, :no, :ct, :pt, :it, :t, :u, :dpid, :dpname, :tp, nextval('invoice_number_seq'))
+                RETURNING id, invoice_number
                 """).param("o", orderId).param("c", o.customerId()).param("n", o.customerName()).param("p", o.customerPhone())
                 .param("a", o.address()).param("no", o.notes()).param("ct", o.customerType()).param("pt", priceType.name())
                 .param("it", o.inputType()).param("t", total).param("u", user)
-                .param("dpid", dpId).param("dpname", dpName).param("tp", targetPrinter).query(Long.class).single();
+                .param("dpid", dpId).param("dpname", dpName).param("tp", targetPrinter)
+                .query((rs, n) -> new long[]{rs.getLong(1), rs.getLong(2)}).single();
+
+        long saleId = saleRow[0];
+        long invNumber = saleRow[1];
 
         for (int i = 0; i < items.size(); i++) {
             ItemRow it = items.get(i);
             QuoteLine l = (quote.lines() != null && i < quote.lines().size()) ? quote.lines().get(i) : null;
-            String pName = it.aiProductName() != null && !it.aiProductName().isBlank()
+            String baseName = it.aiProductName() != null && !it.aiProductName().isBlank()
                     ? it.aiProductName()
                     : (l != null && l.productName() != null ? l.productName() : it.mentioned());
+            String pName = buildProductNameWithNote(baseName, it.observation());
             Long pid = l != null ? l.productId() : it.productId();
             boolean isMoney = "VALOR".equalsIgnoreCase(it.unit() != null ? it.unit() : (l != null ? l.unit() : null))
                     || "VALOR".equalsIgnoreCase(it.aiUnit())
@@ -137,20 +174,32 @@ public class SaleService {
                 WHERE id = :id
                 """).param("dpid", dpId).param("dpname", dpName).param("id", orderId).update();
 
-        jdbc.sql("INSERT INTO print_job(sale_id, reprint, target_printer) VALUES (:s, FALSE, :tp)")
-                .param("s", saleId).param("tp", targetPrinter).update();
+        // Cancelar cualquier temporizador de espera o debounce activo para este pedido
+        if (batchingCoordinator != null) {
+            try {
+                batchingCoordinator.cancelTimer(orderId);
+            } catch (Exception ignored) {}
+        }
+
+        // Idempotencia estricta en base de datos: evitar duplicar trabajo de impresión inicial
+        jdbc.sql("""
+                INSERT INTO print_job(sale_id, reprint, target_printer)
+                VALUES (:s, FALSE, :tp)
+                ON CONFLICT (sale_id) WHERE reprint = FALSE DO NOTHING
+                """).param("s", saleId).param("tp", targetPrinter).update();
 
         audit.log(user, "ORDER_APPROVED", orderId, saleId, Map.of(
                 "targetPrinter", targetPrinter,
+                "invoiceNumber", invNumber,
                 "lines", items.size()));
 
-        if (!isWholesale && props.conversation().aiAutoReply()) {
+        if (!isWholesale && props.conversation().aiAutoReply() && props.whatsapp() != null && props.whatsapp().autoRepliesEnabled()) {
             try {
                 sendInvoiceWhatsApp(saleId, user);
             } catch (Exception ignored) {}
         }
 
-        return new SaleResult(saleId, orderId, "PRINT_PENDING", total);
+        return new SaleResult(saleId, orderId, "PRINT_PENDING", total, invNumber);
     }
 
     /** Auto-aprobación para comanda mayorista: crea venta y encola impresión al instante */
@@ -180,21 +229,25 @@ public class SaleService {
         }
         String targetPrinter = props.printing().currentTargetPrinter(props.timezone());
 
-        long saleId = jdbc.sql("""
+        var saleRow = jdbc.sql("""
                 INSERT INTO sale(order_id, customer_id, customer_name, customer_phone, address, notes, customer_type, price_type,
                                  input_type, total, approved_by, delivery_person_id, delivery_person_name, target_printer,
-                                 requires_verification, verification_reason)
-                VALUES (:o, :c, COALESCE(:n, (SELECT name FROM customer WHERE id = :c)), :p, :a, :no, :ct, :pt, :it, :t, :u, :dpid, :dpname, :tp, :rv, :vr) RETURNING id
+                                 requires_verification, verification_reason, invoice_number)
+                VALUES (:o, :c, COALESCE(:n, (SELECT name FROM customer WHERE id = :c)), :p, :a, :no, :ct, :pt, :it, :t, :u, :dpid, :dpname, :tp, :rv, :vr, nextval('invoice_number_seq'))
+                RETURNING id, invoice_number
                 """).param("o", orderId).param("c", o.customerId()).param("n", o.customerName()).param("p", o.customerPhone())
                 .param("a", o.address()).param("no", o.notes()).param("ct", o.customerType()).param("pt", priceType.name())
                 .param("it", o.inputType()).param("t", total).param("u", user)
                 .param("dpid", o.deliveryPersonId()).param("dpname", o.deliveryPersonName())
                 .param("tp", targetPrinter).param("rv", requiresVerification).param("vr", verificationReason)
-                .query(Long.class).single();
+                .query((rs, n) -> new long[]{rs.getLong(1), rs.getLong(2)}).single();
+
+        long saleId = saleRow[0];
+        long invNumber = saleRow[1];
 
         for (ItemRow it : items) {
-            String pName = it.aiProductName() != null && !it.aiProductName().isBlank() ? it.aiProductName() : it.mentioned();
-            if (pName == null || pName.isBlank()) pName = "Artículo";
+            String baseName = it.aiProductName() != null && !it.aiProductName().isBlank() ? it.aiProductName() : it.mentioned();
+            String pName = buildProductNameWithNote(baseName, it.observation());
             boolean isMoneyOrder = "VALOR".equalsIgnoreCase(it.unit()) || "VALOR".equalsIgnoreCase(it.aiUnit())
                     || (it.manualPrice() != null && it.manualPrice().compareTo(BigDecimal.ZERO) > 0 && it.quantity() == null && it.aiQuantity() == null);
             String unit = isMoneyOrder ? "VALOR" : (it.unit() != null ? it.unit() : (it.aiUnit() != null ? it.aiUnit() : null));
@@ -222,15 +275,27 @@ public class SaleService {
                 WHERE id = :id
                 """).param("rv", requiresVerification).param("vr", verificationReason).param("id", orderId).update();
 
-        jdbc.sql("INSERT INTO print_job(sale_id, reprint, target_printer) VALUES (:s, FALSE, :tp)")
-                .param("s", saleId).param("tp", targetPrinter).update();
+        // Cancelar temporizador de espera en memoria
+        if (batchingCoordinator != null) {
+            try {
+                batchingCoordinator.cancelTimer(orderId);
+            } catch (Exception ignored) {}
+        }
+
+        // Idempotencia estricta en print_job
+        jdbc.sql("""
+                INSERT INTO print_job(sale_id, reprint, target_printer)
+                VALUES (:s, FALSE, :tp)
+                ON CONFLICT (sale_id) WHERE reprint = FALSE DO NOTHING
+                """).param("s", saleId).param("tp", targetPrinter).update();
 
         audit.log(user, "ORDER_AUTO_APPROVED_WHOLESALE", orderId, saleId, Map.of(
                 "targetPrinter", targetPrinter,
                 "requiresVerification", requiresVerification,
+                "invoiceNumber", invNumber,
                 "lines", items.size()));
 
-        return new SaleResult(saleId, orderId, "PRINT_PENDING", total);
+        return new SaleResult(saleId, orderId, "PRINT_PENDING", total, invNumber);
     }
 
     public String buildInvoiceWhatsAppText(long saleId) {

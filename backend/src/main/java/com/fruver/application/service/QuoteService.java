@@ -90,7 +90,8 @@ public class QuoteService {
         if (p == null) return "NO_PRODUCT";
         if (!p.active()) return "INACTIVE_PRODUCT";
         boolean isMoney = it.manualPrice() != null && it.manualPrice().signum() > 0;
-        if (!isMoney && (it.quantity() == null || it.quantity().signum() <= 0)) return "NO_QUANTITY";
+        if (isMoney) return null;
+        if (it.quantity() == null || it.quantity().signum() <= 0) return "NO_QUANTITY";
         if (it.unit() != null && p.unit() != null && !it.unit().equals(p.unit())) return "UNIT_MISMATCH";
         if (applied == null && type != PriceType.WHOLESALE) return "NO_PRICE";
         return null;
