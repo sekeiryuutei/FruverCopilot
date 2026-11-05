@@ -77,8 +77,8 @@ public class BaileysBridgeStrategy implements WhatsAppProviderStrategy {
                     .toBodilessEntity();
             return MessagingGateway.DeliveryStatus.SENT;
         } catch (Exception e) {
-            log.warn("Fallo al enviar reacción por Baileys: {}. Reintentando como texto.", e.getMessage());
-            return sendText(phone, emoji);
+            log.warn("No se pudo enviar reacción por Baileys a {}: {}", phone, e.getMessage());
+            return MessagingGateway.DeliveryStatus.FAILED;
         }
     }
 

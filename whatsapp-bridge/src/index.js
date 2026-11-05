@@ -162,7 +162,7 @@ async function startWhatsApp() {
       }
       if (key.fromMe) {
         logger.warn({ id: key.id, remoteJid: key.remoteJid }, 'Reintento de mensaje saliente no en caché, respondiendo con confirmación');
-        return proto.Message.fromObject({ conversation: '🙏 👍' });
+        return proto.Message.fromObject({ conversation: '🙏🙏👍' });
       }
       return undefined;
     }

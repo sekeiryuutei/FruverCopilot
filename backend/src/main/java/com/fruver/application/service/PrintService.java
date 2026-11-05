@@ -128,22 +128,15 @@ public class PrintService {
                 String externalMsgId = jdbc.sql("SELECT external_message_id FROM conversation_message WHERE order_id = :o AND direction = 'INBOUND' AND external_message_id IS NOT NULL ORDER BY id DESC LIMIT 1")
                         .param("o", orderId).query(String.class).optional().orElse(null);
 
-                // 1. Reacción emoji nativa '🙏' al mensaje del cliente
-                boolean reacted = false;
+                // 1. Reacción emoji nativa '🙏' al mensaje del cliente (sin enviar burbuja de texto)
                 if (gateway instanceof com.fruver.infrastructure.whatsapp.strategy.WhatsAppServiceContext ctx) {
                     if (externalMsgId != null && !externalMsgId.isBlank()) {
                         try {
-                            var st = ctx.sendReaction(phone, externalMsgId, "🙏");
-                            reacted = (st == com.fruver.application.port.MessagingGateway.DeliveryStatus.SENT);
+                            ctx.sendReaction(phone, externalMsgId, "🙏");
                         } catch (Exception re) {
                             log.debug("No se pudo enviar reacción emoji a {}: {}", phone, re.getMessage());
                         }
                     }
-                }
-
-                if (reacted) {
-                    jdbc.sql("INSERT INTO conversation_message(order_id, direction, message_type, content, delivery_status) VALUES (:o, 'OUTBOUND', 'TEXT', '🙏', 'SENT')")
-                            .param("o", orderId).update();
                 }
 
                 // 2. Respuesta de texto con confirmación '🙏🙏 bien' citando el mensaje del cliente

@@ -14,3 +14,4 @@ ALTER TABLE product ADD CONSTRAINT product_unit_check
     'PAQUETE'::character varying,
     'MANOJO'::character varying
   ]::text[]));
+
