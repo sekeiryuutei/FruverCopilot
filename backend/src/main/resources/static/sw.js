@@ -1,5 +1,5 @@
 // Service Worker para Fruver El Oasis PWA (Soporte Offline Completo)
-const CACHE_NAME = 'oasis-cache-v4';
+const CACHE_NAME = 'oasis-cache-v5';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

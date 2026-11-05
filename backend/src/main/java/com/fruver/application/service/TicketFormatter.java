@@ -163,8 +163,10 @@ public final class TicketFormatter {
             case "BULTO"  -> "BLT";
             case "ARROBA" -> "ARR";
             case "CAJA"   -> "CJA";
-            case "ATADO"  -> "ATD";
-            case "BOLSA"  -> "BLS";
+            case "ATADO"   -> "ATD";
+            case "BOLSA"   -> "BLS";
+            case "PAQUETE" -> "PAQ";
+            case "MANOJO"  -> "MNJ";
             default -> unit;
         };
     }

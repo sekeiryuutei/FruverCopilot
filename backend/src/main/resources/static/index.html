@@ -426,6 +426,27 @@ const S={me:null,products:[],orders:[],deliveryPersons:[],draft:{},open:{},openC
 const byName=n=>S.products.find(p=>p.name.toLowerCase()===String(n).trim().toLowerCase());
 const ago=t=>{const s=Math.max(0,(Date.now()-new Date(t))/1000);return s<60?Math.round(s)+' s':s<3600?Math.round(s/60)+' min':Math.round(s/3600)+' h'};
 
+/* ---------- Unidades Fruver Comunes ---------- */
+const FRUVER_UNITS = [
+  { v: 'LB',      l: 'LB (Libra)' },
+  { v: 'KG',      l: 'KG (Kilo)' },
+  { v: 'UNIDAD',  l: 'UN (Unidad)' },
+  { v: 'ARROBA',  l: '@ (Arroba)' },
+  { v: 'BULTO',   l: 'Bulto' },
+  { v: 'CAJA',    l: 'Caja' },
+  { v: 'BOLSA',   l: 'Bolsa' },
+  { v: 'ATADO',   l: 'Atado' },
+  { v: 'MANOJO',  l: 'Manojo' },
+  { v: 'PAQUETE', l: 'Paquete' }
+];
+function formatUnitLabel(u){
+  if(!u||u==='NO_UNIT'||u==='NULL')return '';
+  const up=String(u).trim().toUpperCase();
+  if(up==='UNIDAD')return 'UN';
+  if(up==='ARROBA')return '@';
+  return up;
+}
+
 /* ---------- Operación ---------- */
 /* PURE:START — lógica sin DOM (se prueba aparte con Node) */
 const round3=n=>Math.round(n*1000)/1000;
@@ -522,9 +543,9 @@ function isMoneyOrder(it){
   if(["VALOR","PESOS","COP","$","DINERO","PLATA"].includes(u))return true;
   if(it.manualPrice&&Number(it.manualPrice)>=500&&(!it.quantity||Number(it.quantity)<=1))return true;
   if(!it.quantity&&(it.manualPrice||it.subtotal||it.price))return true;
-  if(Number(it.quantity||0)>=1000&&(!u||!["LB","LBS","KG","KGS","KL","KLS","UN","UND","UNIDAD","UNIDADES","BULTO","CAJA","ARROBA","ATADO"].includes(u)))return true;
+  if(Number(it.quantity||0)>=1000&&(!u||!["LB","LBS","KG","KGS","KL","KLS","UN","UND","UNIDAD","UNIDADES","BULTO","BULTOS","BL","CAJA","CAJAS","CJ","ARROBA","ARROBAS","@","ATADO","ATADOS","BOLSA","BOLSAS","PAQUETE","PAQUETES","MANOJO","MANOJOS"].includes(u)))return true;
   const txt=((it.name||"")+" "+(it.mentioned||"")+" "+(it.observation||"")).toLowerCase();
-  if(/\b\d{3,6}\s*(pesos|de|mil|cop|\$)/i.test(txt)&&!["LB","KG","KL","UNIDAD"].includes(u))return true;
+  if(/\b\d{3,6}\s*(pesos|de|mil|cop|\$)/i.test(txt)&&!["LB","KG","KL","UNIDAD","BULTO","CAJA","ARROBA","ATADO","BOLSA","PAQUETE","MANOJO"].includes(u))return true;
   return false;
 }
 function draftOf(o){return S.draft[o.id]||null}
@@ -1706,9 +1727,9 @@ function card(o){
     const q=h("input",{class:"q",type:"number",step:"0.5",min:"0",max:MAX_QTY,inputmode:"decimal",
       value:isMoney?"":(it.quantity??""),placeholder:isMoney?"Por pesar":"",onkeydown:blockKeys,
       oninput:e=>{const r=parseQty(e.target.value);it.quantity=r.value;it.qtyError=r.ok?null:r.error;showErr();calc()}});
-    const unitOpts=[{v:"",l:"—"},{v:"LB",l:"LB"},{v:"KG",l:"KG"},{v:"KL",l:"KL"},{v:"UNIDAD",l:"UN"}];
+    const unitOpts=[{v:"",l:"—"},...FRUVER_UNITS];
     const us=h("select",{onchange:e=>{it.unit=e.target.value;showErr();calc();mark()}},
-      unitOpts.map(u=>h("option",{value:u.v,selected:(it.unit||"")===u.v},u.l)));
+      unitOpts.map(u=>h("option",{value:u.v,selected:((it.unit==='UN'?'UNIDAD':(it.unit==='KL'?'KG':(it.unit||''))))===u.v},u.l)));
     const isWholesale=o&&o.customer&&(o.customer.type==="WHOLESALE"||o.customer.type==="RESTAURANTE");
     const prVal=it.manualPrice??(isMoney?(it.subtotal??(Number(it.quantity)>=1000?it.quantity:"")):"");
     const pr=h("input",{class:"pr",type:"number",min:"0",max:MAX_PRICE,inputmode:"numeric",
@@ -2023,7 +2044,8 @@ function openManualOrderModal(isQuickSale = false){
         sub.textContent = r.ok && it.quantity > 0 && pr != null ? cop(it.quantity * pr) : '—';
         calcTotal();
       }});
-    const unitSelect = h('select',{onchange: e => { it.unit = e.target.value; }}, ['LB','KG','UNIDAD'].map(u=>h('option',{value:u,selected:u===it.unit},u==='UNIDAD'?'UN':u)));
+    const unitSelect = h('select',{style:'max-width:120px;font-size:13px',onchange: e => { it.unit = e.target.value; }},
+      FRUVER_UNITS.map(u=>h('option',{value:u.v,selected:((it.unit==='UN'?'UNIDAD':(it.unit==='KL'?'KG':(it.unit||'LB'))))===u.v},u.l)));
     const prInput = h('input',{class:'pr',type:'number',min:'0',placeholder:'Catálogo',onkeydown:blockKeys,
       oninput: e => {
         const r = parsePrice(e.target.value);
@@ -2800,8 +2822,22 @@ async function renderPrices(){const m=$('#main');const q=h('input',{placeholder:
             try{await api('/api/products/'+p.id,{method:'PATCH',body:{imageUrl:u.trim()}});toast('✓ Foto asignada');load()}catch(x){toast(x.message)}
           }
         }},'📷');
-    return h('tr',{},h('td',{},imgEl,p.name),h('td',{},p.unit==='UNIDAD'?'UN':p.unit),h('td',{},price('RETAIL')),h('td',{},price('WHOLESALE')),h('td',{},h('input',{type:'checkbox',checked:p.active,onchange:async e=>{try{await api('/api/products/'+p.id,{method:'PATCH',body:{active:e.target.checked}})}catch(x){toast(x.message)}}})))}));fillDl()};
-  const n=h('input',{placeholder:'Nombre',style:'flex:1'}),u=h('select',{},['LB','KG','UNIDAD'].map(x=>h('option',{value:x},x))),r=h('input',{type:'number',placeholder:'Minorista',class:'pr'}),w=h('input',{type:'number',placeholder:'Mayorista',class:'pr'}),imgInp=h('input',{placeholder:'URL de Imagen (opcional)',style:'flex:1'});
+    const unitSelectEl = h('select', {
+      style: 'padding:2px 5px;font-size:12px;border-radius:5px',
+      title: 'Cambiar unidad base del catálogo',
+      onchange: async e => {
+        try {
+          await api('/api/products/' + p.id, { method: 'PATCH', body: { unit: e.target.value } });
+          p.unit = e.target.value;
+          toast('✓ Unidad de ' + p.name + ' actualizada');
+        } catch (x) {
+          toast(x.message);
+          e.target.value = p.unit;
+        }
+      }
+    }, FRUVER_UNITS.map(x => h('option', { value: x.v, selected: x.v === p.unit }, x.l)));
+    return h('tr',{},h('td',{},imgEl,p.name),h('td',{},unitSelectEl),h('td',{},price('RETAIL')),h('td',{},price('WHOLESALE')),h('td',{},h('input',{type:'checkbox',checked:p.active,onchange:async e=>{try{await api('/api/products/'+p.id,{method:'PATCH',body:{active:e.target.checked}})}catch(x){toast(x.message)}}})))}));fillDl()};
+  const n=h('input',{placeholder:'Nombre',style:'flex:1'}),u=h('select',{},FRUVER_UNITS.map(x=>h('option',{value:x.v},x.l))),r=h('input',{type:'number',placeholder:'Minorista',class:'pr'}),w=h('input',{type:'number',placeholder:'Mayorista',class:'pr'}),imgInp=h('input',{placeholder:'URL de Imagen (opcional)',style:'flex:1'});
   m.replaceChildren(h('div',{class:'row'},q,h('button',{class:'b',onclick:load},'Buscar')),h('div',{class:'scroll'},h('table',{},h('thead',{},h('tr',{},['Producto','Unidad','Minorista','Mayorista','Activo'].map(t=>h('th',{},t)))),body)),
     h('h3',{},'Nuevo producto'),h('div',{class:'row'},n,u,r,w,imgInp,h('button',{class:'b main',onclick:async()=>{const rp=parsePrice(r.value),wp=parsePrice(w.value);if(!rp.ok||!wp.ok){toast(rp.error||wp.error);return}try{await api('/api/products',{method:'POST',body:{name:n.value,unit:u.value,retailPrice:rp.value,wholesalePrice:wp.value,imageUrl:imgInp.value.trim()||null}});toast('Creado');n.value='';imgInp.value='';load()}catch(e){toast(e.message)}}},'Crear')));
   q.addEventListener('keydown',e=>e.key==='Enter'&&load());load()}
