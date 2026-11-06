@@ -1,6 +1,7 @@
 package com.fruver.infrastructure.printing;
 
 import com.fruver.application.service.TicketData;
+import com.fruver.domain.service.TextSanitizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,10 @@ public class TalonarioRasterService {
 
     private static final Logger log = LoggerFactory.getLogger(TalonarioRasterService.class);
     private static final DecimalFormat MONEY_FMT = new DecimalFormat("#,##0");
+
+    public static String sanitizeText(String s) {
+        return TextSanitizer.cleanText(s);
+    }
 
     public byte[] renderTicketToPwgRaster(TicketData ticket) throws IOException {
         String html = buildHtml(ticket);
@@ -141,13 +146,14 @@ public class TalonarioRasterService {
     }
 
     public String buildA4CenteredHtml(TicketData t) {
-        String customer = (t.customer() != null ? t.customer() : "CLIENTE GENERAL").toUpperCase();
+        String customer = TextSanitizer.sanitizeCustomerName(t.customer()).toUpperCase();
         String rawPhone = (t.phone() != null ? t.phone() : "").trim();
         String phone = rawPhone.replaceFirst("^\\+?57", "");
         if (phone.length() > 10 || !phone.matches("\\d{7,10}")) {
             phone = "__________________";
         }
-        String address = (t.address() != null && !t.address().isBlank()) ? t.address().trim().toUpperCase() : "________________________________________________";
+        String cleanAddr = TextSanitizer.sanitizeAddress(t.address()).toUpperCase();
+        String address = !cleanAddr.isBlank() ? cleanAddr : "________________________________________________";
         String originInfo = "";
         if (t.inputType() != null && !t.inputType().isBlank() && !"TEXT".equalsIgnoreCase(t.inputType())) {
             java.util.List<String> parts = new java.util.ArrayList<>();
@@ -183,7 +189,7 @@ public class TalonarioRasterService {
             for (int i = 0; i < pageLines.size(); i++) {
                 int globalIdx = from + i + 1;
                 TicketData.Line l = pageLines.get(i);
-                String name = l.name() != null ? l.name().toUpperCase() : "";
+                String name = TextSanitizer.sanitizeProductName(l.name()).toUpperCase();
 
                 // Regla de negocio: pedidos por valor en dinero (ej: "10.000 de cebolla")
                 boolean isMoneyOrder = isMoneyOrderLine(l);
@@ -211,9 +217,8 @@ public class TalonarioRasterService {
                 }
 
                 rowsHtml.append("<tr style=\"height:34px\">\n")
-                        .append("  <td style=\"text-align:center;font-weight:bold;padding:3px 2px;border:1.5px solid #000;font-size:14px;color:#111\">").append(globalIdx).append("</td>\n")
                         .append("  <td style=\"text-align:center;font-weight:900;padding:3px 3px;border:1.5px solid #000;font-size:18px\">").append(cant).append("</td>\n")
-                        .append("  <td style=\"padding:3px 6px;border:1.5px solid #000;text-transform:uppercase;font-size:17.5px;font-weight:900;white-space:nowrap;overflow:hidden\">").append(name).append("</td>\n")
+                        .append("  <td style=\"padding:3px 6px;border:1.5px solid #000;text-transform:uppercase;font-size:17.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0\">").append(name).append("</td>\n")
                         .append("  <td style=\"text-align:right;padding:3px 4px;border:1.5px solid #000;font-size:15px;font-weight:bold\">").append(vrUnit).append("</td>\n")
                         .append("  <td style=\"text-align:right;padding:3px 5px;border:1.5px solid #000;font-size:16.5px;font-weight:900\">").append(vrTotal).append("</td>\n")
                         .append("</tr>\n");
@@ -273,7 +278,7 @@ public class TalonarioRasterService {
                     .replace("{{ADDRESS}}", address)
                     .replace("{{ORIGIN_INFO}}", originInfo)
                     .replace("{{NOTES_ROW}}", (t.notes() != null && !t.notes().isBlank())
-                            ? "<tr><td colspan=\"2\" style=\"padding-top:4px;border-top:1px dashed #000;font-size:13px\"><b>OBSERVACIONES:</b> <span style=\"font-size:14.5px;font-weight:900\">" + t.notes().trim().toUpperCase() + "</span></td></tr>"
+                            ? "<tr><td colspan=\"2\" style=\"padding-top:4px;border-top:1px dashed #000;font-size:13px\"><b>OBSERVACIONES:</b> <span style=\"font-size:14.5px;font-weight:900\">" + TextSanitizer.sanitizeNotes(t.notes()).toUpperCase() + "</span></td></tr>"
                             : "");
             } else {
                 headerHtml = """
@@ -330,12 +335,11 @@ public class TalonarioRasterService {
                 <div class="a4-sheet" style="{{BREAK_STYLE}}">
                   <div class="a5-invoice-container">
                     {{HEADER_HTML}}
-                    <table class="items-table" style="width:100%;border-collapse:collapse;border:2px solid #000">
+                    <table class="items-table" style="width:100%;table-layout:fixed;border-collapse:collapse;border:2px solid #000">
                       <thead>
                         <tr style="background:#e5e7eb;color:#000;font-size:14px;font-weight:900;height:32px">
-                          <th style="padding:3px;border:1.5px solid #000;width:6%;text-align:center">#</th>
-                          <th style="padding:3px;border:1.5px solid #000;width:18%;text-align:center">CANT.</th>
-                          <th style="padding:3px 5px;border:1.5px solid #000;width:38%;text-align:left">DESCRIPCIÓN</th>
+                          <th style="padding:3px;border:1.5px solid #000;width:20%;text-align:center">CANT.</th>
+                          <th style="padding:3px 5px;border:1.5px solid #000;width:42%;text-align:left">DESCRIPCIÓN</th>
                           <th style="padding:3px 5px;border:1.5px solid #000;width:19%;text-align:right">VR. UNIT</th>
                           <th style="padding:3px 5px;border:1.5px solid #000;width:19%;text-align:right">VR. TOTAL</th>
                         </tr>

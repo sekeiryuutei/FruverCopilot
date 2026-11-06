@@ -131,8 +131,9 @@ public class OrderWriter {
                             .param("mp", i.manualPrice()).update();
                 }
             } else {
-                // Fusión inteligente: preservar ítems existentes y anexar o actualizar nuevos
+                // Fusión inteligente: actualizar existentes, anexar nuevos y sincronizar cancelaciones
                 int nextLine = existingItems.size();
+                java.util.Set<Long> matchedExistingIds = new java.util.HashSet<>();
                 for (InterpretedOrder.Item ni : io.items()) {
                     com.fruver.infrastructure.persistence.Rows.ItemRow match = existingItems.stream()
                             .filter(ex -> (ni.productId() != null && java.util.Objects.equals(ex.productId(), ni.productId()))
@@ -141,6 +142,7 @@ public class OrderWriter {
                             .findFirst().orElse(null);
 
                     if (match != null) {
+                        matchedExistingIds.add(match.id());
                         jdbc.sql("""
                                 UPDATE order_item SET quantity = :q, unit = :u, ai_quantity = :aq, ai_unit = :au,
                                        ai_ambiguous = :aa, observation = :obs, manual_price = COALESCE(:mp, order_item.manual_price)
@@ -163,6 +165,28 @@ public class OrderWriter {
                                 .param("obs", ni.observation()).param("pid", ni.productId()).param("q", ni.quantity())
                                 .param("u", ni.unit() == null ? null : ni.unit().name())
                                 .param("mp", ni.manualPrice()).update();
+                    }
+                }
+                // Sincronización inteligente de cancelaciones: si la nota de la IA indica que el cliente canceló,
+                // eliminó o pidió no enviar un producto ("no va", "cancel", "quitar", "no mand"), eliminar
+                // de order_item los productos antiguos cancelados que ya no vienen en la lista
+                String noteLower = io.note() != null ? io.note().toLowerCase() : "";
+                boolean hasCancellation = noteLower.contains("no va") || noteLower.contains("no para hoy")
+                        || noteLower.contains("cancel") || noteLower.contains("quit")
+                        || noteLower.contains("no mand") || noteLower.contains("no enviar")
+                        || noteLower.contains("sin ");
+
+                for (com.fruver.infrastructure.persistence.Rows.ItemRow ex : existingItems) {
+                    if (!ex.edited() && !matchedExistingIds.contains(ex.id())) {
+                        String exName = ex.aiProductName() != null ? ex.aiProductName().toLowerCase() : "";
+                        String exMent = ex.mentioned() != null ? ex.mentioned().toLowerCase() : "";
+                        boolean explicitlyCancelled = hasCancellation && (
+                                (!exName.isBlank() && noteLower.contains(exName)) ||
+                                (!exMent.isBlank() && noteLower.contains(exMent))
+                        );
+                        if (explicitlyCancelled) {
+                            jdbc.sql("DELETE FROM order_item WHERE id = :id").param("id", ex.id()).update();
+                        }
                     }
                 }
             }
@@ -206,7 +230,7 @@ public class OrderWriter {
     @Transactional
     public void updateCustomerName(long orderId, String name) {
         if (name == null || name.isBlank()) return;
-        String clean = name.strip();
+        String clean = com.fruver.domain.service.TextSanitizer.sanitizeCustomerName(name);
 
         var customerData = jdbc.sql("""
                 SELECT c.id, c.name, COALESCE(c.name_source, 'UNVERIFIED')
@@ -219,7 +243,8 @@ public class OrderWriter {
 
         if (customerData.isPresent()) {
             long customerId = (Long) customerData.get()[0];
-            String currentName = (String) customerData.get()[1];
+            String rawCurrentName = (String) customerData.get()[1];
+            String currentName = com.fruver.domain.service.TextSanitizer.sanitizeCustomerName(rawCurrentName);
             String source = (String) customerData.get()[2];
             boolean isProtected = "MANUAL".equalsIgnoreCase(source)
                     || "IMPORTED_CONTACT".equalsIgnoreCase(source)

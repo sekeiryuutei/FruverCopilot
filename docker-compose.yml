@@ -32,6 +32,12 @@ services:
       AUTH_DIR: /app/auth_info
       BACKEND_WEBHOOK_URL: http://backend:8080/webhook/whatsapp
       WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-ignore}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-fruver}
+      DB_USER: ${DB_USER:-fruver}
+      DB_PASSWORD: ${DB_PASSWORD}
+    stop_grace_period: 30s
     ports:
       - "${WHATSAPP_BRIDGE_PORT:-8086}:3000"
     volumes:

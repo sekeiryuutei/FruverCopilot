@@ -2,9 +2,8 @@
 FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /app
 COPY pom.xml .
-RUN mvn -q -B dependency:go-offline
 COPY src ./src
-RUN mvn -q -B package -DskipTests
+RUN mvn -B package -DskipTests
 
 # ---- runtime ----
 FROM eclipse-temurin:21.0.5_11-jre

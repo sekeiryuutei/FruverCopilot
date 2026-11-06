@@ -1,5 +1,12 @@
 package com.fruver.application.service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.springframework.stereotype.Component;
+
 import com.fruver.application.dto.AIOrderResponse;
 import com.fruver.application.dto.InterpretedOrder;
 import com.fruver.application.dto.InterpretedOrder.Item;
@@ -10,12 +17,6 @@ import com.fruver.domain.enums.ReviewStatus;
 import com.fruver.domain.enums.UnitOfMeasure;
 import com.fruver.domain.service.ItemAssessment;
 import com.fruver.domain.service.ReviewEvaluator;
-import org.springframework.stereotype.Component;
-
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Trata la respuesta del LLM como UNTRUSTED INPUT: valida estructura, cantidades, unidades y catalogo,
@@ -167,7 +168,7 @@ public class ExtractionInterpreter {
 
         // 3. Si la IA extrajo 1, 2, 3 pero es pedido por valor o dijo 'mil' (ej: 1 -> 1000, 2 -> 2000)
         if (d.cantidad() != null && d.cantidad().compareTo(BigDecimal.ZERO) > 0 && d.cantidad().compareTo(new BigDecimal("100")) < 0) {
-            if (isValUnit || hasValObs || obs.toLowerCase().contains("mil") || ment.toLowerCase().contains("mil")) {
+            if (isValUnit || hasValObs || obs.toLowerCase().matches(".*\\bmil\\b.*") || ment.toLowerCase().matches(".*\\bmil\\b.*")) {
                 return d.cantidad().multiply(new BigDecimal("1000")).setScale(0, RoundingMode.HALF_UP);
             }
         }

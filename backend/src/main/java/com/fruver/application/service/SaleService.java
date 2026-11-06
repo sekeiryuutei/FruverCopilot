@@ -6,6 +6,7 @@ import com.fruver.application.port.MessagingGateway;
 import com.fruver.config.AppProperties;
 import com.fruver.domain.enums.CustomerType;
 import com.fruver.domain.enums.PriceType;
+import com.fruver.domain.service.TextSanitizer;
 import com.fruver.infrastructure.persistence.OrderRepository;
 import com.fruver.infrastructure.persistence.Rows.ItemRow;
 import com.fruver.infrastructure.persistence.Rows.OrderRow;
@@ -65,9 +66,19 @@ public class SaleService {
         int idx = clean.toLowerCase().indexOf("nota:");
         if (idx >= 0) {
             String sub = clean.substring(idx + 5).trim();
-            if (!sub.isBlank()) return sub;
+            if (!sub.isBlank()) clean = sub;
         }
-        if (clean.toLowerCase().startsWith("pedido por valor") || clean.toLowerCase().startsWith("pedido por dinero")) {
+        String lower = clean.toLowerCase();
+        if (lower.startsWith("pedido por valor") || lower.startsWith("pedido por dinero")
+                || lower.startsWith("tomado de") || lower.startsWith("del pedido actual")
+                || lower.startsWith("mencionado en") || lower.contains("historial frecuente")
+                || lower.contains("interpretado como") || lower.contains("producto adicional")
+                || lower.contains("cantidad sin unidad") || lower.contains("sin unidad")
+                || lower.contains("pedido en libras") || lower.contains("se interpreta como")
+                || lower.contains("nota de voz") || lower.contains("nota adicional")
+                || lower.contains("unidad no especificada") || lower.contains("fracción mixta")
+                || lower.contains("fraccion mixta") || lower.contains("agregado a mano")
+                || lower.contains("producto no claro")) {
             return null;
         }
         return clean;
@@ -76,10 +87,11 @@ public class SaleService {
     public static String buildProductNameWithNote(String baseName, String observation) {
         if (baseName == null || baseName.isBlank()) baseName = "Artículo";
         String note = extractItemNote(observation);
+        String res = baseName;
         if (note != null && !note.isBlank() && !baseName.toLowerCase().contains(note.toLowerCase())) {
-            return baseName + " (" + note + ")";
+            res = baseName + " (" + note + ")";
         }
-        return baseName;
+        return TextSanitizer.sanitizeProductName(res);
     }
 
     @Transactional
@@ -125,13 +137,17 @@ public class SaleService {
         String targetPrinter = props.printing().currentTargetPrinter(props.timezone());
         BigDecimal total = quote.complete() ? quote.total() : null;
 
+        String cleanCustomer = TextSanitizer.sanitizeCustomerName(o.customerName());
+        String cleanAddress = TextSanitizer.sanitizeAddress(o.address());
+        String cleanNotes = TextSanitizer.sanitizeNotes(o.notes());
+
         var saleRow = jdbc.sql("""
                 INSERT INTO sale(order_id, customer_id, customer_name, customer_phone, address, notes, customer_type, price_type,
                                  input_type, total, approved_by, delivery_person_id, delivery_person_name, target_printer, invoice_number)
                 VALUES (:o, :c, :n, :p, :a, :no, :ct, :pt, :it, :t, :u, :dpid, :dpname, :tp, nextval('invoice_number_seq'))
                 RETURNING id, invoice_number
-                """).param("o", orderId).param("c", o.customerId()).param("n", o.customerName()).param("p", o.customerPhone())
-                .param("a", o.address()).param("no", o.notes()).param("ct", o.customerType()).param("pt", priceType.name())
+                """).param("o", orderId).param("c", o.customerId()).param("n", cleanCustomer).param("p", o.customerPhone())
+                .param("a", cleanAddress).param("no", cleanNotes).param("ct", o.customerType()).param("pt", priceType.name())
                 .param("it", o.inputType()).param("t", total).param("u", user)
                 .param("dpid", dpId).param("dpname", dpName).param("tp", targetPrinter)
                 .query((rs, n) -> new long[]{rs.getLong(1), rs.getLong(2)}).single();

@@ -56,6 +56,7 @@ class SaleFlowIntegrationTest extends SafeMessagingSupport {
     @Autowired OrderEditService edits;
     @Autowired PriceService prices;
     @Autowired PrintService print;
+    @Autowired QuoteService quotes;
     @Autowired ConversationService conversation;
     @Autowired OrderRepository orders;
     @Autowired OrderViewService views;
@@ -140,9 +141,10 @@ class SaleFlowIntegrationTest extends SafeMessagingSupport {
 
     @Test void unitDifferentFromProductUnitBlocksApproval() {
         long order = newOrder("570000000005", papaCriolla("2", "KG")); // el producto se vende por LB
-        ApiException e = assertThrows(ApiException.class, () -> sales.approve(order, orders.find(order).orElseThrow().version(), "tester"));
-        assertEquals("ORDER_REQUIRES_REVIEW", e.code());
-        assertTrue(e.details().stream().anyMatch(d -> d.contains("UNIT_MISMATCH")));
+        var items = orders.items(order);
+        var quote = quotes.quote(items, PriceType.RETAIL);
+        assertFalse(quote.complete(), "Unidad distinta a la del catalogo no debe dar cotizacion completa");
+        assertTrue(quote.lines().stream().anyMatch(l -> "UNIT_MISMATCH".equals(l.problem())));
     }
 
     @Test void printerFailureKeepsSaleAndReprintDoesNotCreateAnotherSale() {

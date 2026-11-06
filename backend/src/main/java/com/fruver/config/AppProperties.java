@@ -18,6 +18,7 @@ public record AppProperties(
     public AppProperties {
         if (timezone == null || timezone.isBlank()) timezone = "America/Bogota";
         if (ai == null) ai = new Ai("gemini", new Gemini("", "", "gemini-3.5-flash-lite", "https://generativelanguage.googleapis.com"), null, null, null, null, null);
+        if (whatsapp == null) whatsapp = new Whatsapp(false, "", "", "", "", "v21.0", false, true, false, false);
     }
 
     public record Ai(String provider, Gemini gemini, OpenCode opencode, OpenRouter openrouter, Groq groq, OpenAiConfig openai, Ollama ollama) {
@@ -138,6 +139,7 @@ public record AppProperties(
                            String phoneNumberId, String apiVersion,
                            boolean sendErrorNoticesToUser,
                            boolean sendOrderConfirmationEmoji,
+                           boolean sendOrderConfirmationText,
                            boolean autoRepliesEnabled) {
         public Whatsapp {
             if (verifyToken == null) verifyToken = "";

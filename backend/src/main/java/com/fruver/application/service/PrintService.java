@@ -38,6 +38,9 @@ public class PrintService {
     private final PrinterConfigService printerConfig;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private BlockingAlertService alertService;
+
     public PrintService(JdbcClient jdbc, TicketService tickets, PrintStrategyFactory strategyFactory,
                         TransactionTemplate tx, AppProperties props, AppMetrics metrics, SseHub hub,
                         MessagingGateway gateway, PrinterConfigService printerConfig) {
@@ -103,6 +106,9 @@ public class PrintService {
                         .param("s", job.saleId()).param("p", location).update();
             });
             metrics.print("ok");
+            if (alertService != null) {
+                alertService.autoDismissForSale(job.saleId());
+            }
             if (!job.reprint()) {
                 sendPrintedConfirmation(job.saleId());
             }
@@ -128,31 +134,43 @@ public class PrintService {
                 String externalMsgId = jdbc.sql("SELECT external_message_id FROM conversation_message WHERE order_id = :o AND direction = 'INBOUND' AND external_message_id IS NOT NULL ORDER BY id DESC LIMIT 1")
                         .param("o", orderId).query(String.class).optional().orElse(null);
 
+                boolean sendEmoji = props != null && props.whatsapp() != null
+                        ? props.whatsapp().sendOrderConfirmationEmoji()
+                        : true;
+                boolean sendText = props != null && props.whatsapp() != null
+                        ? props.whatsapp().sendOrderConfirmationText()
+                        : false;
+
                 // 1. Reacción emoji nativa '🙏' al mensaje del cliente (sin enviar burbuja de texto)
-                if (gateway instanceof com.fruver.infrastructure.whatsapp.strategy.WhatsAppServiceContext ctx) {
+                if (sendEmoji && gateway instanceof com.fruver.infrastructure.whatsapp.strategy.WhatsAppServiceContext ctx) {
                     if (externalMsgId != null && !externalMsgId.isBlank()) {
                         try {
                             ctx.sendReaction(phone, externalMsgId, "🙏");
+                            log.info("Reacción emoji '🙏' enviada por WhatsApp al cliente {} para pedido #{}", phone, orderId);
                         } catch (Exception re) {
                             log.debug("No se pudo enviar reacción emoji a {}: {}", phone, re.getMessage());
                         }
                     }
                 }
 
-                // 2. Respuesta de texto con confirmación '🙏🙏 bien' citando el mensaje del cliente
-                try {
-                    String deliveryStatus;
-                    if (gateway instanceof com.fruver.infrastructure.whatsapp.strategy.WhatsAppServiceContext ctx) {
-                        deliveryStatus = ctx.sendText(phone, confirmMsg, null, externalMsgId).name();
-                    } else {
-                        deliveryStatus = gateway.sendText(phone, confirmMsg).name();
+                // 2. Respuesta de texto con confirmación '🙏🙏👍' citando el mensaje del cliente (solo si sendText = true)
+                if (sendText) {
+                    try {
+                        String deliveryStatus;
+                        if (gateway instanceof com.fruver.infrastructure.whatsapp.strategy.WhatsAppServiceContext ctx) {
+                            deliveryStatus = ctx.sendText(phone, confirmMsg, null, externalMsgId).name();
+                        } else {
+                            deliveryStatus = gateway.sendText(phone, confirmMsg).name();
+                        }
+                        jdbc.sql("INSERT INTO conversation_message(order_id, direction, message_type, content, delivery_status) VALUES (:o, 'OUTBOUND', 'TEXT', :c, :d)")
+                                .param("o", orderId).param("c", confirmMsg).param("d", deliveryStatus).update();
+                        hub.orderChanged(orderId);
+                        log.info("Confirmación '{}' enviada por WhatsApp al cliente {} para pedido #{}", confirmMsg, phone, orderId);
+                    } catch (Exception te) {
+                        log.warn("No se pudo enviar mensaje de confirmación '{}': {}", confirmMsg, te.getMessage());
                     }
-                    jdbc.sql("INSERT INTO conversation_message(order_id, direction, message_type, content, delivery_status) VALUES (:o, 'OUTBOUND', 'TEXT', :c, :d)")
-                            .param("o", orderId).param("c", confirmMsg).param("d", deliveryStatus).update();
-                    hub.orderChanged(orderId);
-                    log.info("Confirmación '{}' enviada por WhatsApp al cliente {} para pedido #{}", confirmMsg, phone, orderId);
-                } catch (Exception te) {
-                    log.warn("No se pudo enviar mensaje de confirmación '{}': {}", confirmMsg, te.getMessage());
+                } else {
+                    log.info("Confirmación de texto omitida por configuración (WHATSAPP_SEND_ORDER_CONFIRMATION_TEXT=false) para pedido #{}", orderId);
                 }
             }
         } catch (Exception e) {
@@ -226,6 +244,9 @@ public class PrintService {
                 jdbc.sql("UPDATE print_job SET status = 'FAILED', last_error = :e, updated_at = now() WHERE id = :id").param("e", error).param("id", job.id()).update();
                 jdbc.sql("UPDATE sale SET print_status = 'PRINT_FAILED', print_error = :e WHERE id = :s").param("e", error).param("s", job.saleId()).update();
             });
+            if (alertService != null) {
+                alertService.raise("PRINT_FAILED_" + job.saleId(), "CRITICAL", "Fallo al imprimir Venta #" + job.saleId(), "Impresión fallida tras " + job.attempts() + " intentos: " + error, null, job.saleId());
+            }
         }
     }
 }

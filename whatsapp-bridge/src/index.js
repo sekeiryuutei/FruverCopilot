@@ -6,36 +6,56 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const pino = require('pino');
+const { Pool } = require('pg');
 const { NodeCache } = require('@cacheable/node-cache');
 const {
   default: makeWASocket,
-  useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
   downloadMediaMessage,
   proto
 } = require('@whiskeysockets/baileys');
 
+const { usePostgresAuthState } = require('./postgres-auth');
+const { createInboxOutbox } = require('./inbox-outbox');
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
-const AUTH_DIR = process.env.AUTH_DIR || path.join(__dirname, '..', 'auth_info');
 const BACKEND_WEBHOOK_URL = process.env.BACKEND_WEBHOOK_URL || 'http://backend:8080/webhook/whatsapp';
 const APP_SECRET = process.env.WHATSAPP_APP_SECRET || 'ignore';
 
 const logger = pino({ level: 'info' });
 
+// Pool de conexiones PostgreSQL
+const pool = new Pool({
+  host: process.env.DB_HOST || 'postgres',
+  port: parseInt(process.env.DB_PORT || '5432', 10),
+  user: process.env.DB_USER || 'fruver',
+  password: process.env.DB_PASSWORD || '-FiANc-B_yzU0JJijtQfj0Tr',
+  database: process.env.DB_NAME || 'fruver',
+  max: 10,
+  idleTimeoutMillis: 30000
+});
+
+// Advisory lock key única para la instancia maestra de Baileys
+const BAILEYS_ADVISORY_LOCK_ID = 987654321;
+let hasAdvisoryLock = false;
+let advisoryLockClient = null;
+
 let sock = null;
 let connectionStatus = 'DISCONNECTED'; // DISCONNECTED, QR_READY, CONNECTED
 let qrCodeBase64 = null;
 let connectedPhone = null;
+let isStarting = false;
+let reconnectTimer = null;
+let lastActivityTimestamp = Date.now();
+let isShuttingDown = false;
 
 // Media cache en memoria (ID -> { buffer, mimeType, timestamp })
 const mediaStore = new Map();
-
-// Limpiar media antigua cada 15 min (> 30 min)
 setInterval(() => {
   const now = Date.now();
   for (const [id, item] of mediaStore.entries()) {
@@ -47,86 +67,34 @@ setInterval(() => {
 
 // Mapeo persistente de LID -> Teléfono
 const lidPhoneMap = new Map();
-const LID_MAP_FILE = path.join(AUTH_DIR, 'lid_map.json');
+// Semilla conocida de Victor
+lidPhoneMap.set('96701255786676', '573156793777');
 
-function loadLidMap() {
-  if (fs.existsSync(LID_MAP_FILE)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(LID_MAP_FILE, 'utf8'));
-      for (const [k, v] of Object.entries(data)) {
-        lidPhoneMap.set(k, v);
-      }
-      logger.info({ count: lidPhoneMap.size }, 'Mapeos LID -> Teléfono cargados');
-    } catch (e) {
-      logger.error('Error cargando lid_map.json:', e);
+// Seguimiento de IDs de mensajes enviados desde la interfaz web (evitar duplicados al recibir eco 'fromMe')
+const sentViaApiMsgIds = new Set();
+function trackSentViaApi(id) {
+  if (!id) return;
+  sentViaApiMsgIds.add(id);
+  if (sentViaApiMsgIds.size > 2000) {
+    const it = sentViaApiMsgIds.values();
+    for (let i = 0; i < 500; i++) {
+      sentViaApiMsgIds.delete(it.next().value);
     }
   }
-  // Semilla conocida de Victor
-  if (!lidPhoneMap.has('96701255786676')) {
-    lidPhoneMap.set('96701255786676', '573156793777');
-    saveLidMap();
-  }
 }
 
-function saveLidMap() {
-  try {
-    const obj = Object.fromEntries(lidPhoneMap);
-    fs.writeFileSync(LID_MAP_FILE, JSON.stringify(obj, null, 2));
-  } catch (e) {
-    logger.error('Error guardando lid_map.json:', e);
-  }
-}
-
-loadLidMap();
-
-// Cache de mensajes persistente para reintentos criptográficos (Anti "Esperando mensaje...")
+// Caché de mensajes en memoria para reintentos criptográficos rápidos (Anti "Esperando mensaje...")
 const messageCache = new Map();
-const MSG_CACHE_FILE = path.join(AUTH_DIR, 'messages_cache.json');
 const MAX_CACHED_MESSAGES = 3000;
 
-function loadMessageCache() {
-  if (fs.existsSync(MSG_CACHE_FILE)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(MSG_CACHE_FILE, 'utf8'));
-      for (const [id, msg] of Object.entries(data)) {
-        messageCache.set(id, msg);
-      }
-      logger.info({ count: messageCache.size }, 'Caché de mensajes cargado para resolución de reintentos');
-    } catch (e) {
-      logger.error('Error cargando messages_cache.json:', e);
-    }
-  }
-}
-
-let saveMsgCacheTimer = null;
-function saveMessageCacheDebounced() {
-  if (saveMsgCacheTimer) return;
-  saveMsgCacheTimer = setTimeout(() => {
-    saveMsgCacheTimer = null;
-    try {
-      const entries = Array.from(messageCache.entries()).slice(-MAX_CACHED_MESSAGES);
-      fs.writeFileSync(MSG_CACHE_FILE, JSON.stringify(Object.fromEntries(entries)));
-    } catch (e) {
-      logger.error('Error guardando messages_cache.json:', e);
-    }
-  }, 3000);
-}
-
-function cacheMessage(id, messageProto) {
+function cacheMessage(id, messageProto, key = null) {
   if (!id || !messageProto) return;
-  messageCache.set(id, messageProto);
+  messageCache.set(id, { message: messageProto, key: key || null });
   if (messageCache.size > MAX_CACHED_MESSAGES * 1.5) {
     const keysToDelete = Array.from(messageCache.keys()).slice(0, messageCache.size - MAX_CACHED_MESSAGES);
     for (const k of keysToDelete) messageCache.delete(k);
   }
-  saveMessageCacheDebounced();
 }
-
-loadMessageCache();
-
-let isStarting = false;
-let reconnectTimer = null;
-let lastActivityTimestamp = Date.now();
 
 function recordActivity() {
   lastActivityTimestamp = Date.now();
@@ -143,299 +111,29 @@ function cleanupSocket() {
   sock = null;
 }
 
-async function startWhatsApp() {
-  if (isStarting) {
-    logger.warn('startWhatsApp ya en ejecución, ignorando llamada redundante');
-    return;
+// Enviar payload a Spring Boot con firma HMAC
+async function sendPayloadToBackendHttp(payload) {
+  const bodyStr = JSON.stringify(payload);
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Bridge-Origin': 'fruver-baileys'
+  };
+
+  if (APP_SECRET && APP_SECRET !== 'ignore' && APP_SECRET !== 'bypass') {
+    const hmac = crypto.createHmac('sha256', APP_SECRET);
+    hmac.update(bodyStr);
+    headers['X-Hub-Signature-256'] = `sha256=${hmac.digest('hex')}`;
   }
-  isStarting = true;
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
 
-  try {
-    cleanupSocket();
-
-    if (!fs.existsSync(AUTH_DIR)) {
-      fs.mkdirSync(AUTH_DIR, { recursive: true });
-    }
-
-    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-    const { version } = await fetchLatestBaileysVersion();
-
-    logger.info({ version }, 'Iniciando socket Baileys WhatsApp (modo resiliente)...');
-
-    const msgRetryCounterCache = new NodeCache({
-      stdTTL: 3600,
-      useClones: false
-    });
-
-    sock = makeWASocket({
-      version,
-      auth: state,
-      logger: pino({ level: 'warn' }),
-      printQRInTerminal: false,
-      generateHighQualityLinkPreview: false,
-      syncFullHistory: false,
-      fireInitQueries: false,
-      shouldSyncHistoryMessage: () => false,
-      browser: ['FruverCopilot', 'Chrome', '124.0.0.0'],
-      keepAliveIntervalMs: 25000,
-      connectTimeoutMs: 30000,
-      defaultQueryTimeoutMs: 15000,
-      retryRequestDelayMs: 250,
-      maxMsgRetryCount: 5,
-      msgRetryCounterCache,
-      markOnlineOnConnect: true,
-      getMessage: async (key) => {
-        const cached = messageCache.get(key.id);
-        if (cached) {
-          logger.info({ id: key.id, remoteJid: key.remoteJid }, 'Respondiendo reintento de llaves con mensaje en caché');
-          return proto.Message.fromObject(cached);
-        }
-        if (key.fromMe) {
-          logger.warn({ id: key.id, remoteJid: key.remoteJid }, 'Reintento de mensaje saliente no en caché, respondiendo con confirmación');
-          return proto.Message.fromObject({ conversation: '🙏🙏👍' });
-        }
-        return undefined;
-      }
-    });
-
-    sock.ev.on('creds.update', () => {
-      recordActivity();
-      saveCreds();
-    });
-
-    sock.ev.on('contacts.upsert', (contacts) => {
-      recordActivity();
-      let changed = false;
-      for (const c of (contacts || [])) {
-        if (c.lid && c.id && c.id.endsWith('@s.whatsapp.net')) {
-          const lidClean = c.lid.replace(/@.*/, '').replace(/:.*/, '');
-          const phoneClean = c.id.replace(/@.*/, '').replace(/:.*/, '');
-          if (lidClean && phoneClean && lidPhoneMap.get(lidClean) !== phoneClean) {
-            lidPhoneMap.set(lidClean, phoneClean);
-            changed = true;
-          }
-        }
-      }
-      if (changed) saveLidMap();
-    });
-
-    sock.ev.on('contacts.update', (updates) => {
-      recordActivity();
-      let changed = false;
-      for (const c of (updates || [])) {
-        if (c.lid && c.id && c.id.endsWith('@s.whatsapp.net')) {
-          const lidClean = c.lid.replace(/@.*/, '').replace(/:.*/, '');
-          const phoneClean = c.id.replace(/@.*/, '').replace(/:.*/, '');
-          if (lidClean && phoneClean && lidPhoneMap.get(lidClean) !== phoneClean) {
-            lidPhoneMap.set(lidClean, phoneClean);
-            changed = true;
-          }
-        }
-      }
-      if (changed) saveLidMap();
-    });
-
-    sock.ev.on('connection.update', async (update) => {
-      recordActivity();
-      const { connection, lastDisconnect, qr } = update;
-
-      if (qr) {
-        connectionStatus = 'QR_READY';
-        try {
-          qrCodeBase64 = await qrcode.toDataURL(qr, { margin: 2, scale: 7 });
-          logger.info('Nuevo código QR generado para vinculación');
-        } catch (err) {
-          logger.error('Error generando Base64 del código QR:', err);
-        }
-      }
-
-      if (connection === 'close') {
-        const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-        connectionStatus = 'DISCONNECTED';
-        qrCodeBase64 = null;
-        connectedPhone = null;
-
-        logger.warn({ statusCode, shouldReconnect }, 'Conexión cerrada de WhatsApp.');
-
-        if (statusCode === DisconnectReason.loggedOut) {
-          logger.warn('Sesión cerrada por el usuario. Limpiando credenciales...');
-          clearAuthDir();
-          startWhatsApp();
-        } else if (shouldReconnect) {
-          logger.info('Reconectando en 3 segundos...');
-          if (reconnectTimer) clearTimeout(reconnectTimer);
-          reconnectTimer = setTimeout(startWhatsApp, 3000);
-        }
-      } else if (connection === 'open') {
-        connectionStatus = 'CONNECTED';
-        qrCodeBase64 = null;
-        const jid = sock.user?.id || '';
-        connectedPhone = jid.replace(/:.*@/, '@').replace(/@.*/, '');
-        logger.info({ connectedPhone }, '¡WhatsApp Conectado exitosamente!');
-      }
-    });
-
-function unwrapMessage(msg) {
-  let m = msg;
-  while (m) {
-    if (m.ephemeralMessage?.message) {
-      m = m.ephemeralMessage.message;
-    } else if (m.viewOnceMessage?.message) {
-      m = m.viewOnceMessage.message;
-    } else if (m.viewOnceMessageV2?.message) {
-      m = m.viewOnceMessageV2.message;
-    } else if (m.documentWithCaptionMessage?.message) {
-      m = m.documentWithCaptionMessage.message;
-    } else {
-      break;
-    }
-  }
-  return m;
+  const res = await axios.post(BACKEND_WEBHOOK_URL, payload, { headers, timeout: 10000 });
+  return res;
 }
 
-// Escucha de mensajes entrantes (en vivo y acumulados offline)
-  sock.ev.on('messages.upsert', async (upsert) => {
-    recordActivity();
-    if (upsert.type !== 'notify' && upsert.type !== 'append') return;
+// Inicializar Inbox / Outbox persistente
+const inboxOutbox = createInboxOutbox(pool, sendPayloadToBackendHttp, logger);
 
-    for (const msg of (upsert.messages || [])) {
-      try {
-        if (!msg.message) continue;
-        if (msg.key?.id) {
-          cacheMessage(msg.key.id, msg.message);
-        }
-        if (msg.key.fromMe) continue;
-        const remoteJid = msg.key.remoteJid || '';
-        if (remoteJid.endsWith('@g.us') || remoteJid.endsWith('@broadcast')) continue;
-
-        // Ventana de aceptación para mensajes acumulados tras caída: últimas 4 horas
-        const timestampSec = Number(msg.messageTimestamp || 0);
-        if (timestampSec > 0) {
-          const ageMs = Date.now() - (timestampSec * 1000);
-          const MAX_AGE_MS = 4 * 60 * 60 * 1000; // 4 horas
-          if (ageMs > MAX_AGE_MS) {
-            logger.debug({ id: msg.key.id, ageMinutes: Math.round(ageMs / 60000) }, 'Ignorando mensaje offline más antiguo de 4 horas');
-            continue;
-          }
-        }
-
-        let rawId = remoteJid.replace(/@.*/, '').replace(/:.*/, '');
-        let resolvedPhone = null;
-
-        // 1. Revisar si Baileys incluyó un JID alternativo en el mensaje
-        const altJid = msg.key.remoteJidAlt || msg.key.participantAlt || msg.key.senderPn || msg.key.participant;
-        if (altJid && altJid.includes('@s.whatsapp.net')) {
-          resolvedPhone = altJid.replace(/@.*/, '').replace(/:.*/, '');
-        }
-
-        // 2. Si es un LID, consultar en memoria o repositorio Baileys
-        if (!resolvedPhone && remoteJid.endsWith('@lid')) {
-          if (lidPhoneMap.has(rawId)) {
-            resolvedPhone = lidPhoneMap.get(rawId);
-          } else if (sock?.signalRepository?.lidMapping?.getPNForLID) {
-            try {
-              const pn = await sock.signalRepository.lidMapping.getPNForLID(remoteJid);
-              if (pn) {
-                resolvedPhone = pn.replace(/@.*/, '').replace(/:.*/, '');
-                lidPhoneMap.set(rawId, resolvedPhone);
-                saveLidMap();
-              }
-            } catch (e) {}
-          }
-        }
-
-        // 3. Si no es LID (ya termina en @s.whatsapp.net), es el teléfono directo
-        if (!resolvedPhone && !remoteJid.endsWith('@lid')) {
-          resolvedPhone = rawId;
-        }
-
-        const from = resolvedPhone || rawId;
-        const pushName = msg.pushName || '';
-        const msgId = msg.key.id;
-
-        const messageContent = unwrapMessage(msg.message);
-        let formattedMessage = null;
-
-        // 1. TEXTO (incluyendo mensajes reenviados y extendidos)
-        const textBody = messageContent.conversation || messageContent.extendedTextMessage?.text;
-        if (textBody && textBody.trim().length > 0) {
-          formattedMessage = {
-            id: msgId,
-            from: from,
-            type: 'text',
-            text: { body: textBody.trim() }
-          };
-        }
-
-        // 2. AUDIO / NOTA DE VOZ
-        else if (messageContent.audioMessage) {
-          try {
-            const buffer = await downloadMediaMessage(msg, 'buffer', {});
-            const mediaId = `audio_${msgId}`;
-            const mimeType = messageContent.audioMessage.mimetype || 'audio/ogg';
-            mediaStore.set(mediaId, { buffer, mimeType, timestamp: Date.now() });
-
-            formattedMessage = {
-              id: msgId,
-              from: from,
-              type: 'audio',
-              audio: {
-                id: mediaId,
-                mime_type: mimeType
-              }
-            };
-          } catch (audioErr) {
-            logger.error({ err: audioErr }, 'Error descargando audio');
-          }
-        }
-
-        // 3. IMAGEN / FOTO
-        else if (messageContent.imageMessage) {
-          try {
-            const buffer = await downloadMediaMessage(msg, 'buffer', {});
-            const mediaId = `image_${msgId}`;
-            const mimeType = messageContent.imageMessage.mimetype || 'image/jpeg';
-            const caption = messageContent.imageMessage.caption || '';
-            mediaStore.set(mediaId, { buffer, mimeType, timestamp: Date.now() });
-
-            formattedMessage = {
-              id: msgId,
-              from: from,
-              type: 'image',
-              image: {
-                id: mediaId,
-                mime_type: mimeType,
-                caption: caption
-              }
-            };
-          } catch (imgErr) {
-            logger.error({ err: imgErr }, 'Error descargando imagen');
-          }
-        }
-
-        if (formattedMessage) {
-          await forwardToBackend(from, pushName, formattedMessage);
-        }
-      } catch (msgErr) {
-        logger.error({ err: msgErr }, 'Error procesando mensaje entrante');
-      }
-    }
-  });
-  } catch (err) {
-    logger.error({ err: err.message }, 'Error en startWhatsApp');
-    connectionStatus = 'DISCONNECTED';
-  } finally {
-    isStarting = false;
-  }
-}
-
-async function forwardToBackend(from, pushName, messageObj) {
-  const payload = {
+function buildForwardPayload(from, pushName, messageObj) {
+  return {
     object: 'whatsapp_business_account',
     entry: [
       {
@@ -462,35 +160,390 @@ async function forwardToBackend(from, pushName, messageObj) {
       }
     ]
   };
+}
 
-  const bodyStr = JSON.stringify(payload);
-  const headers = {
-    'Content-Type': 'application/json',
-    'X-Bridge-Origin': 'fruver-baileys'
-  };
+function unwrapMessage(msg) {
+  let m = msg;
+  while (m) {
+    if (m.ephemeralMessage?.message) {
+      m = m.ephemeralMessage.message;
+    } else if (m.viewOnceMessage?.message) {
+      m = m.viewOnceMessage.message;
+    } else if (m.viewOnceMessageV2?.message) {
+      m = m.viewOnceMessageV2.message;
+    } else if (m.documentWithCaptionMessage?.message) {
+      m = m.documentWithCaptionMessage.message;
+    } else {
+      break;
+    }
+  }
+  return m;
+}
 
-  if (APP_SECRET && APP_SECRET !== 'ignore' && APP_SECRET !== 'bypass') {
-    const hmac = crypto.createHmac('sha256', APP_SECRET);
-    hmac.update(bodyStr);
-    headers['X-Hub-Signature-256'] = `sha256=${hmac.digest('hex')}`;
+async function formatMessageObject(msg, rawMessage, msgId, from, isFromMe) {
+  const messageContent = unwrapMessage(rawMessage);
+  let formattedMessage = null;
+
+  // 1. TEXTO
+  const textBody = messageContent.conversation || messageContent.extendedTextMessage?.text;
+  if (textBody && textBody.trim().length > 0) {
+    formattedMessage = {
+      id: msgId,
+      from: from,
+      from_me: isFromMe,
+      type: 'text',
+      text: { body: textBody.trim() }
+    };
+  }
+  // 2. AUDIO
+  else if (messageContent.audioMessage) {
+    try {
+      const buffer = await downloadMediaMessage(msg, 'buffer', {});
+      const mediaId = `audio_${msgId}`;
+      const mimeType = messageContent.audioMessage.mimetype || 'audio/ogg';
+      mediaStore.set(mediaId, { buffer, mimeType, timestamp: Date.now() });
+
+      formattedMessage = {
+        id: msgId,
+        from: from,
+        from_me: isFromMe,
+        type: 'audio',
+        audio: {
+          id: mediaId,
+          mime_type: mimeType
+        }
+      };
+    } catch (audioErr) {
+      logger.error({ err: audioErr.message, msgId }, 'Error descargando audio de WhatsApp');
+    }
+  }
+  // 3. IMAGEN
+  else if (messageContent.imageMessage) {
+    try {
+      const buffer = await downloadMediaMessage(msg, 'buffer', {});
+      const mediaId = `image_${msgId}`;
+      const mimeType = messageContent.imageMessage.mimetype || 'image/jpeg';
+      const caption = messageContent.imageMessage.caption || '';
+      mediaStore.set(mediaId, { buffer, mimeType, timestamp: Date.now() });
+
+      formattedMessage = {
+        id: msgId,
+        from: from,
+        from_me: isFromMe,
+        type: 'image',
+        image: {
+          id: mediaId,
+          mime_type: mimeType,
+          caption: caption
+        }
+      };
+    } catch (imgErr) {
+      logger.error({ err: imgErr.message, msgId }, 'Error descargando imagen de WhatsApp');
+    }
+  }
+
+  return formattedMessage;
+}
+
+async function acquireAdvisoryLock() {
+  if (hasAdvisoryLock) return true;
+  try {
+    advisoryLockClient = await pool.connect();
+    const res = await advisoryLockClient.query('SELECT pg_try_advisory_lock($1) as locked', [BAILEYS_ADVISORY_LOCK_ID]);
+    if (res.rows[0].locked) {
+      hasAdvisoryLock = true;
+      logger.info('✓ Advisory lock PostgreSQL adquirido: Instancia maestra de Baileys activa');
+      return true;
+    } else {
+      logger.error('🔴 ADVERTENCIA: Otra instancia de WhatsApp Bridge ya se encuentra activa. Bloqueando inicio para proteger la sesión criptográfica.');
+      advisoryLockClient.release();
+      advisoryLockClient = null;
+      return false;
+    }
+  } catch (err) {
+    logger.error({ err: err.message }, 'Error al intentar adquirir Advisory Lock de PostgreSQL');
+    return false;
+  }
+}
+
+async function startWhatsApp() {
+  if (isShuttingDown) return;
+  if (isStarting) {
+    logger.warn('startWhatsApp ya en ejecución, ignorando llamada redundante');
+    return;
+  }
+  isStarting = true;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
   }
 
   try {
-    const res = await axios.post(BACKEND_WEBHOOK_URL, payload, { headers, timeout: 10000 });
-    logger.info({ status: res.status, msgId: messageObj.id, from }, 'Mensaje reenviado a Spring Boot');
+    // 1. Asegurar exclusión mutua
+    const locked = await acquireAdvisoryLock();
+    if (!locked) {
+      logger.warn('No se pudo adquirir el bloqueo de instancia única. Reintentando en 10 segundos...');
+      reconnectTimer = setTimeout(startWhatsApp, 10000);
+      return;
+    }
+
+    cleanupSocket();
+
+    // 2. Inicializar autenticación con persistencia en PostgreSQL
+    logger.info('Cargando credenciales Signal desde PostgreSQL (modo producción ACID)...');
+    const { state, saveCreds } = await usePostgresAuthState(pool);
+    const { version } = await fetchLatestBaileysVersion();
+
+    logger.info({ version, jid: state.creds.me?.id }, 'Iniciando socket Baileys WhatsApp...');
+
+    const msgRetryCounterCache = new NodeCache({
+      stdTTL: 3600,
+      useClones: false
+    });
+
+    sock = makeWASocket({
+      version,
+      auth: state,
+      logger: pino({ level: 'warn' }),
+      printQRInTerminal: false,
+      generateHighQualityLinkPreview: false,
+      syncFullHistory: false,
+      fireInitQueries: false,
+      shouldSyncHistoryMessage: () => false,
+      browser: ['FruverCopilot', 'Chrome', '124.0.0.0'],
+      keepAliveIntervalMs: 25000,
+      connectTimeoutMs: 30000,
+      defaultQueryTimeoutMs: 15000,
+      retryRequestDelayMs: 250,
+      maxMsgRetryCount: 5,
+      msgRetryCounterCache,
+      markOnlineOnConnect: true,
+      getMessage: async (key) => {
+        const cached = messageCache.get(key.id);
+        if (cached) {
+          const raw = cached.message || cached;
+          logger.info({ id: key.id, remoteJid: key.remoteJid }, 'Respondiendo reintento de llaves con mensaje en caché');
+          return proto.Message.fromObject(raw);
+        }
+        return undefined;
+      }
+    });
+
+    sock.ev.on('creds.update', async () => {
+      recordActivity();
+      try {
+        await saveCreds();
+      } catch (err) {
+        logger.error({ err: err.message }, 'Error guardando creds en PostgreSQL');
+      }
+    });
+
+    sock.ev.on('contacts.upsert', (contacts) => {
+      recordActivity();
+      for (const c of (contacts || [])) {
+        if (c.lid && c.id && c.id.endsWith('@s.whatsapp.net')) {
+          const lidClean = c.lid.replace(/@.*/, '').replace(/:.*/, '');
+          const phoneClean = c.id.replace(/@.*/, '').replace(/:.*/, '');
+          if (lidClean && phoneClean) {
+            lidPhoneMap.set(lidClean, phoneClean);
+          }
+        }
+      }
+    });
+
+    sock.ev.on('contacts.update', (updates) => {
+      recordActivity();
+      for (const c of (updates || [])) {
+        if (c.lid && c.id && c.id.endsWith('@s.whatsapp.net')) {
+          const lidClean = c.lid.replace(/@.*/, '').replace(/:.*/, '');
+          const phoneClean = c.id.replace(/@.*/, '').replace(/:.*/, '');
+          if (lidClean && phoneClean) {
+            lidPhoneMap.set(lidClean, phoneClean);
+          }
+        }
+      }
+    });
+
+    sock.ev.on('connection.update', async (update) => {
+      recordActivity();
+      const { connection, lastDisconnect, qr } = update;
+
+      if (qr) {
+        connectionStatus = 'QR_READY';
+        try {
+          qrCodeBase64 = await qrcode.toDataURL(qr, { margin: 2, scale: 7 });
+          logger.info('Nuevo código QR generado para vinculación');
+        } catch (err) {
+          logger.error('Error generando Base64 del código QR:', err);
+        }
+      }
+
+      if (connection === 'close') {
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        connectionStatus = 'DISCONNECTED';
+        qrCodeBase64 = null;
+        connectedPhone = null;
+
+        logger.warn({ statusCode, shouldReconnect }, 'Conexión cerrada de WhatsApp.');
+
+        if (statusCode === DisconnectReason.loggedOut) {
+          logger.warn('Sesión cerrada por el usuario en WhatsApp móvil. Limpiando credenciales en PostgreSQL...');
+          await pool.query('DELETE FROM whatsapp_auth_credentials WHERE id = \'DEFAULT\'');
+          await pool.query('DELETE FROM whatsapp_signal_keys');
+          startWhatsApp();
+        } else if (shouldReconnect) {
+          logger.info('Reconectando en 3 segundos...');
+          if (reconnectTimer) clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(startWhatsApp, 3000);
+        }
+      } else if (connection === 'open') {
+        connectionStatus = 'CONNECTED';
+        qrCodeBase64 = null;
+        const jid = sock.user?.id || '';
+        connectedPhone = jid.replace(/:.*@/, '@').replace(/@.*/, '');
+        logger.info({ connectedPhone }, '¡WhatsApp Conectado exitosamente con persistencia PostgreSQL!');
+      }
+    });
+
+    // ── 3. LISTENER messages.upsert (Mensajes entrantes y mensajes acumulados) ──
+    sock.ev.on('messages.upsert', async (upsert) => {
+      recordActivity();
+      if (upsert.type !== 'notify' && upsert.type !== 'append') return;
+
+      for (const msg of (upsert.messages || [])) {
+        try {
+          const msgId = msg.key?.id;
+          const remoteJid = msg.key?.remoteJid || '';
+          if (!msgId || remoteJid.endsWith('@g.us') || remoteJid.endsWith('@broadcast')) continue;
+
+          const isFromMe = !!msg.key.fromMe;
+          if (isFromMe && sentViaApiMsgIds.has(msgId)) {
+            continue; // Originado en FruverCopilot Web
+          }
+
+          // Caché local para resolver posibles reintentos de llaves
+          if (msg.message) {
+            cacheMessage(msgId, msg.message, msg.key);
+          }
+
+          // Detección de mensajes pendientes de descifrado (CIPHERTEXT / "Esperando mensaje...")
+          const isCiphertext = !msg.message || msg.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT;
+
+          // Resolución de teléfono / LID
+          let rawId = remoteJid.replace(/@.*/, '').replace(/:.*/, '');
+          let resolvedPhone = null;
+          const altJid = msg.key.remoteJidAlt || msg.key.participantAlt || msg.key.senderPn || msg.key.participant;
+          if (altJid && altJid.includes('@s.whatsapp.net')) {
+            resolvedPhone = altJid.replace(/@.*/, '').replace(/:.*/, '');
+          }
+          if (!resolvedPhone && remoteJid.endsWith('@lid') && lidPhoneMap.has(rawId)) {
+            resolvedPhone = lidPhoneMap.get(rawId);
+          }
+          if (!resolvedPhone && !remoteJid.endsWith('@lid')) {
+            resolvedPhone = rawId;
+          }
+          const from = resolvedPhone || rawId;
+          const pushName = msg.pushName || '';
+
+          if (isCiphertext) {
+            // Guardar en Inbox como WAITING_DECRYPT (¡NO descartar silenciosamente!)
+            await inboxOutbox.recordIncomingMessage({
+              messageId: msgId,
+              remoteJid,
+              fromMe: isFromMe,
+              participant: msg.key.participant || null,
+              pushName,
+              senderPhone: from,
+              messageType: 'CIPHERTEXT',
+              rawMessage: null,
+              isCiphertext: true,
+              formattedPayload: null
+            });
+            continue;
+          }
+
+          // Si el mensaje está descifrado, formatearlo y registrarlo para despacho en Outbox
+          const formattedMessage = await formatMessageObject(msg, msg.message, msgId, from, isFromMe);
+          if (formattedMessage) {
+            const payload = buildForwardPayload(from, pushName, formattedMessage);
+            await inboxOutbox.recordIncomingMessage({
+              messageId: msgId,
+              remoteJid,
+              fromMe: isFromMe,
+              participant: msg.key.participant || null,
+              pushName,
+              senderPhone: from,
+              messageType: formattedMessage.type,
+              rawMessage: msg.message,
+              isCiphertext: false,
+              formattedPayload: payload
+            });
+          }
+        } catch (msgErr) {
+          logger.error({ err: msgErr.message, id: msg?.key?.id }, 'Error procesando mensaje en messages.upsert');
+        }
+      }
+    });
+
+    // ── 4. LISTENER messages.update (Recuperación de mensajes tras reintento de llaves) ──
+    sock.ev.on('messages.update', async (updates) => {
+      recordActivity();
+      for (const update of (updates || [])) {
+        try {
+          const msgId = update.key?.id;
+          const rawMessage = update.update?.message;
+          if (!msgId || !rawMessage) continue;
+
+          // Cachear mensaje actualizado
+          cacheMessage(msgId, rawMessage, update.key);
+
+          const remoteJid = update.key.remoteJid || '';
+          if (remoteJid.endsWith('@g.us') || remoteJid.endsWith('@broadcast')) continue;
+
+          let rawId = remoteJid.replace(/@.*/, '').replace(/:.*/, '');
+          const from = lidPhoneMap.get(rawId) || rawId;
+          const isFromMe = !!update.key.fromMe;
+
+          logger.info({ msgId, from }, '✓ Mensaje recuperado/actualizado mediante messages.update');
+
+          const formattedMessage = await formatMessageObject({ key: update.key, message: rawMessage }, rawMessage, msgId, from, isFromMe);
+          if (formattedMessage) {
+            const payload = buildForwardPayload(from, '', formattedMessage);
+            await inboxOutbox.recordDecryptedUpdate({
+              messageId: msgId,
+              rawMessage,
+              formattedPayload: payload
+            });
+          }
+        } catch (updErr) {
+          logger.error({ err: updErr.message, id: update?.key?.id }, 'Error procesando actualización en messages.update');
+        }
+      }
+    });
+
   } catch (err) {
-    logger.error({ err: err.message, status: err.response?.status }, 'Error reenviando webhook al backend Spring Boot');
+    logger.error({ err: err.message }, 'Error en startWhatsApp');
+    connectionStatus = 'DISCONNECTED';
+  } finally {
+    isStarting = false;
   }
 }
 
 // ----------------- ENDPOINTS REST -----------------
 
 // 1. Estado y QR
-app.get('/status', (req, res) => {
+app.get('/status', async (req, res) => {
+  let stats = {};
+  try {
+    stats = await inboxOutbox.getStats();
+  } catch (e) {}
   res.json({
     status: connectionStatus,
     phone: connectedPhone,
-    qr: qrCodeBase64
+    qr: qrCodeBase64,
+    storage: 'POSTGRESQL',
+    stats
   });
 });
 
@@ -529,18 +582,26 @@ app.post('/messages', async (req, res) => {
     let sent = null;
     // 3a. Reacción con Emoji a un mensaje específico
     if (reaction && messageId) {
-      sent = await sock.sendMessage(jid, {
+      const cached = messageCache.get(messageId);
+      const targetKey = cached?.key ? { ...cached.key } : {
+        remoteJid: jid,
+        fromMe: false,
+        id: messageId
+      };
+      const targetJid = targetKey.remoteJid || jid;
+
+      logger.info({ messageId, targetJid, reaction, hasCachedKey: !!cached?.key }, 'Enviando reacción');
+      sent = await sock.sendMessage(targetJid, {
         react: {
           text: reaction,
-          key: {
-            remoteJid: jid,
-            fromMe: false,
-            id: messageId
-          }
+          key: targetKey
         }
       });
-      if (sent?.key?.id && sent?.message) {
-        cacheMessage(sent.key.id, sent.message);
+      if (sent?.key?.id) {
+        trackSentViaApi(sent.key.id);
+        if (sent?.message) {
+          cacheMessage(sent.key.id, sent.message, sent.key);
+        }
       }
       return res.json({ success: true, type: 'reaction', messageId: sent?.key?.id });
     }
@@ -550,18 +611,19 @@ app.post('/messages', async (req, res) => {
       const imgOptions = {};
       if (quotedMessageId) {
         const cached = messageCache.get(quotedMessageId);
-        if (cached) {
-          imgOptions.quoted = { key: { remoteJid: jid, id: quotedMessageId }, message: cached };
-        } else {
-          imgOptions.quoted = { key: { remoteJid: jid, id: quotedMessageId } };
-        }
+        const qMsg = cached?.message || cached;
+        const qKey = cached?.key || { remoteJid: jid, id: quotedMessageId };
+        imgOptions.quoted = { key: qKey, message: qMsg };
       }
       sent = await sock.sendMessage(jid, {
         image: { url: imageUrl },
         caption: caption || ''
       }, imgOptions);
-      if (sent?.key?.id && sent?.message) {
-        cacheMessage(sent.key.id, sent.message);
+      if (sent?.key?.id) {
+        trackSentViaApi(sent.key.id);
+        if (sent?.message) {
+          cacheMessage(sent.key.id, sent.message, sent.key);
+        }
       }
       return res.json({ success: true, type: 'image', messageId: sent?.key?.id });
     }
@@ -571,15 +633,16 @@ app.post('/messages', async (req, res) => {
       const textOptions = {};
       if (quotedMessageId) {
         const cached = messageCache.get(quotedMessageId);
-        if (cached) {
-          textOptions.quoted = { key: { remoteJid: jid, id: quotedMessageId }, message: cached };
-        } else {
-          textOptions.quoted = { key: { remoteJid: jid, id: quotedMessageId } };
-        }
+        const qMsg = cached?.message || cached;
+        const qKey = cached?.key || { remoteJid: jid, id: quotedMessageId };
+        textOptions.quoted = { key: qKey, message: qMsg };
       }
       sent = await sock.sendMessage(jid, { text: text }, textOptions);
-      if (sent?.key?.id && sent?.message) {
-        cacheMessage(sent.key.id, sent.message);
+      if (sent?.key?.id) {
+        trackSentViaApi(sent.key.id);
+        if (sent?.message) {
+          cacheMessage(sent.key.id, sent.message, sent.key);
+        }
       }
       return res.json({ success: true, type: 'text', messageId: sent?.key?.id });
     }
@@ -591,29 +654,14 @@ app.post('/messages', async (req, res) => {
   }
 });
 
-function clearAuthDir() {
-  try {
-    if (fs.existsSync(AUTH_DIR)) {
-      for (const file of fs.readdirSync(AUTH_DIR)) {
-        try {
-          fs.rmSync(path.join(AUTH_DIR, file), { recursive: true, force: true });
-        } catch (e) {
-          logger.warn(`No se pudo eliminar archivo ${file}: ${e.message}`);
-        }
-      }
-    }
-  } catch (e) {
-    logger.warn('Error limpiando auth_dir:', e.message);
-  }
-}
-
 // 4. Cerrar sesión / Desvincular
 app.post('/logout', async (req, res) => {
   try {
     if (sock) {
       await sock.logout().catch(() => {});
     }
-    clearAuthDir();
+    await pool.query('DELETE FROM whatsapp_auth_credentials WHERE id = \'DEFAULT\'');
+    await pool.query('DELETE FROM whatsapp_signal_keys');
     connectionStatus = 'DISCONNECTED';
     qrCodeBase64 = null;
     connectedPhone = null;
@@ -625,7 +673,7 @@ app.post('/logout', async (req, res) => {
   }
 });
 
-// 5. Healthcheck con estado real del socket
+// 5. Healthcheck con estado real del socket y PostgreSQL
 app.get('/health', (req, res) => {
   const wsReady = sock?.ws?.socket?.readyState ?? (sock?.ws?.isOpen ? 1 : 3);
   const isHealthy = connectionStatus === 'CONNECTED' && (sock?.ws?.isOpen || wsReady === 1);
@@ -635,30 +683,60 @@ app.get('/health', (req, res) => {
     status: connectionStatus,
     wsReady,
     idleSeconds,
-    connectedPhone
+    connectedPhone,
+    storage: 'POSTGRESQL',
+    hasAdvisoryLock
   });
 });
 
-// 6. Endpoint de auto-sanación / reconexión forzada
+// 6. Endpoint de observabilidad de métricas Inbox/Outbox
+app.get('/metrics', async (req, res) => {
+  try {
+    const stats = await inboxOutbox.getStats();
+    res.json({
+      status: connectionStatus,
+      connectedPhone,
+      hasAdvisoryLock,
+      ...stats
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 7. Endpoint para consultar mensajes en espera de descifrado
+app.get('/inbox/pending', async (req, res) => {
+  try {
+    const rows = await pool.query(`
+      SELECT message_id, remote_jid, sender_phone, message_type, status, retry_count, received_at
+      FROM whatsapp_bridge_inbox
+      WHERE status = 'WAITING_DECRYPT'
+      ORDER BY id DESC LIMIT 50
+    `);
+    res.json(rows.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 8. Reconexión forzada
 app.post('/reconnect', async (req, res) => {
   logger.info('Solicitud manual de reconexión recibida vía HTTP');
   startWhatsApp();
   res.json({ success: true, message: 'Reconexión iniciada' });
 });
 
-// Watchdog para detectar sockets muertos, mudos o zombies
+// Watchdog para detectar sockets muertos o zombies
 setInterval(() => {
   if (connectionStatus === 'CONNECTED' && sock) {
     const readyState = sock?.ws?.socket?.readyState ?? (sock?.ws?.isOpen ? 1 : 3);
-    // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
     if (readyState > 1) {
-      logger.warn({ readyState }, 'Watchdog: socket cerrado o en cierre detectado. Forzando reconexión limpia...');
+      logger.warn({ readyState }, 'Watchdog: socket cerrado detectado. Reconectando...');
       connectionStatus = 'DISCONNECTED';
       startWhatsApp();
       return;
     }
 
-    // Ping proactivo si lleva más de 2 minutos sin actividad en socket conectado
     const idleMs = Date.now() - lastActivityTimestamp;
     if (idleMs > 2 * 60 * 1000) {
       try {
@@ -668,7 +746,7 @@ setInterval(() => {
           recordActivity();
         }
       } catch (e) {
-        logger.warn({ err: e.message }, 'Watchdog: fallo en ping de WebSocket (socket mudo/zombie). Forzando reconexión...');
+        logger.warn({ err: e.message }, 'Watchdog: fallo en ping de WebSocket. Reconectando...');
         connectionStatus = 'DISCONNECTED';
         startWhatsApp();
       }
@@ -676,14 +754,45 @@ setInterval(() => {
   }
 }, 30000);
 
+// Iniciar servidor HTTP y Outbox worker
 app.listen(PORT, '0.0.0.0', () => {
   logger.info(`Microservicio whatsapp-bridge escuchando en puerto ${PORT}`);
+  inboxOutbox.startWorker();
   startWhatsApp();
 });
 
+// ── APAGADO GRÁCIL (GRACEFUL SHUTDOWN) ──
+async function gracefulShutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  logger.info({ signal }, 'Recibida señal de apagado. Iniciando apagado grácil...');
+
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  inboxOutbox.stopWorker();
+  cleanupSocket();
+
+  try {
+    if (advisoryLockClient) {
+      await advisoryLockClient.query('SELECT pg_advisory_unlock($1)', [BAILEYS_ADVISORY_LOCK_ID]);
+      advisoryLockClient.release();
+      advisoryLockClient = null;
+    }
+    await pool.end();
+  } catch (e) {
+    logger.warn({ err: e.message }, 'Aviso liberando recursos PostgreSQL en apagado');
+  }
+
+  logger.info('WhatsApp Bridge finalizó ordenadamente.');
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 process.on('uncaughtException', (err) => {
-  logger.error({ err: err.message }, 'Excepción no capturada en whatsapp-bridge (protegido contra cierre)');
+  logger.error({ err: err.message, stack: err.stack }, 'Excepción no capturada en whatsapp-bridge (protegido contra cierre)');
 });
+
 process.on('unhandledRejection', (reason) => {
   logger.error({ reason: reason?.message || reason }, 'Promesa rechazada en whatsapp-bridge (protegido contra cierre)');
   if (reason && (String(reason).includes('Timed Out') || String(reason.message).includes('Timed Out'))) {

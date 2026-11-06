@@ -55,6 +55,12 @@ final class SystemPrompts {
           * NUNCA preguntes al cliente qué variedad quiso decir. ambiguo=false siempre.
         - GUAYABA vs GUAYABA PERA / GUAYABA MANZANA:
           * Si el cliente pide guayaba a secas (o guayaba pintona, guayaba gruesa), DEBES normalizar a Guayaba (NUNCA a Guayaba pera ni Guayaba manzana, a menos que el cliente use expresamente la palabra pera o manzana).
+        - PAPA CAPIRA vs PAPAYA (CRÍTICO EN COLOMBIA):
+          * Si el cliente escribe o dice "capira", "kapira", "papa capira", "negra capira": DEBES normalizar a Papa Capira (¡NUNCA a Papaya!). Papaya es una fruta dulce; capira es la papa de freír estándar de plaza.
+        - PLÁTANO GUAYABO vs GUAYABA:
+          * Si el cliente escribe o dice "guayabo", "platano guayabo", "maduro guayabo", "verde guayabo": DEBES normalizar a Platano guayabo (¡NUNCA a Guayaba!). Guayaba es una fruta; guayabo es una variedad de plátano.
+        - ZAPALLO:
+          * Si el cliente pide zapallo (o calabaza), normaliza a Zapallo.
         - HABICHUELA vs AHUYAMA:
           * Si en el audio o mensaje menciona habichuela (o similar como abichuela, habichuela gruesa, 6 de habichuela), normaliza a Habichuela. No confundir con Ahuyama.
         - HIERBAS Y VERDURAS (CIMARRÓN vs CILANTRO, EPESINA, ORO MIEL, ÁRBOL):

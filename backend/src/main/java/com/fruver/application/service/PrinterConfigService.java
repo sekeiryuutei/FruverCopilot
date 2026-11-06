@@ -49,7 +49,18 @@ public class PrinterConfigService {
             int smtpPort,
             String smtpUser,
             String smtpPassword,
-            boolean smtpSsl
+            boolean smtpSsl,
+            String rpiHost,
+            int rpiPort,
+            String rpiUser,
+            String rpiAuthType,
+            String rpiKeyPath,
+            String rpiPassword,
+            String rpiDestinationType,
+            String rpiCupsQueue,
+            String rpiUsbDevice,
+            String rpiTcpHost,
+            int rpiTcpPort
     ) {}
 
     private final JdbcClient jdbc;
@@ -69,7 +80,9 @@ public class PrinterConfigService {
                        enabled, mode, order_grace_seconds, print_timeout_seconds,
                        auto_print_wholesale, customer_debounce_seconds, review_timeout_seconds,
                        schedule_office_start, schedule_office_end,
-                       smtp_host, smtp_port, smtp_user, smtp_password, smtp_ssl
+                       smtp_host, smtp_port, smtp_user, smtp_password, smtp_ssl,
+                       rpi_host, rpi_port, rpi_user, rpi_auth_type, rpi_key_path, rpi_password,
+                       rpi_destination_type, rpi_cups_queue, rpi_usb_device, rpi_tcp_host, rpi_tcp_port
                 FROM printer_setting WHERE id = 'DEFAULT'
                 """)
                 .query((rs, n) -> new Object[]{
@@ -94,7 +107,18 @@ public class PrinterConfigService {
                         rs.getInt(19),
                         rs.getString(20),
                         rs.getString(21),
-                        rs.getBoolean(22)
+                        rs.getBoolean(22),
+                        rs.getString(23),
+                        rs.getObject(24) != null ? rs.getInt(24) : null,
+                        rs.getString(25),
+                        rs.getString(26),
+                        rs.getString(27),
+                        rs.getString(28),
+                        rs.getString(29),
+                        rs.getString(30),
+                        rs.getString(31),
+                        rs.getString(32),
+                        rs.getObject(33) != null ? rs.getInt(33) : null
                 }).optional();
 
         String officeHost = (props.printing() != null && props.printing().officeHost() != null) ? props.printing().officeHost() : "127.0.0.1";
@@ -123,6 +147,19 @@ public class PrinterConfigService {
         String smtpUser = "citas.drjorgejimenez@gmail.com";
         String smtpPassword = "tbizucojkyxzoows";
         boolean smtpSsl = true;
+
+        String rpiHost = "100.105.30.91";
+        int rpiPort = 22;
+        String rpiUser = "victor";
+        String rpiAuthType = "KEY";
+        String rpiKeyPath = "";
+        String rpiPassword = "";
+        String rpiDestinationType = "CUPS";
+        String rpiCupsQueue = "Brother_HL_L2405W";
+        String rpiUsbDevice = "/dev/usb/lp0";
+        String rpiTcpHost = "127.0.0.1";
+        int rpiTcpPort = 9100;
+
 
         if (row.isPresent()) {
             Object[] data = row.get();
@@ -158,7 +195,20 @@ public class PrinterConfigService {
             if (data[19] != null) smtpUser = (String) data[19];
             if (data[20] != null) smtpPassword = (String) data[20];
             if (data[21] != null) smtpSsl = (Boolean) data[21];
+
+            if (data.length > 22 && data[22] != null) rpiHost = (String) data[22];
+            if (data.length > 23 && data[23] != null && ((Integer) data[23]) > 0) rpiPort = (Integer) data[23];
+            if (data.length > 24 && data[24] != null) rpiUser = (String) data[24];
+            if (data.length > 25 && data[25] != null) rpiAuthType = (String) data[25];
+            if (data.length > 26 && data[26] != null) rpiKeyPath = (String) data[26];
+            if (data.length > 27 && data[27] != null) rpiPassword = (String) data[27];
+            if (data.length > 28 && data[28] != null) rpiDestinationType = (String) data[28];
+            if (data.length > 29 && data[29] != null) rpiCupsQueue = (String) data[29];
+            if (data.length > 30 && data[30] != null) rpiUsbDevice = (String) data[30];
+            if (data.length > 31 && data[31] != null) rpiTcpHost = (String) data[31];
+            if (data.length > 32 && data[32] != null && ((Integer) data[32]) > 0) rpiTcpPort = (Integer) data[32];
         }
+
 
         String active = currentTargetPrinter(mode, scheduleStart, scheduleEnd);
         int failedCount = jdbc.sql("SELECT count(*) FROM sale WHERE print_status = 'PRINT_FAILED'").query(Integer.class).single();
@@ -192,7 +242,18 @@ public class PrinterConfigService {
                 smtpPort,
                 smtpUser,
                 smtpPassword,
-                smtpSsl
+                smtpSsl,
+                rpiHost,
+                rpiPort,
+                rpiUser,
+                rpiAuthType,
+                rpiKeyPath,
+                rpiPassword,
+                rpiDestinationType,
+                rpiCupsQueue,
+                rpiUsbDevice,
+                rpiTcpHost,
+                rpiTcpPort
         );
     }
 
@@ -233,13 +294,36 @@ public class PrinterConfigService {
                                 String scheduleOfficeStart, String scheduleOfficeEnd,
                                 Integer orderGraceSeconds, Integer printTimeoutSeconds, Boolean autoPrintWholesale,
                                 Integer customerDebounceSeconds, Integer reviewTimeoutSeconds) {
+        PrinterConfig current = get();
+        return update(officeHost, officePort, officePrintType, officeEmail,
+                homeHost, homePort, homePrintType, homeEmail,
+                enabled, mode, scheduleOfficeStart, scheduleOfficeEnd,
+                orderGraceSeconds, printTimeoutSeconds, autoPrintWholesale,
+                customerDebounceSeconds, reviewTimeoutSeconds,
+                current.rpiHost(), current.rpiPort(), current.rpiUser(), current.rpiAuthType(),
+                current.rpiKeyPath(), current.rpiPassword(), current.rpiDestinationType(),
+                current.rpiCupsQueue(), current.rpiUsbDevice(), current.rpiTcpHost(), current.rpiTcpPort());
+    }
+
+    public PrinterConfig update(String officeHost, Integer officePort, String officePrintType, String officeEmail,
+                                String homeHost, Integer homePort, String homePrintType, String homeEmail,
+                                Boolean enabled, String mode,
+                                String scheduleOfficeStart, String scheduleOfficeEnd,
+                                Integer orderGraceSeconds, Integer printTimeoutSeconds, Boolean autoPrintWholesale,
+                                Integer customerDebounceSeconds, Integer reviewTimeoutSeconds,
+                                String rpiHost, Integer rpiPort, String rpiUser, String rpiAuthType,
+                                String rpiKeyPath, String rpiPassword, String rpiDestinationType,
+                                String rpiCupsQueue, String rpiUsbDevice, String rpiTcpHost, Integer rpiTcpPort) {
         jdbc.sql("""
                 INSERT INTO printer_setting(id, office_host, office_port, office_print_type, office_email,
                                             home_host, home_port, home_print_type, home_email,
                                             enabled, mode, schedule_office_start, schedule_office_end,
                                             order_grace_seconds, print_timeout_seconds, auto_print_wholesale,
-                                            customer_debounce_seconds, review_timeout_seconds, updated_at)
-                VALUES ('DEFAULT', :oh, :op, :opt, :oe, :hh, :hp, :hpt, :he, :en, :m, :sos, :soe, :ogs, :pts, :apw, :cds, :rts, now())
+                                            customer_debounce_seconds, review_timeout_seconds,
+                                            rpi_host, rpi_port, rpi_user, rpi_auth_type, rpi_key_path, rpi_password,
+                                            rpi_destination_type, rpi_cups_queue, rpi_usb_device, rpi_tcp_host, rpi_tcp_port, updated_at)
+                VALUES ('DEFAULT', :oh, :op, :opt, :oe, :hh, :hp, :hpt, :he, :en, :m, :sos, :soe, :ogs, :pts, :apw, :cds, :rts,
+                        :rh, :rp, :ru, :rat, :rkp, :rpw, :rdt, :rcq, :rud, :rth, :rtp, now())
                 ON CONFLICT (id) DO UPDATE SET
                     office_host = EXCLUDED.office_host,
                     office_port = EXCLUDED.office_port,
@@ -258,6 +342,17 @@ public class PrinterConfigService {
                     auto_print_wholesale = EXCLUDED.auto_print_wholesale,
                     customer_debounce_seconds = EXCLUDED.customer_debounce_seconds,
                     review_timeout_seconds = EXCLUDED.review_timeout_seconds,
+                    rpi_host = EXCLUDED.rpi_host,
+                    rpi_port = EXCLUDED.rpi_port,
+                    rpi_user = EXCLUDED.rpi_user,
+                    rpi_auth_type = EXCLUDED.rpi_auth_type,
+                    rpi_key_path = EXCLUDED.rpi_key_path,
+                    rpi_password = EXCLUDED.rpi_password,
+                    rpi_destination_type = EXCLUDED.rpi_destination_type,
+                    rpi_cups_queue = EXCLUDED.rpi_cups_queue,
+                    rpi_usb_device = EXCLUDED.rpi_usb_device,
+                    rpi_tcp_host = EXCLUDED.rpi_tcp_host,
+                    rpi_tcp_port = EXCLUDED.rpi_tcp_port,
                     updated_at = now()
                 """).param("oh", (officeHost != null && !officeHost.isBlank()) ? officeHost.trim() : "127.0.0.1")
                 .param("op", (officePort != null && officePort > 0) ? officePort : 9100)
@@ -276,6 +371,17 @@ public class PrinterConfigService {
                 .param("apw", autoPrintWholesale != null ? autoPrintWholesale : true)
                 .param("cds", (customerDebounceSeconds != null && customerDebounceSeconds >= 0) ? customerDebounceSeconds : 30)
                 .param("rts", (reviewTimeoutSeconds != null && reviewTimeoutSeconds > 0) ? reviewTimeoutSeconds : 120)
+                .param("rh", (rpiHost != null && !rpiHost.isBlank()) ? rpiHost.trim() : "100.105.30.91")
+                .param("rp", (rpiPort != null && rpiPort > 0) ? rpiPort : 22)
+                .param("ru", (rpiUser != null && !rpiUser.isBlank()) ? rpiUser.trim() : "victor")
+                .param("rat", (rpiAuthType != null && !rpiAuthType.isBlank()) ? rpiAuthType.trim().toUpperCase() : "KEY")
+                .param("rkp", rpiKeyPath != null ? rpiKeyPath.trim() : "")
+                .param("rpw", rpiPassword != null ? rpiPassword : "")
+                .param("rdt", (rpiDestinationType != null && !rpiDestinationType.isBlank()) ? rpiDestinationType.trim().toUpperCase() : "CUPS")
+                .param("rcq", (rpiCupsQueue != null && !rpiCupsQueue.isBlank()) ? rpiCupsQueue.trim() : "Brother_HL_L2405W")
+                .param("rud", (rpiUsbDevice != null && !rpiUsbDevice.isBlank()) ? rpiUsbDevice.trim() : "/dev/usb/lp0")
+                .param("rth", (rpiTcpHost != null && !rpiTcpHost.isBlank()) ? rpiTcpHost.trim() : "127.0.0.1")
+                .param("rtp", (rpiTcpPort != null && rpiTcpPort > 0) ? rpiTcpPort : 9100)
                 .update();
 
         return get();

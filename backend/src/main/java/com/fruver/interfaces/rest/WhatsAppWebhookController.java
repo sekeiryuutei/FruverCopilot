@@ -116,6 +116,37 @@ public class WhatsAppWebhookController {
         String type = m.path("type").asText("");
         String name = names.get(from);
         if (id == null || from == null || from.isBlank()) return;
+
+        boolean fromMe = m.path("from_me").asBoolean(false)
+                || m.path("key").path("fromMe").asBoolean(false)
+                || m.path("fromMe").asBoolean(false);
+
+        if (fromMe) {
+            String text = "";
+            String mediaId = null;
+            String mime = null;
+            switch (type) {
+                case "text" -> text = m.path("text").path("body").asText("");
+                case "audio" -> {
+                    mediaId = m.path("audio").path("id").asText(null);
+                    mime = m.path("audio").path("mime_type").asText("audio/ogg");
+                    text = "[Nota de voz enviada desde celular]";
+                }
+                case "image" -> {
+                    mediaId = m.path("image").path("id").asText(null);
+                    mime = m.path("image").path("mime_type").asText("image/jpeg");
+                    String cap = m.path("image").path("caption").asText(null);
+                    text = (cap != null && !cap.isBlank()) ? cap : "[Imagen enviada desde celular]";
+                }
+                default -> text = "[Mensaje de tipo " + type + " enviado desde celular]";
+            }
+            if (!text.isBlank()) {
+                if (text.length() > 2000) text = text.substring(0, 2000);
+                ingest.ingestOutbound(from, id, text, type, mediaId, mime, channel);
+            }
+            return;
+        }
+
         switch (type) {
             case "text" -> {
                 String t = m.path("text").path("body").asText("");

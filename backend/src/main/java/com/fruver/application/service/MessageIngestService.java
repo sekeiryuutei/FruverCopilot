@@ -96,6 +96,28 @@ public class MessageIngestService {
         ingest(phone, name, externalId, OrderInputType.IMAGE, caption, null, storage.save(data, mime), mime);
     }
 
+    /**
+     * Ingesta de mensajes salientes enviados desde el dispositivo físico (WhatsApp móvil).
+     * Registra en la conversación para sincronizar con la interfaz web sin crear pedidos ni llamar IA.
+     */
+    public void ingestOutbound(String phone, String externalId, String text, String messageType,
+                               String mediaId, String mime, String channel) {
+        if (phone == null || phone.isBlank()) return;
+        String p = phone.strip();
+        if (p.length() > 20 || !p.matches("^[+0-9\\s\\-()]{5,20}$")) return;
+        if (externalId != null && intake.isDuplicate(externalId)) {
+            log.debug("Mensaje saliente duplicado ignorado: {}", externalId);
+            return;
+        }
+        if (channel == null || channel.isBlank()) channel = "BAILEYS_QR";
+        if (text != null && text.length() > 2000) text = text.substring(0, 2000);
+
+        Long orderId = intake.recordOutbound(p, externalId, text, messageType, mediaId, null, mime, channel);
+        if (orderId != null) {
+            hub.orderChanged(orderId);
+        }
+    }
+
     private void ingest(String phone, String name, String externalId, OrderInputType type, String text,
                         String mediaId, String storageKey, String mime) {
         String channel = currentChannel.get();

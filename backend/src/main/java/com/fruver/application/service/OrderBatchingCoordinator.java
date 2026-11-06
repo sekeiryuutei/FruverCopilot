@@ -59,6 +59,11 @@ public class OrderBatchingCoordinator {
         burstStarts.remove(orderId);
     }
 
+    public boolean isDebouncing(long orderId) {
+        ScheduledFuture<?> future = timers.get(orderId);
+        return future != null && !future.isDone() && !future.isCancelled();
+    }
+
     public void scheduleProcessing(IntakeResult result) {
         long orderId = result.orderId();
         int debounceSec = 30;

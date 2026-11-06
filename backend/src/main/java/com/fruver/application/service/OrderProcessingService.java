@@ -52,6 +52,13 @@ public class OrderProcessingService {
     private final PrinterConfigService printerConfig;
     private final WhatsAppSecurityLimiter securityLimiter;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private BlockingAlertService alertService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @org.springframework.context.annotation.Lazy
+    private OrderBatchingCoordinator batchingCoordinator;
+
     @org.springframework.beans.factory.annotation.Autowired
     public OrderProcessingService(OrderExtractor extractor, SpeechToTextService stt, AudioStorageService storage,
                                   MediaDownloader media, ProductCatalogService catalog, ExtractionInterpreter interpreter,
@@ -243,6 +250,9 @@ public class OrderProcessingService {
                     .replaceAll("(?i)\\b3[)(]4\\b", "3/4");
         }
         if (combinedText.isBlank() && images.isEmpty()) {
+            if (hasAudio) {
+                writer.markFailed(orderId, "TRANSCRIPTION_FAILED", "No se pudo obtener el audio (expiró o no disponible); escuchar en WhatsApp");
+            }
             return;
         }
 
@@ -545,9 +555,17 @@ public class OrderProcessingService {
 
                 String reason = hasTrulyDoubtfulLines ? "Líneas con duda en pedido (auto-impreso tras 2 min)" : null;
                 sales.autoApproveWholesale(oId, hasTrulyDoubtfulLines, reason, "ia_wholesale_timer");
+                if (alertService != null) {
+                    alertService.autoDismissForOrder(oId);
+                }
                 hub.orderChanged(oId);
             } catch (Exception e) {
                 log.warn("Fallo auto-aprobación diferida para pedido {}: {}", oId, e.getMessage());
+                if (alertService != null) {
+                    alertService.raise("ORDER_APPROVAL_" + oId, "CRITICAL",
+                            "Fallo al facturar Pedido #" + oId,
+                            "Error en auto-aprobación: " + e.getMessage(), oId, null);
+                }
             }
         }
     }
@@ -561,14 +579,19 @@ public class OrderProcessingService {
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 15000)
     public void recoverPendingExtractions() {
         try {
+            // Protección contra colisión con debounce: no interrumpir pedidos que acaban de llegar (< 45s)
             List<Long> pendingOrders = jdbc.sql("""
                     SELECT o.id FROM orders o
                     WHERE o.ai_status = 'PENDING'
                       AND o.status IN ('RECEIVED', 'PROCESSING', 'REVIEW')
+                      AND o.received_at < NOW() - INTERVAL '45 seconds'
                     ORDER BY o.id ASC LIMIT 10
                     """).query(Long.class).list();
 
             for (Long oId : pendingOrders) {
+                if (batchingCoordinator != null && batchingCoordinator.isDebouncing(oId)) {
+                    continue; // El cliente sigue en ventana activa de consolidación de mensajes
+                }
                 try {
                     var msgRow = jdbc.sql("""
                             SELECT cm.id, cm.message_type, cm.content

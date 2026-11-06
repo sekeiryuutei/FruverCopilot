@@ -35,13 +35,15 @@ public class SaleController {
     private final org.springframework.jdbc.core.simple.JdbcClient jdbc;
     private final PrintService printService;
     private final com.fruver.application.service.PrinterConfigService printerConfig;
+    private final com.fruver.infrastructure.printing.RpiSshPrintStrategy rpiSshStrategy;
 
     public SaleController(SalesQueryService salesQuery, SaleService sales, ReportService reports, CustomerService customers,
                           SseHub hub, TicketService tickets, com.fruver.config.AppProperties props,
                           org.springframework.jdbc.core.simple.JdbcClient jdbc,
                           DeliveryZoneService deliveryZones,
                           PrintService printService,
-                          com.fruver.application.service.PrinterConfigService printerConfig) {
+                          com.fruver.application.service.PrinterConfigService printerConfig,
+                          com.fruver.infrastructure.printing.RpiSshPrintStrategy rpiSshStrategy) {
         this.salesQuery = salesQuery;
         this.sales = sales;
         this.reports = reports;
@@ -53,6 +55,7 @@ public class SaleController {
         this.deliveryZones = deliveryZones;
         this.printService = printService;
         this.printerConfig = printerConfig;
+        this.rpiSshStrategy = rpiSshStrategy;
     }
 
     @GetMapping("/sales")
@@ -97,13 +100,25 @@ public class SaleController {
             Integer orderGraceSeconds,
             Integer printTimeoutSeconds,
             Boolean autoPrintWholesale,
-            Integer customerDebounceSeconds
+            Integer customerDebounceSeconds,
+            String rpiHost,
+            Integer rpiPort,
+            String rpiUser,
+            String rpiAuthType,
+            String rpiKeyPath,
+            String rpiPassword,
+            String rpiDestinationType,
+            String rpiCupsQueue,
+            String rpiUsbDevice,
+            String rpiTcpHost,
+            Integer rpiTcpPort
     ) {
         public PrinterConfigUpdateRequest(
                 String officeHost, Integer officePort, String homeHost, Integer homePort,
                 Boolean enabled, String mode, Integer orderGraceSeconds, Integer printTimeoutSeconds,
                 Boolean autoPrintWholesale) {
-            this(officeHost, officePort, "EMAIL", null, homeHost, homePort, "ESCPOS", null, enabled, mode, "04:00", "19:00", orderGraceSeconds, printTimeoutSeconds, autoPrintWholesale, null);
+            this(officeHost, officePort, "EMAIL", null, homeHost, homePort, "ESCPOS", null, enabled, mode, "04:00", "19:00", orderGraceSeconds, printTimeoutSeconds, autoPrintWholesale, null,
+                 null, null, null, null, null, null, null, null, null, null, null);
         }
     }
 
@@ -125,13 +140,25 @@ public class SaleController {
     @PutMapping("/printer/config")
     @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public com.fruver.application.service.PrinterConfigService.PrinterConfig updatePrinterConfig(@RequestBody PrinterConfigUpdateRequest req) {
+        var current = printerConfig.get();
         return printerConfig.update(
                 req.officeHost(), req.officePort(), req.officePrintType(), req.officeEmail(),
                 req.homeHost(), req.homePort(), req.homePrintType(), req.homeEmail(),
                 req.enabled(), req.mode(),
                 req.scheduleOfficeStart(), req.scheduleOfficeEnd(),
                 req.orderGraceSeconds(), req.printTimeoutSeconds(), req.autoPrintWholesale(),
-                req.customerDebounceSeconds()
+                req.customerDebounceSeconds(), current.reviewTimeoutSeconds(),
+                req.rpiHost() != null ? req.rpiHost() : current.rpiHost(),
+                req.rpiPort() != null ? req.rpiPort() : current.rpiPort(),
+                req.rpiUser() != null ? req.rpiUser() : current.rpiUser(),
+                req.rpiAuthType() != null ? req.rpiAuthType() : current.rpiAuthType(),
+                req.rpiKeyPath() != null ? req.rpiKeyPath() : current.rpiKeyPath(),
+                req.rpiPassword() != null ? req.rpiPassword() : current.rpiPassword(),
+                req.rpiDestinationType() != null ? req.rpiDestinationType() : current.rpiDestinationType(),
+                req.rpiCupsQueue() != null ? req.rpiCupsQueue() : current.rpiCupsQueue(),
+                req.rpiUsbDevice() != null ? req.rpiUsbDevice() : current.rpiUsbDevice(),
+                req.rpiTcpHost() != null ? req.rpiTcpHost() : current.rpiTcpHost(),
+                req.rpiTcpPort() != null ? req.rpiTcpPort() : current.rpiTcpPort()
         );
     }
 
@@ -145,6 +172,18 @@ public class SaleController {
         } catch (Exception e) {
             throw new ApiException(502, "PRINTER_TEST_FAILED", e.getMessage());
         }
+    }
+
+    @PostMapping("/printer/rpi/test-connection")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public com.fruver.infrastructure.printing.RpiSshPrintStrategy.TestResult testRpiConnection() {
+        return rpiSshStrategy.testConnection();
+    }
+
+    @PostMapping("/printer/rpi/test-print")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
+    public com.fruver.infrastructure.printing.RpiSshPrintStrategy.TestResult testRpiPrint() {
+        return rpiSshStrategy.testPrintSample();
     }
 
     /** Valida y confirma un pedido pendiente o quita la marca de duda con 1 clic */

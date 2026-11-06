@@ -128,7 +128,7 @@ class ControllersUnitTest {
 
     @Test
     void whatsAppWebhookControllerVerifyAndReceive() {
-        AppProperties.Whatsapp wa = new AppProperties.Whatsapp(true, "verify-token-123", "ignore", "token", "phone-id", "v21.0", false, false, false);
+        AppProperties.Whatsapp wa = new AppProperties.Whatsapp(true, "verify-token-123", "ignore", "token", "phone-id", "v21.0", false, false, false, false);
         AppProperties props = new AppProperties("America/Bogota", false, null, null, null, wa, null, null, null, null);
 
         AtomicBoolean ingested = new AtomicBoolean(false);

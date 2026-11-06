@@ -10,15 +10,18 @@ public class PrintStrategyFactory {
     private final BrotherEmailPrintStrategy emailStrategy;
     private final IppNetworkPrintStrategy ippStrategy;
     private final EscPosNetworkPrintStrategy escPosStrategy;
+    private final RpiSshPrintStrategy rpiSshStrategy;
     private final PrinterConfigService printerConfig;
 
     public PrintStrategyFactory(BrotherEmailPrintStrategy emailStrategy,
                                 IppNetworkPrintStrategy ippStrategy,
                                 EscPosNetworkPrintStrategy escPosStrategy,
+                                RpiSshPrintStrategy rpiSshStrategy,
                                 PrinterConfigService printerConfig) {
         this.emailStrategy = emailStrategy;
         this.ippStrategy = ippStrategy;
         this.escPosStrategy = escPosStrategy;
+        this.rpiSshStrategy = rpiSshStrategy;
         this.printerConfig = printerConfig;
     }
 
@@ -45,7 +48,9 @@ public class PrintStrategyFactory {
         }
 
         String normalized = type.trim().toUpperCase();
-        if (normalized.contains("EMAIL") || normalized.contains("CORREO")) {
+        if (normalized.contains("RPI") || normalized.contains("RASPBERRY") || normalized.contains("SSH")) {
+            return rpiSshStrategy;
+        } else if (normalized.contains("EMAIL") || normalized.contains("CORREO")) {
             return emailStrategy;
         } else if (normalized.contains("ESCPOS") || normalized.contains("TERMICA")) {
             return escPosStrategy;

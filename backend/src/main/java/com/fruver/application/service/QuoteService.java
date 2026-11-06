@@ -92,7 +92,15 @@ public class QuoteService {
         boolean isMoney = it.manualPrice() != null && it.manualPrice().signum() > 0;
         if (isMoney) return null;
         if (it.quantity() == null || it.quantity().signum() <= 0) return "NO_QUANTITY";
-        if (it.unit() != null && p.unit() != null && !it.unit().equals(p.unit())) return "UNIT_MISMATCH";
+        if (it.unit() != null && p.unit() != null && !it.unit().equals(p.unit())) {
+            // 'L' es compatible con 'LB' y 'UNIDAD' (se preserva 'L' para el despachador en comanda sin bloquear precio)
+            if (("L".equalsIgnoreCase(it.unit()) && ("LB".equalsIgnoreCase(p.unit()) || "UNIDAD".equalsIgnoreCase(p.unit())))
+                    || ("LB".equalsIgnoreCase(it.unit()) && "L".equalsIgnoreCase(p.unit()))) {
+                // Compatible
+            } else {
+                return "UNIT_MISMATCH";
+            }
+        }
         if (applied == null && type != PriceType.WHOLESALE) return "NO_PRICE";
         return null;
     }

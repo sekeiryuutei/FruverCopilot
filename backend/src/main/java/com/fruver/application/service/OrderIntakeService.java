@@ -115,4 +115,62 @@ public class OrderIntakeService {
         }
         return new IntakeResult(orderId, messageId, reply, audio, image, text, mediaId, storageKey, mime);
     }
+
+    /**
+     * Registra un mensaje saliente enviado desde el dispositivo móvil (WhatsApp celular físico).
+     * No crea pedidos activos, no modifica estados de facturación y no dispara extracción de IA.
+     */
+    @Transactional
+    public Long recordOutbound(String phone, String externalId, String text, String messageType,
+                               String mediaId, String storageKey, String mime, String channel) {
+        if (externalId != null && isDuplicate(externalId)) {
+            return null;
+        }
+        String normPhone = Phones.normalize(phone);
+        String chan = (channel != null && !channel.isBlank()) ? channel : "BAILEYS_QR";
+        String msgType = (messageType != null && !messageType.isBlank()) ? messageType.toUpperCase() : "TEXT";
+
+        // 1. Obtener o registrar cliente
+        Long customerId = jdbc.sql("SELECT id FROM customer WHERE phone = :p")
+                .param("p", normPhone).query(Long.class).optional().orElse(null);
+        if (customerId == null) {
+            customerId = jdbc.sql("INSERT INTO customer(name, phone, name_source) VALUES ('Cliente', :p, 'UNVERIFIED') RETURNING id")
+                    .param("p", normPhone).query(Long.class).single();
+        }
+
+        // 2. Buscar última orden para asociar la conversación sin alterar su estado
+        Long orderId = jdbc.sql("""
+                SELECT o.id FROM orders o
+                WHERE o.customer_id = :cid OR o.customer_phone = :p
+                ORDER BY o.id DESC LIMIT 1
+                """).param("cid", customerId).param("p", normPhone).query(Long.class).optional().orElse(null);
+
+        // Si el cliente no tiene ninguna orden previa, crear un contenedor inerte (CANCELLED / OK)
+        // para satisfacer la foreign key NOT NULL de conversation_message sin activar IA ni facturación
+        if (orderId == null) {
+            orderId = jdbc.sql("""
+                    INSERT INTO orders (customer_id, customer_phone, customer_name, input_type, status, ai_status, conversation_status, channel)
+                    VALUES (:cid, :p, 'Cliente', 'TEXT', 'CANCELLED', 'OK', 'COMPLETED', :ch)
+                    RETURNING id
+                    """).param("cid", customerId).param("p", normPhone).param("ch", chan).query(Long.class).single();
+        }
+
+        // 3. Insertar el mensaje con dirección 'OUTBOUND' y delivery_status 'SENT'
+        long messageId = jdbc.sql("""
+                INSERT INTO conversation_message(order_id, direction, message_type, content, external_message_id, delivery_status, channel)
+                VALUES (:o, 'OUTBOUND', :mt, :c, :e, 'SENT', :ch)
+                RETURNING id
+                """).param("o", orderId).param("mt", msgType).param("c", text)
+                .param("e", externalId).param("ch", chan).query(Long.class).single();
+
+        if ("AUDIO".equalsIgnoreCase(msgType) && mediaId != null) {
+            jdbc.sql("INSERT INTO audio(order_id, message_id, media_ref, storage_key, mime_type) VALUES (:o, :m, :r, :k, :t)")
+                    .param("o", orderId).param("m", messageId).param("r", mediaId).param("k", storageKey).param("t", mime).update();
+        } else if ("IMAGE".equalsIgnoreCase(msgType) && mediaId != null) {
+            jdbc.sql("INSERT INTO media_image(order_id, message_id, media_ref, storage_key, mime_type, caption) VALUES (:o, :m, :r, :k, :t, :c)")
+                    .param("o", orderId).param("m", messageId).param("r", mediaId).param("k", storageKey).param("t", mime).param("c", text).update();
+        }
+
+        return orderId;
+    }
 }
