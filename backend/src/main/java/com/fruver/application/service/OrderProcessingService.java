@@ -522,7 +522,7 @@ public class OrderProcessingService {
         int maxReviewSec = (printerConfig != null)
                 ? printerConfig.get().reviewTimeoutSeconds()
                 : (props.printing() != null ? props.printing().reviewTimeoutSeconds() : 120);
-        if (maxReviewSec <= 0) maxReviewSec = 120;
+        if (maxReviewSec < 0) maxReviewSec = 120;
 
         // Auto-impresión inteligente:
         // 1. Pedidos limpios sin dudas: se imprimen al cumplirse el margen normal (1 minuto / 60s)

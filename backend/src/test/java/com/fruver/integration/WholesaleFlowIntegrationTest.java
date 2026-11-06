@@ -245,16 +245,20 @@ class WholesaleFlowIntegrationTest extends SafeMessagingSupport {
         );
         try {
             var updateReq = new com.fruver.interfaces.rest.SaleController.PrinterConfigUpdateRequest(
-                    "192.168.1.100", 9100, "192.168.1.200", 9100, true, "AUTO", 180, 8, true
+                    "192.168.1.100", 9100, "EMAIL", null, "192.168.1.200", 9100, "ESCPOS", null, true, "AUTO",
+                    "04:00", "19:00", 180, 8, true, 20, 0,
+                    null, null, null, null, null, null, null, null, null, null, null
             );
             var updated = saleController.updatePrinterConfig(updateReq);
             assertEquals(180, updated.orderGraceSeconds());
             assertEquals(8, updated.printTimeoutSeconds());
+            assertEquals(0, updated.reviewTimeoutSeconds());
             assertTrue(updated.autoPrintWholesale());
 
             var fetched = saleController.getPrinterConfig();
             assertEquals(180, fetched.orderGraceSeconds());
             assertEquals(8, fetched.printTimeoutSeconds());
+            assertEquals(0, fetched.reviewTimeoutSeconds());
             assertTrue(fetched.autoPrintWholesale());
         } finally {
             // Restaurar para no afectar otros tests que requieren auto-aprobación inmediata

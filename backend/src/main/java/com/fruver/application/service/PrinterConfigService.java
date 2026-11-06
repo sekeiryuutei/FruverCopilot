@@ -183,7 +183,7 @@ public class PrinterConfigService {
             } else if (data[13] != null && ((Integer) data[13]) >= 0) {
                 customerDebounceSeconds = (Integer) data[13];
             }
-            if (data[14] != null && ((Integer) data[14]) > 0) {
+            if (data[14] != null && ((Integer) data[14]) >= 0) {
                 reviewTimeoutSeconds = (Integer) data[14];
             }
 
@@ -370,7 +370,7 @@ public class PrinterConfigService {
                 .param("pts", (printTimeoutSeconds != null && printTimeoutSeconds >= 1) ? printTimeoutSeconds : 5)
                 .param("apw", autoPrintWholesale != null ? autoPrintWholesale : true)
                 .param("cds", (customerDebounceSeconds != null && customerDebounceSeconds >= 0) ? customerDebounceSeconds : 30)
-                .param("rts", (reviewTimeoutSeconds != null && reviewTimeoutSeconds > 0) ? reviewTimeoutSeconds : 120)
+                .param("rts", (reviewTimeoutSeconds != null && reviewTimeoutSeconds >= 0) ? reviewTimeoutSeconds : 120)
                 .param("rh", (rpiHost != null && !rpiHost.isBlank()) ? rpiHost.trim() : "100.105.30.91")
                 .param("rp", (rpiPort != null && rpiPort > 0) ? rpiPort : 22)
                 .param("ru", (rpiUser != null && !rpiUser.isBlank()) ? rpiUser.trim() : "victor")

@@ -1109,7 +1109,7 @@ function showTicketModal(t){
     thermalGroup.querySelectorAll('button').forEach(b=>{b.disabled=true});
     try{
       const q = printerLoc ? `?printer=${printerLoc}` : '';
-      const endpoint = t.orderId ? `/api/orders/${t.orderId}/reprint${q}` : `/api/sales/${t.saleId}/reprint${q}`;
+      const endpoint = t.saleId ? `/api/sales/${t.saleId}/reprint${q}` : `/api/orders/${t.orderId}/reprint${q}`;
       await api(endpoint,{method:'POST'});
       toast(`✓ Factura #${t.invoiceNumber || t.saleId || t.orderId} enviada a imprimir en ${printerLoc || S.printerStatus?.activePrinter || 'impresora'}`);
       overlay.remove();
@@ -1335,7 +1335,11 @@ function renderOps(){
     const ids=[...reprintSel];
     toast(`Reimprimiendo ${ids.length} pedido(s)... ⏳`);
     for(const id of ids){
-      try{await api(`/api/orders/${id}/reprint`,{method:'POST'})}catch(e){toast('Error pedido #'+id+': '+e.message)}
+      const ord = S.orders.find(x => x.id === id);
+      try{
+        if(ord && ord.saleId) await api(`/api/sales/${ord.saleId}/reprint`,{method:'POST'});
+        else await api(`/api/orders/${id}/reprint`,{method:'POST'});
+      }catch(e){toast('Error pedido #'+id+': '+e.message)}
     }
     reprintSel.clear();document.querySelectorAll('.reprint-chk').forEach(c=>{c.checked=false});
     reprintSelBtn.style.display='none';reprintSelBtn.textContent='🖨️ Reimprimir seleccionados (0)';
@@ -2528,6 +2532,15 @@ async function renderPrinterConfig(){
       style:'font-size:15px;font-weight:700;width:90px;text-align:center'
     });
 
+    const reviewTimeoutInput = h('input',{
+      type:'number',
+      min:0,
+      max:600,
+      value:cfg.reviewTimeoutSeconds != null ? cfg.reviewTimeoutSeconds : 120,
+      placeholder:'Ej: 120',
+      style:'font-size:15px;font-weight:700;width:90px;text-align:center'
+    });
+
     // Raspberry Pi Remota (Tailscale/SSH)
     const rpiHostInput = h('input',{value:cfg.rpiHost||'100.105.30.91',placeholder:'100.105.30.91',style:'font-size:14px;font-weight:700;width:100%'});
     const rpiPortInput = h('input',{type:'number',value:cfg.rpiPort||22,placeholder:'22',style:'font-size:14px;font-weight:700;width:90px'});
@@ -2587,6 +2600,7 @@ async function renderPrinterConfig(){
         const graceM = Number(orderGraceInput.value);
         const timeoutS = Number(printTimeoutInput.value);
         const debounceS = Number(aiDebounceInput.value);
+        const reviewS = Number(reviewTimeoutInput.value);
         await api('/api/printer/config',{
           method:'PUT',
           body:{
@@ -2606,6 +2620,7 @@ async function renderPrinterConfig(){
             printTimeoutSeconds: isNaN(timeoutS) || timeoutS < 1 ? 5 : Math.round(timeoutS),
             autoPrintWholesale: autoPrintChk.checked,
             customerDebounceSeconds: isNaN(debounceS) || debounceS < 0 ? 20 : Math.round(debounceS),
+            reviewTimeoutSeconds: isNaN(reviewS) || reviewS < 0 ? 0 : Math.round(reviewS),
             rpiHost: rpiHostInput.value.trim(),
             rpiPort: Number(rpiPortInput.value) || 22,
             rpiUser: rpiUserInput.value.trim(),
@@ -2763,6 +2778,17 @@ async function renderPrinterConfig(){
             h('div',{style:'display:flex;align-items:center;gap:6px'},
               orderGraceInput,
               h('span',{style:'font-size:13px;font-weight:700'},'min')
+            )
+          ),
+
+          h('div',{style:'display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap'},
+            h('div',{style:'flex:1;min-width:200px'},
+              h('b',{style:'font-size:13.5px;display:block'},'👁️ Tiempo de espera revisión del administrador'),
+              h('span',{class:'mut',style:'font-size:12px'},'Segundos de margen para revisar pedidos con alertas/dudas antes de forzar su impresión automática (0 = inmediato sin espera).')
+            ),
+            h('div',{style:'display:flex;align-items:center;gap:6px'},
+              reviewTimeoutInput,
+              h('span',{style:'font-size:13px;font-weight:700'},'seg')
             )
           ),
 

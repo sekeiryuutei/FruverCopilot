@@ -61,6 +61,7 @@ services:
       - "${APP_PORT:-8085}:${SERVER_PORT:-8080}"
     volumes:
       - audio_data:/data/audio
+      - backend_ssh:/home/fruver/.ssh
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:$${SERVER_PORT:-8080}/actuator/health/readiness || exit 1"]
       interval: 10s
@@ -72,3 +73,4 @@ volumes:
   pgdata:
   audio_data:
   whatsapp_auth:
+  backend_ssh:

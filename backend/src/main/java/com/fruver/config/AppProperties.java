@@ -112,7 +112,7 @@ public record AppProperties(
             if (homeHost == null || homeHost.isBlank()) homeHost = (host != null && !host.isBlank()) ? host : "127.0.0.1";
             if (homePort <= 0) homePort = (port > 0) ? port : 9100;
             if (wholesaleGraceSeconds < 0) wholesaleGraceSeconds = 300;
-            if (reviewTimeoutSeconds <= 0) reviewTimeoutSeconds = 120;
+            if (reviewTimeoutSeconds < 0) reviewTimeoutSeconds = 120;
         }
 
         public String currentTargetPrinter(String timezone) {

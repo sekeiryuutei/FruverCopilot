@@ -101,6 +101,7 @@ public class SaleController {
             Integer printTimeoutSeconds,
             Boolean autoPrintWholesale,
             Integer customerDebounceSeconds,
+            Integer reviewTimeoutSeconds,
             String rpiHost,
             Integer rpiPort,
             String rpiUser,
@@ -118,7 +119,7 @@ public class SaleController {
                 Boolean enabled, String mode, Integer orderGraceSeconds, Integer printTimeoutSeconds,
                 Boolean autoPrintWholesale) {
             this(officeHost, officePort, "EMAIL", null, homeHost, homePort, "ESCPOS", null, enabled, mode, "04:00", "19:00", orderGraceSeconds, printTimeoutSeconds, autoPrintWholesale, null,
-                 null, null, null, null, null, null, null, null, null, null, null);
+                 null, null, null, null, null, null, null, null, null, null, null, null);
         }
     }
 
@@ -147,7 +148,7 @@ public class SaleController {
                 req.enabled(), req.mode(),
                 req.scheduleOfficeStart(), req.scheduleOfficeEnd(),
                 req.orderGraceSeconds(), req.printTimeoutSeconds(), req.autoPrintWholesale(),
-                req.customerDebounceSeconds(), current.reviewTimeoutSeconds(),
+                req.customerDebounceSeconds(), (req.reviewTimeoutSeconds() != null ? req.reviewTimeoutSeconds() : current.reviewTimeoutSeconds()),
                 req.rpiHost() != null ? req.rpiHost() : current.rpiHost(),
                 req.rpiPort() != null ? req.rpiPort() : current.rpiPort(),
                 req.rpiUser() != null ? req.rpiUser() : current.rpiUser(),
@@ -214,13 +215,30 @@ public class SaleController {
         return Map.of("status", "enqueued", "count", queued);
     }
 
-    /** Reimprimir buscando directamente por ID de Pedido */
+    /** Reimprimir buscando directamente por ID de Pedido o consecutivo de Factura */
     @PostMapping("/orders/{orderId}/reprint")
     @PreAuthorize("hasAnyRole('ADMIN','OPERADOR')")
     public Map<String, Object> reprintByOrder(@PathVariable long orderId, @RequestParam(required = false) String printer) {
-        Long resolvedOrderId = jdbc.sql("SELECT order_id FROM sale WHERE invoice_number = :o LIMIT 1")
-                .param("o", orderId).query(Long.class).optional().orElse(orderId);
-        Long saleId = sales.reprintByOrderId(resolvedOrderId, Actor.name(), printer);
+        // Prioridad 1: Buscar si existe venta con este order_id exacto
+        Long saleId = jdbc.sql("SELECT id FROM sale WHERE order_id = :o LIMIT 1")
+                .param("o", orderId).query(Long.class).optional().orElse(null);
+        Long resolvedOrderId = orderId;
+
+        // Prioridad 2: Si no existe como order_id, buscar si fue ingresado como consecutivo de factura (invoice_number)
+        if (saleId == null) {
+            var byInvoice = jdbc.sql("SELECT id, order_id FROM sale WHERE invoice_number = :inv LIMIT 1")
+                    .param("inv", orderId).query((rs, rowNum) -> Map.entry(rs.getLong("id"), rs.getLong("order_id"))).optional();
+            if (byInvoice.isPresent()) {
+                saleId = byInvoice.get().getKey();
+                resolvedOrderId = byInvoice.get().getValue();
+            }
+        }
+
+        if (saleId != null) {
+            sales.reprint(saleId, Actor.name(), printer);
+        } else {
+            saleId = sales.reprintByOrderId(resolvedOrderId, Actor.name(), printer);
+        }
         hub.orderChanged(resolvedOrderId);
         return Map.of("status", "PRINT_PENDING", "saleId", saleId, "orderId", resolvedOrderId, "printer", printer != null ? printer : "AUTO");
     }

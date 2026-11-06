@@ -107,7 +107,7 @@ public class TalonarioRasterService {
 
             ProcessBuilder pbPdf = new ProcessBuilder(
                     "wkhtmltopdf", "-q", "-s", "A5",
-                    "-B", "3mm", "-T", "6mm", "-L", "7mm", "-R", "7mm",
+                    "-B", "3mm", "-T", "5mm", "-L", "11mm", "-R", "11mm",
                     tmpHtml.getAbsolutePath(), tmpPdf.getAbsolutePath()
             );
             pbPdf.redirectErrorStream(true);
@@ -173,7 +173,7 @@ public class TalonarioRasterService {
         String year = dt != null ? String.valueOf(dt.getYear() % 100) : "";
 
         List<TicketData.Line> lines = t.lines() != null ? t.lines() : List.of();
-        int maxPerPage = 16;
+        int maxPerPage = 24;
         int pagesCount = Math.max(1, (int) Math.ceil((double) lines.size() / maxPerPage));
 
         StringBuilder pagesHtml = new StringBuilder();
@@ -216,18 +216,18 @@ public class TalonarioRasterService {
                     }
                 }
 
-                rowsHtml.append("<tr style=\"height:34px\">\n")
-                        .append("  <td style=\"text-align:center;font-weight:900;padding:3px 3px;border:1.5px solid #000;font-size:18px\">").append(cant).append("</td>\n")
-                        .append("  <td style=\"padding:3px 6px;border:1.5px solid #000;text-transform:uppercase;font-size:17.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0\">").append(name).append("</td>\n")
-                        .append("  <td style=\"text-align:right;padding:3px 4px;border:1.5px solid #000;font-size:15px;font-weight:bold\">").append(vrUnit).append("</td>\n")
-                        .append("  <td style=\"text-align:right;padding:3px 5px;border:1.5px solid #000;font-size:16.5px;font-weight:900\">").append(vrTotal).append("</td>\n")
+                rowsHtml.append("<tr style=\"height:29px\">\n")
+                        .append("  <td style=\"text-align:center;font-weight:900;padding:1px 2px;border:1.5px solid #000;font-size:18px\">").append(cant).append("</td>\n")
+                        .append("  <td style=\"padding:1px 4px;border:1.5px solid #000;text-transform:uppercase;font-size:17.5px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0\">").append(name).append("</td>\n")
+                        .append("  <td style=\"text-align:right;padding:1px 3px;border:1.5px solid #000;font-size:15.5px;font-weight:bold\">").append(vrUnit).append("</td>\n")
+                        .append("  <td style=\"text-align:right;padding:1px 4px;border:1.5px solid #000;font-size:17px;font-weight:900\">").append(vrTotal).append("</td>\n")
                         .append("</tr>\n");
             }
 
             String headerHtml;
             if (isFirstPage) {
                 headerHtml = """
-                    <div style="border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:7px">
+                    <div style="border-bottom:2px solid #000;padding-bottom:4px;margin-bottom:5px">
                       <table style="width:100%;border-collapse:collapse">
                         <tr>
                           <td style="vertical-align:middle">
@@ -254,14 +254,14 @@ public class TalonarioRasterService {
                         </tr>
                       </table>
                     </div>
-                    <div style="border:2px solid #000;border-radius:3px;padding:6px 10px;font-size:14px;margin-bottom:6px;line-height:1.35">
+                    <div style="border:2px solid #000;border-radius:3px;padding:4px 8px;font-size:13px;margin-bottom:5px;line-height:1.25">
                       <table style="width:100%;border-collapse:collapse;font-size:14px">
                         <tr>
-                          <td style="width:65%"><b>CLIENTE:</b> <span style="font-size:17.5px;font-weight:900">{{CUSTOMER}}</span></td>
-                          <td style="width:35%"><b>TEL:</b> <span style="font-size:15px;font-weight:bold">{{PHONE}}</span></td>
+                          <td style="width:65%"><b>CLIENTE:</b> <span style="font-size:20px;font-weight:900">{{CUSTOMER}}</span></td>
+                          <td style="width:35%"><b>TEL:</b> <span style="font-size:17px;font-weight:bold">{{PHONE}}</span></td>
                         </tr>
                         <tr>
-                          <td style="width:65%;padding-top:3px"><b>DIR:</b> <span style="font-size:15px;font-weight:bold">{{ADDRESS}}</span></td>
+                          <td style="width:65%;padding-top:3px"><b>DIR:</b> <span style="font-size:17px;font-weight:bold">{{ADDRESS}}</span></td>
                           <td style="width:35%;padding-top:3px;font-size:13px">{{ORIGIN_INFO}}</td>
                         </tr>
                         {{NOTES_ROW}}
@@ -317,12 +317,12 @@ public class TalonarioRasterService {
                     if (sum.signum() > 0) totalStr = "$" + MONEY_FMT.format(sum);
                 }
                 footerHtml = """
-                    <div style="margin-top:9px;display:flex;justify-content:flex-end;align-items:center">
+                    <div style="margin-top:5px;display:flex;justify-content:flex-end;align-items:center">
                       <div style="width:40%;text-align:right">
                         <table style="width:100%;border-collapse:collapse;border:2px solid #000;font-size:14px;font-weight:bold">
                           <tr style="background:#e5e7eb;color:#000">
-                            <td style="padding:6px 8px;border:1px solid #000;font-size:13px">TOTAL $</td>
-                            <td style="padding:6px 8px;border:1px solid #000;min-width:85px">{{TOTAL_STR}}</td>
+                            <td style="padding:4px 7px;border:1px solid #000;font-size:14px">TOTAL $</td>
+                            <td style="padding:4px 7px;border:1px solid #000;min-width:85px;font-size:17.5px;font-weight:900">{{TOTAL_STR}}</td>
                           </tr>
                         </table>
                       </div>
@@ -332,24 +332,22 @@ public class TalonarioRasterService {
 
             String breakStyle = (p < pagesCount - 1) ? "page-break-after: always;" : "";
             pagesHtml.append("""
-                <div class="a4-sheet" style="{{BREAK_STYLE}}">
-                  <div class="a5-invoice-container">
-                    {{HEADER_HTML}}
-                    <table class="items-table" style="width:100%;table-layout:fixed;border-collapse:collapse;border:2px solid #000">
-                      <thead>
-                        <tr style="background:#e5e7eb;color:#000;font-size:14px;font-weight:900;height:32px">
-                          <th style="padding:3px;border:1.5px solid #000;width:20%;text-align:center">CANT.</th>
-                          <th style="padding:3px 5px;border:1.5px solid #000;width:42%;text-align:left">DESCRIPCIÓN</th>
-                          <th style="padding:3px 5px;border:1.5px solid #000;width:19%;text-align:right">VR. UNIT</th>
-                          <th style="padding:3px 5px;border:1.5px solid #000;width:19%;text-align:right">VR. TOTAL</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {{ROWS_HTML}}
-                      </tbody>
-                    </table>
-                    {{FOOTER_HTML}}
-                  </div>
+                <div class="page-container" style="{{BREAK_STYLE}}">
+                  {{HEADER_HTML}}
+                  <table class="items-table" style="width:100%;table-layout:fixed;border-collapse:collapse;border:2px solid #000">
+                    <thead>
+                      <tr style="background:#e5e7eb;color:#000;font-size:14.5px;font-weight:900;height:27px">
+                        <th style="padding:3px;border:1.5px solid #000;width:18%;text-align:center">CANT.</th>
+                        <th style="padding:3px 5px;border:1.5px solid #000;width:44%;text-align:left">DESCRIPCIÓN</th>
+                        <th style="padding:3px 5px;border:1.5px solid #000;width:19%;text-align:right">VR. UNIT</th>
+                        <th style="padding:3px 5px;border:1.5px solid #000;width:19%;text-align:right">VR. TOTAL</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {{ROWS_HTML}}
+                    </tbody>
+                  </table>
+                  {{FOOTER_HTML}}
                 </div>
                 """
                 .replace("{{BREAK_STYLE}}", breakStyle)
@@ -365,7 +363,7 @@ public class TalonarioRasterService {
             <meta charset="utf-8">
             <style>
               @page {
-                size: A4 portrait;
+                size: A5 portrait;
                 margin: 0;
               }
               * { box-sizing: border-box; }
@@ -376,15 +374,8 @@ public class TalonarioRasterService {
                 color: #000;
                 -webkit-print-color-adjust: exact;
               }
-              .a4-sheet {
-                width: 270mm;
-                position: relative;
-                overflow: hidden;
-              }
-              .a5-invoice-container {
-                width: 176mm;
-                margin-left: 50mm;
-                padding-top: 3mm;
+              .page-container {
+                width: 100%;
               }
               td, th {
                 vertical-align: middle;
